@@ -28,3 +28,4 @@ yarn-error.log*
 *.swo
 *~
 node_modules/.cache/
+index.html
