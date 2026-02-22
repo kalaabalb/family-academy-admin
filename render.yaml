@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: family-academy-admin
+    runtime: static
+    repo: https://github.com/kalaabalb/family-academy-admin
+    buildCommand: npm run build
+    staticPublishPath: build
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html

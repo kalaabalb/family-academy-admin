@@ -1,0 +1,687 @@
+import React, { useState, useEffect, useCallback } from 'react';
+import { useAuth } from '../../contexts/AuthContext';
+import { useNotification } from '../../contexts/NotificationContext';
+import devicesApi from '../../api/devices';
+import usersApi from '../../api/users';
+import DataTable from '../common/DataTable';
+import ConfirmDialog from '../common/ConfirmDialog';
+import {
+  Box,
+  Paper,
+  Typography,
+  Button,
+  TextField,
+  Select,
+  MenuItem,
+  FormControl,
+  InputLabel,
+  Alert,
+  Chip,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Card,
+  CardContent,
+  Stack,
+  CircularProgress,
+  LinearProgress,
+  alpha,
+  Table,
+  TableBody,
+  TableCell,
+  TableContainer,
+  TableHead,
+  TableRow,
+} from '@mui/material';
+import {
+  Refresh,
+  Delete,
+  Devices,
+  DevicesOther,
+  Tv,
+  Smartphone,
+  Link,
+  LinkOff,
+  Warning,
+  Search,
+  FilterList,
+  Download,
+  Visibility,
+  VisibilityOff,
+  Person,
+  School,
+  AccessTime,
+  Info,
+  CheckCircle,
+  Cancel,
+  Block,
+  Sync,
+  PhoneAndroid,
+  DesktopWindows,
+  TabletAndroid,
+} from '@mui/icons-material';
+
+const DeviceManager = () => {
+  const { isAdmin } = useAuth();
+  const { success: showSuccess, error: showError } = useNotification();
+  
+  const [devices, setDevices] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [stats, setStats] = useState({
+    total: 0,
+    primary: 0,      
+    tv: 0,            
+    paired: 0,
+    active: 0,
+  });
+  
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [unpairConfirmOpen, setUnpairConfirmOpen] = useState(false);
+  const [selectedDevice, setSelectedDevice] = useState(null);
+  
+  const [filters, setFilters] = useState({
+    device_type: '',
+    status: '',
+    search: '',
+    user_id: '',
+  });
+
+  const fetchData = useCallback(async () => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      const [devicesRes, usersRes, statsRes] = await Promise.all([
+        devicesApi.getAllDevices(filters),
+        usersApi.getAllUsers(),
+        devicesApi.getDeviceStats(),
+      ]);
+      
+      const devicesData = devicesRes.data.data || [];
+      const usersData = usersRes.data.data || [];
+      const statsData = statsRes.data.data || {};
+      
+      setDevices(devicesData);
+      setUsers(usersData);
+      
+      
+      setStats({
+        total: statsData.counts?.total || 0,
+        primary: statsData.counts?.primary_count || 0,
+        tv: statsData.counts?.tv_count || 0,
+        paired: statsData.counts?.tv_paired_count || 0,
+        active: statsData.counts?.users_with_devices || 0,
+      });
+      
+    } catch (err) {
+      console.error('Failed to fetch devices:', err);
+      const errMsg = err.response?.data?.message || 'Failed to load devices';
+      setError(errMsg);
+      showError('Failed to load devices');
+    } finally {
+      setLoading(false);
+    }
+  }, [filters, showError]);
+
+  useEffect(() => {
+    if (isAdmin()) {
+      fetchData();
+    }
+  }, [isAdmin, fetchData]);
+
+  const handleFilterChange = (e) => {
+    const { name, value } = e.target;
+    setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      device_type: '',
+      status: '',
+      search: '',
+      user_id: '',
+    });
+  };
+
+  const handleRemoveDevice = (device) => {
+    setSelectedDevice(device);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleUnpairDevice = (device) => {
+    setSelectedDevice(device);
+    setUnpairConfirmOpen(true);
+  };
+
+  const confirmRemoveDevice = async () => {
+    if (!selectedDevice) return;
+
+    try {
+      setLoading(true);
+      
+      
+      await devicesApi.forceRemoveDevice(selectedDevice.source_id || selectedDevice.id, {
+        reason: 'Removed by admin',
+        source_table: selectedDevice.source_table || 'devices',
+        user_id: selectedDevice.user_id
+      });
+      
+      showSuccess('Device removed successfully');
+      setDeleteConfirmOpen(false);
+      setSelectedDevice(null);
+      fetchData(); 
+      
+    } catch (err) {
+      console.error('Failed to remove device:', err);
+      const errMsg = err.response?.data?.message || 'Failed to remove device';
+      showError(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const confirmUnpairDevice = async () => {
+    if (!selectedDevice) return;
+
+    try {
+      setLoading(true);
+      
+      if (selectedDevice.device_type === 'tv') {
+        await devicesApi.updateDevice(selectedDevice.id, { is_paired: false });
+      } else {
+        
+        showSuccess('Primary devices cannot be unpaired - they are always paired');
+        setUnpairConfirmOpen(false);
+        setSelectedDevice(null);
+        return;
+      }
+      
+      showSuccess('TV device unpaired successfully');
+      setUnpairConfirmOpen(false);
+      setSelectedDevice(null);
+      fetchData(); 
+      
+    } catch (err) {
+      console.error('Failed to unpair device:', err);
+      const errMsg = err.response?.data?.message || 'Failed to unpair device';
+      showError(errMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const getDeviceIcon = (device) => {
+    if (device.device_category === 'secondary' || device.device_type === 'tv') {
+      return <Tv />;
+    }
+    
+    return <Smartphone />;
+  };
+
+  const getDeviceColor = (device) => {
+    if (device.device_category === 'secondary' || device.device_type === 'tv') {
+      return '#2196F3'; 
+    }
+    return '#4CAF50'; 
+  };
+
+  const getDeviceLabel = (device) => {
+    if (device.device_category === 'secondary' || device.device_type === 'tv') {
+      return 'TV (Secondary)';
+    }
+    return 'Primary Device (Mobile/Tablet/Desktop)';
+  };
+
+  const StatCard = ({ title, value, icon, color, subtitle }) => (
+    <Card sx={{ height: '100%', borderRadius: 2, boxShadow: '0 4px 12px rgba(0,0,0,0.05)' }}>
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 1 }}>
+          <Box
+            sx={{
+              width: 48,
+              height: 48,
+              borderRadius: 2,
+              bgcolor: alpha(color, 0.1),
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: color,
+            }}
+          >
+            {icon}
+          </Box>
+          <Box sx={{ flex: 1 }}>
+            <Typography variant="h4" fontWeight="bold" color={color}>
+              {value}
+            </Typography>
+            <Typography variant="subtitle2" color="text.secondary">
+              {title}
+            </Typography>
+          </Box>
+        </Box>
+        {subtitle && (
+          <Typography variant="caption" color="text.secondary">
+            {subtitle}
+          </Typography>
+        )}
+      </CardContent>
+    </Card>
+  );
+
+  const columns = [
+    {
+      field: 'device_id',
+      headerName: 'Device ID',
+      width: 200,
+      render: (value) => (
+        <Box>
+          <Typography variant="body2" fontWeight="medium" sx={{ fontFamily: 'monospace' }}>
+            {value ? value.substring(0, 20) + '...' : 'N/A'}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      field: 'username',
+      headerName: 'User',
+      width: 150,
+      render: (value, row) => (
+        <Box>
+          <Typography variant="body2" fontWeight="medium">
+            {value || 'Unknown'}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            ID: {row.user_id}
+          </Typography>
+        </Box>
+      ),
+    },
+    {
+      field: 'device_type',
+      headerName: 'Type',
+      width: 180,
+      render: (value, row) => {
+        const color = getDeviceColor(row);
+        return (
+          <Chip
+            label={getDeviceLabel(row)}
+            size="small"
+            icon={getDeviceIcon(row)}
+            sx={{ 
+              bgcolor: alpha(color, 0.1),
+              color: color,
+              border: `1px solid ${alpha(color, 0.3)}`,
+            }}
+          />
+        );
+      },
+    },
+    {
+      field: 'is_paired',
+      headerName: 'Status',
+      width: 120,
+      render: (value, row) => {
+        if (row.device_category === 'primary') {
+          return (
+            <Chip
+              label="Active"
+              size="small"
+              color="success"
+              icon={<CheckCircle />}
+              variant="outlined"
+            />
+          );
+        }
+        
+        if (row.removed_by_admin) {
+          return (
+            <Chip
+              label="Blocked"
+              size="small"
+              color="error"
+              icon={<Block />}
+              variant="outlined"
+            />
+          );
+        }
+        
+        return (
+          <Chip
+            label={value ? 'Paired' : 'Unpaired'}
+            size="small"
+            color={value ? 'success' : 'default'}
+            icon={value ? <Link /> : <LinkOff />}
+            variant="outlined"
+          />
+        );
+      },
+    },
+    {
+      field: 'paired_at',
+      headerName: 'Paired At',
+      width: 120,
+      render: (value) => (
+        <Typography variant="caption" color="text.secondary">
+          {value ? new Date(value).toLocaleDateString() : 'N/A'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 150,
+      render: (value, row) => (
+        <Stack direction="row" spacing={1}>
+          {row.device_category === 'secondary' && (
+            <Tooltip title={row.is_paired ? "Unpair TV" : "Already Unpaired"}>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => row.is_paired && handleUnpairDevice(row)}
+                  disabled={!row.is_paired || row.removed_by_admin}
+                  color="warning"
+                >
+                  <LinkOff fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+          <Tooltip title="Remove Device">
+            <IconButton
+              size="small"
+              onClick={() => handleRemoveDevice(row)}
+              color="error"
+            >
+              <Delete fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Stack>
+      ),
+    },
+  ];
+
+  if (!isAdmin()) {
+    return (
+      <Box sx={{ p: 3 }}>
+        <Alert severity="error" sx={{ borderRadius: 2 }}>
+          Access Denied - Only administrators can access device management.
+        </Alert>
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ p: 3 }}>
+      {/* Header */}
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold" gutterBottom>
+            Device Management
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Monitor and manage user devices
+          </Typography>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
+            Primary Devices: Mobile/Tablet/Desktop | Secondary Devices: TV
+          </Typography>
+        </Box>
+        
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchData}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Download />}
+            onClick={async () => {
+              try {
+                const response = await devicesApi.exportDevices('csv');
+                const url = window.URL.createObjectURL(new Blob([response.data]));
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', 'devices-export.csv');
+                document.body.appendChild(link);
+                link.click();
+                link.remove();
+              } catch (err) {
+                showError('Failed to export devices');
+              }
+            }}
+            disabled={loading || devices.length === 0}
+            sx={{ borderRadius: 2 }}
+          >
+            Export
+          </Button>
+        </Stack>
+      </Box>
+
+      {/* Error Alert */}
+      {error && (
+        <Alert 
+          severity="error" 
+          sx={{ mb: 3, borderRadius: 2 }} 
+          onClose={() => setError('')}
+        >
+          {error}
+          <Button 
+            size="small" 
+            onClick={fetchData}
+            sx={{ ml: 2 }}
+          >
+            Retry
+          </Button>
+        </Alert>
+      )}
+
+      {/* Statistics Cards */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Total Devices"
+            value={stats.total}
+            icon={<Devices />}
+            color="#1976d2"
+            subtitle={`${stats.primary} primary, ${stats.tv} TV`}
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Primary Devices"
+            value={stats.primary}
+            icon={<Smartphone />}
+            color="#4CAF50"
+            subtitle="Mobile/Tablet/Desktop"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="TV Devices"
+            value={stats.tv}
+            icon={<Tv />}
+            color="#2196F3"
+            subtitle="Secondary devices"
+          />
+        </Grid>
+        <Grid item xs={12} sm={6} md={3}>
+          <StatCard
+            title="Users with Devices"
+            value={stats.active}
+            icon={<Person />}
+            color="#9C27B0"
+            subtitle="Active users"
+          />
+        </Grid>
+      </Grid>
+
+      {/* Filters */}
+      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+          Filters
+        </Typography>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={3}>
+            <TextField
+              fullWidth
+              label="Search"
+              name="search"
+              value={filters.search}
+              onChange={handleFilterChange}
+              size="small"
+              placeholder="Search devices or users..."
+              InputProps={{
+                startAdornment: <Search fontSize="small" />,
+              }}
+            />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Device Type</InputLabel>
+              <Select
+                name="device_type"
+                value={filters.device_type}
+                onChange={handleFilterChange}
+                label="Device Type"
+              >
+                <MenuItem value="">All Types</MenuItem>
+                <MenuItem value="primary">Primary (Mobile/Tablet/Desktop)</MenuItem>
+                <MenuItem value="tv">Secondary (TV)</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Status</InputLabel>
+              <Select
+                name="status"
+                value={filters.status}
+                onChange={handleFilterChange}
+                label="Status"
+              >
+                <MenuItem value="">All Status</MenuItem>
+                <MenuItem value="paired">Paired</MenuItem>
+                <MenuItem value="unpaired">Unpaired</MenuItem>
+                <MenuItem value="blocked">Blocked</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>User</InputLabel>
+              <Select
+                name="user_id"
+                value={filters.user_id}
+                onChange={handleFilterChange}
+                label="User"
+              >
+                <MenuItem value="">All Users</MenuItem>
+                {users.map(user => (
+                  <MenuItem key={user.id} value={user.id}>
+                    {user.username} ({user.name || 'No name'})
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <Box sx={{ display: 'flex', gap: 1 }}>
+              <Button
+                fullWidth
+                variant="contained"
+                onClick={fetchData}
+                disabled={loading}
+                sx={{ borderRadius: 2 }}
+              >
+                Apply
+              </Button>
+              <Button
+                fullWidth
+                variant="outlined"
+                onClick={clearFilters}
+                sx={{ borderRadius: 2 }}
+              >
+                Clear
+              </Button>
+            </Box>
+          </Grid>
+        </Grid>
+      </Paper>
+
+      {/* Devices Table */}
+      <DataTable
+        columns={columns}
+        data={devices}
+        loading={loading}
+        onRefresh={fetchData}
+        title={`Devices (${devices.length})`}
+        tableId="devices-table"
+        searchable={false}
+        pagination={true}
+        rowKey={(row) => `${row.source_table || 'devices'}_${row.source_id || row.id || row.user_id}`}
+      />
+
+      {/* Information Box */}
+      <Alert 
+        severity="info" 
+        variant="outlined" 
+        sx={{ mt: 3, borderRadius: 2 }}
+        icon={<Info />}
+      >
+        <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+          Device Management Guide
+        </Typography>
+        <Typography variant="body2" color="text.secondary">
+          • <strong>Primary Devices:</strong> Mobile phones, tablets, and desktops - stored in user accounts
+          <br />
+          • <strong>Secondary Devices:</strong> TVs only - can be paired/unpaired
+          <br />
+          • <strong>Remove Device:</strong> Blocks the device, requires new setup
+        </Typography>
+      </Alert>
+
+      {/* Remove Device Confirmation Dialog */}
+      <ConfirmDialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={confirmRemoveDevice}
+        title="Remove Device"
+        message={
+          selectedDevice?.device_category === 'primary'
+            ? `Are you sure you want to remove the primary device "${selectedDevice?.device_id?.substring(0, 20)}..."? 
+               The user will need to set up a new device.`
+            : `Are you sure you want to remove the TV device "${selectedDevice?.device_id?.substring(0, 20)}..."?`
+        }
+        confirmText="Remove Device"
+        cancelText="Cancel"
+        severity="error"
+        loading={loading}
+      />
+
+      {/* Unpair TV Device Confirmation Dialog */}
+      <ConfirmDialog
+        open={unpairConfirmOpen}
+        onClose={() => setUnpairConfirmOpen(false)}
+        onConfirm={confirmUnpairDevice}
+        title="Unpair TV Device"
+        message={`Are you sure you want to unpair this TV device?`}
+        confirmText="Unpair TV"
+        cancelText="Cancel"
+        severity="warning"
+        loading={loading}
+      />
+    </Box>
+  );
+};
+
+export default DeviceManager;
