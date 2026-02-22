@@ -7,7 +7,6 @@ import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
 import {
   Box,
-  Paper,
   Typography,
   Button,
   TextField,

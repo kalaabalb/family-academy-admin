@@ -38,17 +38,14 @@ import {
   Edit,
   Delete,
   Refresh,
-  Description,
   Person,
   Category as CategoryIcon,
   Book,
-  MenuBook,
   Close,
   Save,
   Visibility,
   AccessTime,
   Search,
-  FilterList,
   Clear,
 } from '@mui/icons-material';
 
