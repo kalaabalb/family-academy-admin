@@ -9,6 +9,12 @@ services:
       - path: /*
         name: X-Frame-Options
         value: DENY
+      - path: /static/js/*.js
+        name: Content-Type
+        value: application/javascript
+      - path: /static/css/*.css
+        name: Content-Type
+        value: text/css
     routes:
       - type: rewrite
         source: /*
