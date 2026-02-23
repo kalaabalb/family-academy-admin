@@ -56,6 +56,8 @@ import {
   ListItemIcon,
   Collapse,
   Stack,
+  Backdrop,
+  Fade,
 } from '@mui/material';
 import {
   Refresh,
@@ -171,7 +173,6 @@ const UserManager = () => {
     try {
       setLoading(true);
       
-      // Use cached data with force refresh option
       const usersData = await getCachedData(
         usersCacheKey,
         () => usersApi.getAllUsers({ limit: 1000 }),
@@ -240,6 +241,7 @@ const UserManager = () => {
   const loadUserDetails = async (userId) => {
     try {
       setLoadingDetails(true);
+      setViewModalOpen(true); // Show modal immediately with loading state
       
       const userDetailsKey = `user:${userId}`;
       
@@ -275,19 +277,24 @@ const UserManager = () => {
           let examsData = [];
           
           if (userRes.status === 'fulfilled') {
-            const responseData = userRes.value.data.data || {};
-            userData = responseData.user || responseData || {};
+            const responseData = userRes.value.data;
             
-            if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
-              subscriptionsData = responseData.subscriptions;
-            }
-            
-            if (responseData.payments && Array.isArray(responseData.payments)) {
-              paymentsData = responseData.payments;
-            }
-            
-            if (responseData.exams && Array.isArray(responseData.exams)) {
-              examsData = responseData.exams;
+            // Handle different possible response structures
+            if (responseData?.data?.user) {
+              // Structure: { data: { user: {...} } }
+              userData = responseData.data.user;
+              subscriptionsData = responseData.data.subscriptions || [];
+              paymentsData = responseData.data.payments || [];
+              examsData = responseData.data.exams || [];
+            } else if (responseData?.data) {
+              // Structure: { data: {...} } where data is the user object
+              userData = responseData.data;
+            } else if (responseData?.user) {
+              // Structure: { user: {...} }
+              userData = responseData.user;
+            } else {
+              // Assume responseData itself is the user object
+              userData = responseData || {};
             }
           }
           
@@ -303,7 +310,7 @@ const UserManager = () => {
           };
           
           if (userProgressRes.status === 'fulfilled') {
-            const progressResponse = userProgressRes.value.data.data || {};
+            const progressResponse = userProgressRes.value.data?.data || {};
             
             if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
               progressData = progressResponse;
@@ -324,13 +331,13 @@ const UserManager = () => {
           // Process streak data
           let streakData = { history: [] };
           if (userStreakRes.status === 'fulfilled') {
-            streakData = userStreakRes.value.data.data || streakData;
+            streakData = userStreakRes.value.data?.data || streakData;
           }
           
           // Process achievements data
           let achievementsData = [];
           if (userAchievementsRes.status === 'fulfilled') {
-            achievementsData = userAchievementsRes.value.data.data || [];
+            achievementsData = userAchievementsRes.value.data?.data || [];
           }
           
           // Fetch payments if not in user details
@@ -370,9 +377,13 @@ const UserManager = () => {
         { ttl: 2 * 60 * 1000 } // 2 minutes TTL for user details
       );
       
+      // Check if we got valid data
+      if (!cachedDetails || !cachedDetails.user || Object.keys(cachedDetails.user).length === 0) {
+        throw new Error('User details not found');
+      }
+      
       setUserDetails(cachedDetails);
       setSelectedUser(userId);
-      setViewModalOpen(true);
       setTabValue(0);
       setSubscriptionsPage(0);
       setPaymentsPage(0);
@@ -382,6 +393,7 @@ const UserManager = () => {
     } catch (err) {
       console.error('Failed to load user details:', err);
       showError('Failed to load user details');
+      setViewModalOpen(false); // Close modal on error
     } finally {
       setLoadingDetails(false);
     }
@@ -426,8 +438,8 @@ const UserManager = () => {
       ));
       
       // Invalidate caches
-      invalidateCache(/^users\?/); // Invalidate all user list caches
-      invalidateCache(`user:${selectedUser}`); // Invalidate specific user cache
+      invalidateCache(/^users\?/);
+      invalidateCache(`user:${selectedUser}`);
       
       if (userDetails?.user?.id === selectedUser) {
         setUserDetails(prev => ({
@@ -465,8 +477,8 @@ const UserManager = () => {
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
       
       // Invalidate caches
-      invalidateCache(/^users\?/); // Invalidate all user list caches
-      invalidateCache(`user:${selectedUser.id}`); // Invalidate specific user cache
+      invalidateCache(/^users\?/);
+      invalidateCache(`user:${selectedUser.id}`);
       
       setDeleteConfirmOpen(false);
       setViewModalOpen(false);
@@ -497,7 +509,6 @@ const UserManager = () => {
   };
 
   const handleRefresh = () => {
-    // Force refresh all data
     fetchData(true);
   };
 
@@ -676,10 +687,11 @@ const UserManager = () => {
                   e.stopPropagation();
                   loadUserDetails(row.id);
                 }}
-                disabled={actionLoading}
+                disabled={loadingDetails || actionLoading}
                 sx={{
-                  opacity: actionLoading ? 0.5 : 1,
+                  opacity: loadingDetails || actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
+                  cursor: loadingDetails || actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Visibility fontSize="small" />
@@ -699,6 +711,7 @@ const UserManager = () => {
                 sx={{
                   opacity: actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Edit fontSize="small" />
@@ -718,6 +731,7 @@ const UserManager = () => {
                 sx={{
                   opacity: actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
+                  cursor: actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Delete fontSize="small" />
@@ -906,6 +920,7 @@ const UserManager = () => {
                   size="small"
                   fullWidth
                   sx={{ borderRadius: 2 }}
+                  disabled={loading}
                 >
                   Apply
                 </Button>
@@ -919,6 +934,7 @@ const UserManager = () => {
                   size="small"
                   fullWidth
                   sx={{ borderRadius: 2 }}
+                  disabled={loading}
                 >
                   Clear
                 </Button>
@@ -942,7 +958,7 @@ const UserManager = () => {
       {/* User Details Modal */}
       <Dialog
         open={viewModalOpen}
-        onClose={() => !actionLoading && setViewModalOpen(false)}
+        onClose={() => !loadingDetails && setViewModalOpen(false)}
         maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
@@ -954,23 +970,23 @@ const UserManager = () => {
               Loading user details...
             </Typography>
           </Box>
-        ) : userDetails && (
+        ) : userDetails && userDetails.user ? (
           <>
             <DialogTitle sx={{ m: 0, p: 3, pb: 2, bgcolor: 'primary.main', color: 'white' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Avatar
-                    src={userDetails.user.profile_image}
+                    src={userDetails.user.profile_image || undefined}
                     sx={{ width: 56, height: 56, border: '2px solid white' }}
                   >
-                    {userDetails.user.username?.[0]?.toUpperCase()}
+                    {userDetails.user.username?.[0]?.toUpperCase() || 'U'}
                   </Avatar>
                   <Box>
                     <Typography variant="h5" fontWeight="bold">
-                      {userDetails.user.username}
+                      {userDetails.user.username || 'Unknown User'}
                     </Typography>
                     <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                      ID: {userDetails.user.id} • Joined: {new Date(userDetails.user.created_at).toLocaleDateString()}
+                      ID: {userDetails.user.id || selectedUser} • Joined: {userDetails.user.created_at ? new Date(userDetails.user.created_at).toLocaleDateString() : 'Unknown'}
                     </Typography>
                   </Box>
                 </Box>
@@ -978,10 +994,15 @@ const UserManager = () => {
                   <IconButton
                     onClick={() => openEditModal(userDetails.user)}
                     sx={{ color: 'white', mr: 1 }}
+                    disabled={actionLoading}
                   >
                     <Edit />
                   </IconButton>
-                  <IconButton onClick={() => setViewModalOpen(false)} sx={{ color: 'white' }}>
+                  <IconButton 
+                    onClick={() => setViewModalOpen(false)} 
+                    sx={{ color: 'white' }}
+                    disabled={actionLoading}
+                  >
                     <Close />
                   </IconButton>
                 </Box>
@@ -1011,16 +1032,16 @@ const UserManager = () => {
                     <Grid item xs={12} md={4}>
                       <Card sx={{ p: 3, textAlign: 'center' }}>
                         <Avatar
-                          src={userDetails.user.profile_image}
+                          src={userDetails.user.profile_image || undefined}
                           sx={{ width: 120, height: 120, mx: 'auto', mb: 2, fontSize: 48 }}
                         >
-                          {userDetails.user.username?.[0]?.toUpperCase()}
+                          {userDetails.user.username?.[0]?.toUpperCase() || 'U'}
                         </Avatar>
                         <Typography variant="h5" fontWeight="bold" gutterBottom>
-                          {userDetails.user.username}
+                          {userDetails.user.username || 'Unknown'}
                         </Typography>
                         <Chip
-                          label={userDetails.user.account_status}
+                          label={userDetails.user.account_status || 'unknown'}
                           color={
                             userDetails.user.account_status === 'active' ? 'success' :
                             userDetails.user.account_status === 'expired' ? 'warning' : 'default'
@@ -1032,7 +1053,7 @@ const UserManager = () => {
                         
                         <Grid container spacing={2}>
                           <Grid item xs={4}>
-                            <LocalFireDepartment sx={{ color: userDetails.user.streak_count > 0 ? 'warning.main' : 'text.disabled' }} />
+                            <LocalFireDepartment sx={{ color: (userDetails.user.streak_count || 0) > 0 ? 'warning.main' : 'text.disabled' }} />
                             <Typography variant="h6">{userDetails.user.streak_count || 0}</Typography>
                             <Typography variant="caption">Streak</Typography>
                           </Grid>
@@ -1707,6 +1728,13 @@ const UserManager = () => {
               </Box>
             </DialogContent>
           </>
+        ) : (
+          <DialogContent>
+            <Alert severity="error">Failed to load user details</Alert>
+            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
+              <Button onClick={() => setViewModalOpen(false)}>Close</Button>
+            </Box>
+          </DialogContent>
         )}
       </Dialog>
 
