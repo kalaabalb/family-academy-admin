@@ -1,3 +1,5 @@
+
+import  { useState, useCallback, useEffect } from 'react';
 /**
  * Handle API errors consistently
  * @param {Error} error - The error object
@@ -253,6 +255,205 @@ export const copyToClipboard = async (text) => {
   }
 };
 
+// ============== CACHE UTILITIES ==============
+
+/**
+ * Cache manager for storing API responses
+ */
+class CacheManager {
+  constructor() {
+    this.cache = new Map();
+    this.defaultTTL = 5 * 60 * 1000; // 5 minutes
+  }
+
+  /**
+   * Set a value in cache
+   * @param {string} key - Cache key
+   * @param {any} value - Value to store
+   * @param {number} ttl - Time to live in milliseconds
+   */
+  set(key, value, ttl = this.defaultTTL) {
+    const expiresAt = Date.now() + ttl;
+    this.cache.set(key, { value, expiresAt });
+  }
+
+  /**
+   * Get a value from cache
+   * @param {string} key - Cache key
+   * @returns {any|null} Cached value or null if expired/not found
+   */
+  get(key) {
+    const item = this.cache.get(key);
+    if (!item) return null;
+    
+    if (Date.now() > item.expiresAt) {
+      this.cache.delete(key);
+      return null;
+    }
+    
+    return item.value;
+  }
+
+  /**
+   * Check if key exists and is not expired
+   * @param {string} key - Cache key
+   * @returns {boolean} True if valid cache exists
+   */
+  has(key) {
+    const item = this.cache.get(key);
+    if (!item) return false;
+    
+    if (Date.now() > item.expiresAt) {
+      this.cache.delete(key);
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Delete a key from cache
+   * @param {string} key - Cache key
+   */
+  delete(key) {
+    this.cache.delete(key);
+  }
+
+  /**
+   * Clear all cache
+   */
+  clear() {
+    this.cache.clear();
+  }
+
+  /**
+   * Delete all keys matching a pattern
+   * @param {RegExp|string} pattern - Pattern to match
+   */
+  deletePattern(pattern) {
+    const regex = pattern instanceof RegExp ? pattern : new RegExp(pattern);
+    for (const key of this.cache.keys()) {
+      if (regex.test(key)) {
+        this.cache.delete(key);
+      }
+    }
+  }
+
+  /**
+   * Get cache statistics
+   * @returns {Object} Cache stats
+   */
+  getStats() {
+    const stats = {
+      total: this.cache.size,
+      expired: 0,
+      valid: 0,
+      keys: []
+    };
+    
+    for (const [key, item] of this.cache.entries()) {
+      if (Date.now() > item.expiresAt) {
+        stats.expired++;
+      } else {
+        stats.valid++;
+      }
+      stats.keys.push(key);
+    }
+    
+    return stats;
+  }
+}
+
+// Create and export a single instance
+export const cacheManager = new CacheManager();
+
+/**
+ * Generate a cache key from parameters
+ * @param {string} base - Base key
+ * @param {Object} params - Parameters to include
+ * @returns {string} Generated cache key
+ */
+export const generateCacheKey = (base, params = {}) => {
+  const sortedParams = Object.keys(params)
+    .sort()
+    .reduce((acc, key) => {
+      if (params[key] !== undefined && params[key] !== null && params[key] !== '') {
+        acc[key] = params[key];
+      }
+      return acc;
+    }, {});
+  
+  const paramString = Object.keys(sortedParams).length > 0
+    ? '?' + JSON.stringify(sortedParams)
+    : '';
+  
+  return `${base}${paramString}`;
+};
+
+/**
+ * Hook for using cached data in components
+ * @param {string} cacheKey - Cache key
+ * @param {Function} fetchFn - Function to fetch data
+ * @param {Object} options - Options
+ * @returns {Object} { data, loading, error, refresh, setData }
+ */
+export const useCache = (cacheKey, fetchFn, options = {}) => {
+  const { ttl, initialData = null, onError } = options;
+  
+  const [data, setData] = useState(initialData);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  const loadData = useCallback(async (forceRefresh = false) => {
+    // Check cache first
+    if (!forceRefresh && cacheManager.has(cacheKey)) {
+      setData(cacheManager.get(cacheKey));
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const result = await fetchFn();
+      cacheManager.set(cacheKey, result, ttl);
+      setData(result);
+    } catch (err) {
+      setError(err);
+      if (onError) onError(err);
+    } finally {
+      setLoading(false);
+    }
+  }, [cacheKey, fetchFn, ttl, onError]);
+
+  const refresh = useCallback(() => {
+    return loadData(true);
+  }, [loadData]);
+
+  const updateData = useCallback((newData) => {
+    setData(newData);
+    cacheManager.set(cacheKey, newData, ttl);
+  }, [cacheKey, ttl]);
+
+  const clearCache = useCallback(() => {
+    cacheManager.delete(cacheKey);
+    setData(null);
+  }, [cacheKey]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
+
+  return {
+    data,
+    loading,
+    error,
+    refresh,
+    setData: updateData,
+    clearCache
+  };
+};
+
 // Export all functions as named exports AND as a default object
 const utils = {
   handleApiError,
@@ -269,6 +470,9 @@ const utils = {
   hasRole,
   downloadFile,
   copyToClipboard,
+  cacheManager,
+  generateCacheKey,
+  useCache
 };
 
 export default utils;
