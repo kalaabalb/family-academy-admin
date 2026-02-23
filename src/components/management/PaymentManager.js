@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import paymentsApi from '../../api/payments';
 import categoriesApi from '../../api/categories';
 import usersApi from '../../api/users';
@@ -56,6 +57,7 @@ import {
 const PaymentManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [payments, setPayments] = useState([]);
   const [filteredPayments, setFilteredPayments] = useState([]);
@@ -90,29 +92,46 @@ const PaymentManager = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const paymentsCacheKey = 'payments';
+  const categoriesCacheKey = 'categories';
+  const usersCacheKey = 'users';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const [paymentsRes, categoriesRes, usersRes] = await Promise.all([
-        paymentsApi.getAllPayments(),
-        categoriesApi.getAllCategories(),
-        usersApi.getAllUsers(),
-      ]);
+      const paymentsData = await getCachedData(
+        paymentsCacheKey,
+        () => paymentsApi.getAllPayments(),
+        { forceRefresh }
+      );
       
-      const paymentsData = paymentsRes.data.data || [];
-      setPayments(paymentsData);
-      setFilteredPayments(paymentsData);
-      setCategories(categoriesRes.data.data || []);
-      setUsers(usersRes.data.data || []);
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
+      
+      const usersData = await getCachedData(
+        usersCacheKey,
+        () => usersApi.getAllUsers(),
+        { forceRefresh }
+      );
+      
+      const paymentsList = paymentsData || [];
+      setPayments(paymentsList);
+      setFilteredPayments(paymentsList);
+      setCategories(categoriesData || []);
+      setUsers(usersData || []);
       
       // Calculate stats
-      const total = paymentsData.length;
-      const pending = paymentsData.filter(p => p.status === 'pending').length;
-      const verified = paymentsData.filter(p => p.status === 'verified').length;
-      const rejected = paymentsData.filter(p => p.status === 'rejected').length;
-      const totalAmount = paymentsData
+      const total = paymentsList.length;
+      const pending = paymentsList.filter(p => p.status === 'pending').length;
+      const verified = paymentsList.filter(p => p.status === 'verified').length;
+      const rejected = paymentsList.filter(p => p.status === 'rejected').length;
+      const totalAmount = paymentsList
         .filter(p => p.status === 'verified')
         .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       
@@ -125,7 +144,7 @@ const PaymentManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -205,6 +224,11 @@ const PaymentManager = () => {
       await paymentsApi.verifyPayment(selectedPayment.id, adminNotes);
       showSuccess('Payment verified successfully');
       
+      // Invalidate caches
+      invalidateCache(paymentsCacheKey);
+      invalidateCache(/^users/);
+      
+      // Update local state
       setPayments(prev => prev.map(p => 
         p.id === selectedPayment.id 
           ? { ...p, status: 'verified', admin_notes: adminNotes, verified_at: new Date().toISOString() }
@@ -231,6 +255,11 @@ const PaymentManager = () => {
       await paymentsApi.rejectPayment(selectedPayment.id, rejectionReason);
       showSuccess('Payment rejected successfully');
       
+      // Invalidate caches
+      invalidateCache(paymentsCacheKey);
+      invalidateCache(/^users/);
+      
+      // Update local state
       setPayments(prev => prev.map(p => 
         p.id === selectedPayment.id 
           ? { ...p, status: 'rejected', rejection_reason: rejectionReason }
@@ -260,6 +289,10 @@ const PaymentManager = () => {
     } else {
       showError('No proof image available');
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   const handleExport = () => {
@@ -543,7 +576,7 @@ const PaymentManager = () => {
             <Button
               variant="outlined"
               startIcon={<Refresh />}
-              onClick={fetchData}
+              onClick={handleRefresh}
               disabled={loading}
               sx={{ borderRadius: 2 }}
             >
@@ -624,7 +657,7 @@ const PaymentManager = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -776,7 +809,7 @@ const PaymentManager = () => {
         columns={columns}
         data={filteredPayments}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title="Payments"
         rowKey="id"
       />
