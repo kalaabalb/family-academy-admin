@@ -44,7 +44,6 @@ import {
   Image,
   Close,
   Save,
-  FilterList,
   Search,
 } from '@mui/icons-material';
 
