@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import examsApi from '../../api/exams';
 import questionsApi from '../../api/questions';
 import coursesApi from '../../api/courses';
@@ -69,6 +70,7 @@ import {
 const ExamManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   // Main states
   const [exams, setExams] = useState([]);
@@ -147,23 +149,33 @@ const ExamManager = () => {
     show_results_immediately: false,
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const examsCacheKey = 'exams';
+  const coursesCacheKey = 'courses';
+  const questionsCacheKey = 'questions';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const coursesRes = await coursesApi.getAllCourses();
-      let coursesData = coursesRes.data.data || [];
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      let coursesList = coursesData || [];
       
       if (isTeacher()) {
         const assignedCourseIds = user?.assigned_courses || [];
-        coursesData = coursesData.filter(course => 
+        coursesList = coursesList.filter(course => 
           assignedCourseIds.includes(course.id)
         );
       }
       
-      setCourses(coursesData);
-      await fetchExams();
+      setCourses(coursesList);
+      await fetchExams(forceRefresh);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -172,20 +184,23 @@ const ExamManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [isTeacher, user, showError]);
+  }, [isTeacher, user, getCachedData, showError]);
 
-  const fetchExams = useCallback(async () => {
+  const fetchExams = useCallback(async (forceRefresh = false) => {
     try {
       const params = {};
       if (isTeacher()) {
         params.created_by = user.id;
       }
       
-      const examsRes = await examsApi.getAllExams(params);
-      const examsData = examsRes.data.data || [];
+      const examsData = await getCachedData(
+        getCacheKey('exams', params),
+        () => examsApi.getAllExams(params),
+        { forceRefresh }
+      );
       
       // Enrich exams with course names
-      const enrichedExams = examsData.map(exam => {
+      const enrichedExams = (examsData || []).map(exam => {
         const course = courses.find(c => c.id === exam.course_id);
         return {
           ...exam,
@@ -200,21 +215,25 @@ const ExamManager = () => {
       console.error('Failed to fetch exams:', err);
       showError('Failed to fetch exams');
     }
-  }, [isTeacher, user, courses, showError]);
+  }, [isTeacher, user, courses, getCachedData, getCacheKey, showError]);
 
-  const fetchExamQuestions = useCallback(async (examId) => {
+  const fetchExamQuestions = useCallback(async (examId, forceRefresh = false) => {
     if (!examId) return;
     
     try {
-      const response = await examsApi.getExamQuestions(examId);
-      setExamQuestions(response.data.data || []);
+      const data = await getCachedData(
+        `exam:${examId}:questions`,
+        () => examsApi.getExamQuestions(examId),
+        { forceRefresh, ttl: 2 * 60 * 1000 } // 2 minutes TTL
+      );
+      setExamQuestions(data || []);
     } catch (err) {
       console.error('Failed to fetch exam questions:', err);
       showError('Failed to fetch exam questions');
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
-  const fetchAvailableQuestions = useCallback(async () => {
+  const fetchAvailableQuestions = useCallback(async (forceRefresh = false) => {
     try {
       const params = {
         question_type: 'practice',
@@ -227,17 +246,22 @@ const ExamManager = () => {
         }
       });
       
-      const response = await questionsApi.getQuestionsForExam(
-        questionFilters.course_id || formData.course_id,
-        params
+      const data = await getCachedData(
+        getCacheKey('available-questions', params),
+        () => questionsApi.getQuestionsForExam(
+          questionFilters.course_id || formData.course_id,
+          params
+        ),
+        { forceRefresh, ttl: 2 * 60 * 1000 } // 2 minutes TTL
       );
-      setAvailableQuestions(response.data.data || []);
+      
+      setAvailableQuestions(data || []);
       
     } catch (err) {
       console.error('Failed to fetch available questions:', err);
       showError('Failed to fetch available questions');
     }
-  }, [questionFilters, formData.course_id, showError]);
+  }, [questionFilters, formData.course_id, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -424,6 +448,10 @@ const ExamManager = () => {
       if (isEditing && selectedExam) {
         await examsApi.updateExam(selectedExam.id, examData);
         showSuccess('Exam updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^exams/);
+        invalidateCache(coursesCacheKey);
       } else {
         const response = await examsApi.createExam(examData);
         const newExamId = response.data.data.id;
@@ -433,12 +461,16 @@ const ExamManager = () => {
         }
         
         showSuccess('Exam created successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^exams/);
+        invalidateCache(coursesCacheKey);
       }
       
       setFormOpen(false);
       resetForm();
       setSelectedQuestions([]);
-      await fetchExams();
+      await fetchExams(true);
       setActiveTab(0);
       
     } catch (err) {
@@ -472,10 +504,14 @@ const ExamManager = () => {
       await examsApi.createExamQuestion(selectedExam.id, questionData);
       showSuccess('Exam question created successfully');
       
+      // Invalidate caches
+      invalidateCache(`exam:${selectedExam.id}:questions`);
+      invalidateCache(/^exams/);
+      
       setQuestionCreateDialogOpen(false);
       resetQuestionForm();
-      await fetchExamQuestions(selectedExam.id);
-      await fetchExams();
+      await fetchExamQuestions(selectedExam.id, true);
+      await fetchExams(true);
       
     } catch (err) {
       console.error('Failed to create exam question:', err);
@@ -520,8 +556,13 @@ const ExamManager = () => {
       
       if (successCount > 0) {
         showSuccess(`Successfully created ${successCount} exam question(s). ${errors.length} failed.`);
-        await fetchExamQuestions(selectedExam.id);
-        await fetchExams();
+        
+        // Invalidate caches
+        invalidateCache(`exam:${selectedExam.id}:questions`);
+        invalidateCache(/^exams/);
+        
+        await fetchExamQuestions(selectedExam.id, true);
+        await fetchExams(true);
       }
       
       if (errors.length > 0) {
@@ -582,6 +623,12 @@ const ExamManager = () => {
     
     try {
       await examsApi.deleteExam(selectedExam.id);
+      
+      // Invalidate caches
+      invalidateCache(/^exams/);
+      invalidateCache(`exam:${selectedExam.id}:questions`);
+      invalidateCache(coursesCacheKey);
+      
       setExams(prev => prev.filter(e => e.id !== selectedExam.id));
       showSuccess(`Exam "${selectedExam.title}" deleted successfully`);
       setDeleteConfirmOpen(false);
@@ -607,10 +654,15 @@ const ExamManager = () => {
     try {
       await examsApi.addQuestionToExam(selectedExam.id, selectedQuestions);
       showSuccess(`${selectedQuestions.length} question(s) added to exam`);
+      
+      // Invalidate caches
+      invalidateCache(`exam:${selectedExam.id}:questions`);
+      invalidateCache(/^exams/);
+      
       setQuestionDialogOpen(false);
       setSelectedQuestions([]);
-      await fetchExamQuestions(selectedExam.id);
-      await fetchExams();
+      await fetchExamQuestions(selectedExam.id, true);
+      await fetchExams(true);
       
     } catch (err) {
       console.error('Failed to add questions:', err);
@@ -627,8 +679,13 @@ const ExamManager = () => {
     
     try {
       await examsApi.removeQuestionFromExam(selectedExam.id, questionId);
+      
+      // Invalidate caches
+      invalidateCache(`exam:${selectedExam.id}:questions`);
+      invalidateCache(/^exams/);
+      
       setExamQuestions(prev => prev.filter(q => q.id !== questionId));
-      await fetchExams();
+      await fetchExams(true);
       showSuccess('Question removed from exam');
       
     } catch (err) {
@@ -646,7 +703,7 @@ const ExamManager = () => {
 
   const applyQuestionFilters = () => {
     setActionLoading(true);
-    fetchAvailableQuestions().finally(() => setActionLoading(false));
+    fetchAvailableQuestions(true).finally(() => setActionLoading(false));
   };
 
   const clearQuestionFilters = () => {
@@ -674,6 +731,10 @@ const ExamManager = () => {
         return [...prev, questionId];
       }
     });
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   const getExamStatus = (exam) => {
@@ -948,7 +1009,7 @@ const ExamManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -987,7 +1048,7 @@ const ExamManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -1035,7 +1096,7 @@ const ExamManager = () => {
           columns={columns}
           data={filteredExams}
           loading={loading}
-          onRefresh={fetchExams}
+          onRefresh={handleRefresh}
           title={`Exams (${filteredExams.length})`}
           rowKey="id"
         />
@@ -1325,7 +1386,7 @@ const ExamManager = () => {
               columns={questionColumns}
               data={examQuestions}
               loading={loading || actionLoading}
-              onRefresh={() => fetchExamQuestions(selectedExam.id)}
+              onRefresh={() => fetchExamQuestions(selectedExam.id, true)}
               title="Exam Questions"
               rowKey="id"
             />
