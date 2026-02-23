@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import videosApi from '../../api/videos';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -57,6 +58,7 @@ import {
 const VideoManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [videos, setVideos] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -89,7 +91,13 @@ const VideoManager = () => {
   const [filteredCourses, setFilteredCourses] = useState([]);
   const [filteredChapters, setFilteredChapters] = useState([]);
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const videosCacheKey = 'videos';
+  const categoriesCacheKey = 'categories';
+  const coursesCacheKey = 'courses';
+  const chaptersCacheKey = 'chapters';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
@@ -100,30 +108,41 @@ const VideoManager = () => {
         params.uploaded_by = user.id;
       }
       
-      const videosRes = await videosApi.getAllVideos(params);
-      const videosData = videosRes.data.data || [];
+      const videosData = await getCachedData(
+        getCacheKey('videos', params),
+        () => videosApi.getAllVideos(params),
+        { forceRefresh }
+      );
+      
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
+      
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      const chaptersData = await getCachedData(
+        chaptersCacheKey,
+        () => chaptersApi.getAllChapters(),
+        { forceRefresh }
+      );
       
       // Format video data
-      const formattedVideos = videosData.map(video => ({
+      const formattedVideos = (videosData || []).map(video => ({
         ...video,
         duration_formatted: formatDuration(video.duration),
         file_size_formatted: formatFileSize(video.file_size),
       }));
       
       setVideos(formattedVideos);
-      
-      // Fetch categories (only active ones)
-      const categoriesRes = await categoriesApi.getAllCategories();
-      const activeCategories = categoriesRes.data.data?.filter(c => c.status === 'active') || [];
-      setCategories(activeCategories);
-      
-      // Fetch courses
-      const coursesRes = await coursesApi.getAllCourses();
-      setCourses(coursesRes.data.data || []);
-      
-      // Fetch chapters
-      const chaptersRes = await chaptersApi.getAllChapters();
-      setChapters(chaptersRes.data.data || []);
+      setCategories((categoriesData || []).filter(c => c.status === 'active'));
+      setCourses(coursesData || []);
+      setChapters(chaptersData || []);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -132,7 +151,7 @@ const VideoManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [isTeacher, user, showError]);
+  }, [isTeacher, user, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -260,6 +279,10 @@ const VideoManager = () => {
         
         await videosApi.updateVideo(selectedVideo.id, updateData);
         showSuccess('Video updated successfully!');
+        
+        // Invalidate caches
+        invalidateCache(/^videos/);
+        invalidateCache(chaptersCacheKey);
       } else {
         // Create new video with file upload
         const formDataToSend = new FormData();
@@ -272,11 +295,15 @@ const VideoManager = () => {
         
         await videosApi.createVideo(formDataToSend);
         showSuccess('Video uploaded successfully!');
+        
+        // Invalidate caches
+        invalidateCache(/^videos/);
+        invalidateCache(chaptersCacheKey);
       }
 
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save video:', err);
@@ -346,6 +373,10 @@ const VideoManager = () => {
       setActionLoading(true);
       await videosApi.deleteVideo(selectedVideo.id);
       
+      // Invalidate caches
+      invalidateCache(/^videos/);
+      invalidateCache(chaptersCacheKey);
+      
       setVideos(prev => prev.filter(v => v.id !== selectedVideo.id));
       
       showSuccess(`Video "${selectedVideo.title}" deleted successfully`);
@@ -358,6 +389,10 @@ const VideoManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   // Filter videos based on search
@@ -568,7 +603,7 @@ const VideoManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -598,7 +633,7 @@ const VideoManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -634,7 +669,7 @@ const VideoManager = () => {
         columns={columns}
         data={filteredVideos}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Videos (${filteredVideos.length})`}
         rowKey="id"
       />
