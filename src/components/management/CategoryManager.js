@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
 import DataTable from '../common/DataTable';
@@ -50,6 +51,7 @@ import {
 const CategoryManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -72,26 +74,40 @@ const CategoryManager = () => {
     image_url: '',
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const categoriesCacheKey = 'categories';
+  const coursesCacheKey = 'courses';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const response = await categoriesApi.getAllCategories();
-      const categoriesData = response.data?.data || [];
+      // Use cached data
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
+      
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      const categoryList = categoriesData || [];
+      const courseList = coursesData || [];
       
       // Get course counts for each category
-      const coursesResponse = await coursesApi.getAllCourses();
-      const coursesData = coursesResponse.data?.data || [];
-      
       const categoryCourseCounts = {};
-      coursesData.forEach(course => {
+      courseList.forEach(course => {
         if (course.category_id) {
           categoryCourseCounts[course.category_id] = (categoryCourseCounts[course.category_id] || 0) + 1;
         }
       });
       
-      const enrichedCategories = categoriesData.map(category => ({
+      const enrichedCategories = categoryList.map(category => ({
         ...category,
         course_count: categoryCourseCounts[category.id] || 0,
       }));
@@ -105,7 +121,7 @@ const CategoryManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -199,14 +215,21 @@ const CategoryManager = () => {
       if (isEditing && selectedCategory) {
         await categoriesApi.updateCategory(selectedCategory.id, submitData);
         showSuccess('Category updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(categoriesCacheKey);
+        invalidateCache(coursesCacheKey);
       } else {
         await categoriesApi.createCategory(submitData);
         showSuccess('Category created successfully');
+        
+        // Invalidate caches
+        invalidateCache(categoriesCacheKey);
       }
 
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true); // Force refresh
       
     } catch (err) {
       console.error('Failed to save category:', err);
@@ -246,6 +269,9 @@ const CategoryManager = () => {
       setActionLoading(true);
       await categoriesApi.deleteCategory(selectedCategory.id);
       
+      // Invalidate caches
+      invalidateCache(categoriesCacheKey);
+      
       setCategories(prev => prev.filter(c => c.id !== selectedCategory.id));
       
       showSuccess(`Category "${selectedCategory.name}" deleted successfully`);
@@ -258,6 +284,10 @@ const CategoryManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   const formatPrice = (price) => {
@@ -452,7 +482,7 @@ const CategoryManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -480,7 +510,7 @@ const CategoryManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -516,7 +546,7 @@ const CategoryManager = () => {
         columns={columns}
         data={filteredCategories}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Categories (${filteredCategories.length})`}
         rowKey="id"
       />
