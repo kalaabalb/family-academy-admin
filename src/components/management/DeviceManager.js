@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import devicesApi from '../../api/devices';
 import usersApi from '../../api/users';
 import DataTable from '../common/DataTable';
@@ -54,6 +55,7 @@ import {
 const DeviceManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [devices, setDevices] = useState([]);
   const [users, setUsers] = useState([]);
@@ -79,30 +81,43 @@ const DeviceManager = () => {
     user_id: '',
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const devicesCacheKey = getCacheKey('devices', filters);
+  const usersCacheKey = 'users';
+  const statsCacheKey = 'device-stats';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const [devicesRes, usersRes, statsRes] = await Promise.all([
-        devicesApi.getAllDevices(filters),
-        usersApi.getAllUsers(),
-        devicesApi.getDeviceStats(),
-      ]);
+      const devicesData = await getCachedData(
+        getCacheKey('devices', filters),
+        () => devicesApi.getAllDevices(filters),
+        { forceRefresh }
+      );
       
-      const devicesData = devicesRes.data.data || [];
-      const usersData = usersRes.data.data || [];
-      const statsData = statsRes.data.data || {};
+      const usersData = await getCachedData(
+        usersCacheKey,
+        () => usersApi.getAllUsers(),
+        { forceRefresh }
+      );
       
-      setDevices(devicesData);
-      setUsers(usersData);
+      const statsData = await getCachedData(
+        statsCacheKey,
+        () => devicesApi.getDeviceStats(),
+        { forceRefresh }
+      );
+      
+      setDevices(devicesData || []);
+      setUsers(usersData || []);
       
       setStats({
-        total: statsData.counts?.total || 0,
-        primary: statsData.counts?.primary_count || 0,
-        tv: statsData.counts?.tv_count || 0,
-        paired: statsData.counts?.tv_paired_count || 0,
-        active: statsData.counts?.users_with_devices || 0,
+        total: statsData?.counts?.total || 0,
+        primary: statsData?.counts?.primary_count || 0,
+        tv: statsData?.counts?.tv_count || 0,
+        paired: statsData?.counts?.tv_paired_count || 0,
+        active: statsData?.counts?.users_with_devices || 0,
       });
       
     } catch (err) {
@@ -112,7 +127,7 @@ const DeviceManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [filters, showError]);
+  }, [filters, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -126,7 +141,7 @@ const DeviceManager = () => {
   };
 
   const applyFilters = () => {
-    fetchData();
+    fetchData(true);
   };
 
   const clearFilters = () => {
@@ -160,10 +175,14 @@ const DeviceManager = () => {
         user_id: selectedDevice.user_id
       });
       
+      // Invalidate caches
+      invalidateCache(/^devices/);
+      invalidateCache(statsCacheKey);
+      
       showSuccess('Device removed successfully');
       setDeleteConfirmOpen(false);
       setSelectedDevice(null);
-      fetchData();
+      fetchData(true);
       
     } catch (err) {
       console.error('Failed to remove device:', err);
@@ -181,17 +200,19 @@ const DeviceManager = () => {
       
       if (selectedDevice.device_type === 'tv') {
         await devicesApi.updateDevice(selectedDevice.id, { is_paired: false });
+        
+        // Invalidate caches
+        invalidateCache(/^devices/);
+        invalidateCache(statsCacheKey);
+        
+        showSuccess('TV device unpaired successfully');
       } else {
         showSuccess('Primary devices cannot be unpaired - they are always paired');
-        setUnpairConfirmOpen(false);
-        setSelectedDevice(null);
-        return;
       }
       
-      showSuccess('TV device unpaired successfully');
       setUnpairConfirmOpen(false);
       setSelectedDevice(null);
-      fetchData();
+      fetchData(true);
       
     } catch (err) {
       console.error('Failed to unpair device:', err);
@@ -199,6 +220,10 @@ const DeviceManager = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   const getDeviceIcon = (device) => {
@@ -456,7 +481,7 @@ const DeviceManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
@@ -473,7 +498,7 @@ const DeviceManager = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -627,7 +652,7 @@ const DeviceManager = () => {
         columns={columns}
         data={devices}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title="Devices"
         rowKey={(row) => `${row.source_table || 'devices'}_${row.source_id || row.id || row.user_id}`}
       />
