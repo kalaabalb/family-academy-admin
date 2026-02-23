@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import systemLogsApi from '../../api/systemLogs';
 import {
   Box,
@@ -63,6 +64,7 @@ import {
 const SystemLogsManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -100,20 +102,11 @@ const SystemLogsManager = () => {
   const [clearDays, setClearDays] = useState(30);
   const [exportFormat, setExportFormat] = useState('csv');
 
-  useEffect(() => {
-    if (isAdmin()) {
-      fetchLogs();
-      fetchLogStats();
-    }
-  }, [isAdmin]);
+  // Cache keys
+  const logsCacheKey = getCacheKey('system-logs', { ...filters, page: pagination.page, limit: pagination.rowsPerPage });
+  const statsCacheKey = 'system-logs-stats';
 
-  useEffect(() => {
-    if (isAdmin()) {
-      fetchLogs();
-    }
-  }, [pagination.page, pagination.rowsPerPage, filters.level, filters.action, filters.start_date, filters.end_date, filters.user_id]);
-
-  const fetchLogs = async () => {
+  const fetchLogs = async (forceRefresh = false) => {
     try {
       setLoading(true);
       const params = {
@@ -128,23 +121,24 @@ const SystemLogsManager = () => {
       if (filters.user_id) params.user_id = filters.user_id;
       if (filters.search) params.search = filters.search;
       
-      const response = await systemLogsApi.getSystemLogs(params);
+      const response = await getCachedData(
+        getCacheKey('system-logs', params),
+        () => systemLogsApi.getSystemLogs(params),
+        { forceRefresh }
+      );
       
       // Handle different response structures
       let logsData = [];
       let total = 0;
       
-      if (response.data?.data) {
-        if (Array.isArray(response.data.data)) {
-          logsData = response.data.data;
+      if (response?.data) {
+        if (Array.isArray(response.data)) {
+          logsData = response.data;
           total = logsData.length;
-        } else if (response.data.data.logs) {
-          logsData = response.data.data.logs || [];
-          total = response.data.data.pagination?.total || logsData.length;
+        } else if (response.data.logs) {
+          logsData = response.data.logs || [];
+          total = response.data.pagination?.total || logsData.length;
         }
-      } else if (Array.isArray(response.data)) {
-        logsData = response.data;
-        total = logsData.length;
       }
       
       setLogs(logsData);
@@ -159,19 +153,40 @@ const SystemLogsManager = () => {
     }
   };
 
-  const fetchLogStats = async () => {
+  const fetchLogStats = async (forceRefresh = false) => {
     try {
-      const response = await systemLogsApi.getLogStats();
+      const statsData = await getCachedData(
+        statsCacheKey,
+        () => systemLogsApi.getLogStats(),
+        { forceRefresh }
+      );
       
-      if (response.data?.success && response.data?.data) {
-        setStats(response.data.data);
-      } else if (response.data?.data) {
-        setStats(response.data.data);
-      }
+      setStats(statsData || {
+        counts: { total: 0, info: 0, warn: 0, error: 0, debug: 0 },
+        summary: {
+          days_with_logs: 0,
+          logs_per_day: 0,
+          error_rate: 0,
+          warning_rate: 0
+        }
+      });
     } catch (err) {
       console.error('Failed to fetch log stats:', err);
     }
   };
+
+  useEffect(() => {
+    if (isAdmin()) {
+      fetchLogs();
+      fetchLogStats();
+    }
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (isAdmin()) {
+      fetchLogs();
+    }
+  }, [pagination.page, pagination.rowsPerPage, filters.level, filters.action, filters.start_date, filters.end_date, filters.user_id]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -184,7 +199,7 @@ const SystemLogsManager = () => {
 
   const applyFilters = () => {
     setPagination(prev => ({ ...prev, page: 0 }));
-    fetchLogs();
+    fetchLogs(true);
   };
 
   const clearFilters = () => {
@@ -197,7 +212,7 @@ const SystemLogsManager = () => {
       search: ''
     });
     setPagination(prev => ({ ...prev, page: 0 }));
-    fetchLogs();
+    fetchLogs(true);
   };
 
   const handleChangePage = (event, newPage) => {
@@ -222,9 +237,14 @@ const SystemLogsManager = () => {
       setActionLoading(true);
       await systemLogsApi.clearOldLogs(clearDays);
       showSuccess(`Successfully cleared logs older than ${clearDays} days`);
+      
+      // Invalidate caches
+      invalidateCache(/^system-logs/);
+      invalidateCache(statsCacheKey);
+      
       setClearDialogOpen(false);
-      fetchLogs();
-      fetchLogStats();
+      fetchLogs(true);
+      fetchLogStats(true);
     } catch (err) {
       showError(err.response?.data?.message || 'Failed to clear logs');
     } finally {
@@ -256,6 +276,11 @@ const SystemLogsManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchLogs(true);
+    fetchLogStats(true);
   };
 
   const getLevelColor = (level) => {
@@ -349,10 +374,7 @@ const SystemLogsManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={() => {
-              fetchLogs();
-              fetchLogStats();
-            }}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -381,7 +403,7 @@ const SystemLogsManager = () => {
           sx={{ mb: 3, borderRadius: 2 }} 
           onClose={() => setError('')}
           action={
-            <Button color="inherit" size="small" onClick={fetchLogs}>
+            <Button color="inherit" size="small" onClick={handleRefresh}>
               Retry
             </Button>
           }
