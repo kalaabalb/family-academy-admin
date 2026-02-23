@@ -117,6 +117,9 @@ const UserManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [tabValue, setTabValue] = useState(0);
   
+  // Track which user is being viewed (for button fading)
+  const [viewingUserId, setViewingUserId] = useState(null);
+  
   // Expanded sections for progress
   const [expandedChapters, setExpandedChapters] = useState({});
   
@@ -221,6 +224,7 @@ const UserManager = () => {
   const loadUserDetails = async (userId) => {
     try {
       setLoadingDetails(true);
+      setViewingUserId(userId); // Set which user is being viewed
       setViewModalOpen(true);
       
       console.log('Loading details for user:', userId);
@@ -383,6 +387,7 @@ const UserManager = () => {
       setViewModalOpen(false);
     } finally {
       setLoadingDetails(false);
+      setViewingUserId(null); // Clear viewing user after loading
     }
   };
 
@@ -647,67 +652,74 @@ const UserManager = () => {
       field: 'actions',
       headerName: 'Actions',
       width: 150,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Tooltip title="View Details">
-            <span>
-              <IconButton
-                size="small"
-                color="primary"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  loadUserDetails(row.id);
-                }}
-                disabled={loadingDetails || actionLoading}
-                sx={{
-                  opacity: loadingDetails || actionLoading ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                <Visibility fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Edit User">
-            <span>
-              <IconButton
-                size="small"
-                color="info"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openEditModal(row);
-                }}
-                disabled={actionLoading}
-                sx={{
-                  opacity: actionLoading ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                <Edit fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Delete User">
-            <span>
-              <IconButton
-                size="small"
-                color="error"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleDeleteUser(row);
-                }}
-                disabled={actionLoading}
-                sx={{
-                  opacity: actionLoading ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                <Delete fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-        </Box>
-      ),
+      render: (value, row) => {
+        // Determine if this row's view button is loading
+        const isViewingThisUser = viewingUserId === row.id && loadingDetails;
+        const isAnyActionLoading = loadingDetails || actionLoading;
+        
+        return (
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title="View Details">
+              <span>
+                <IconButton
+                  size="small"
+                  color="primary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    loadUserDetails(row.id);
+                  }}
+                  disabled={isAnyActionLoading}
+                  sx={{
+                    opacity: isAnyActionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                    backgroundColor: isViewingThisUser ? 'action.selected' : 'transparent',
+                  }}
+                >
+                  {isViewingThisUser ? <CircularProgress size={20} color="inherit" /> : <Visibility fontSize="small" />}
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Edit User">
+              <span>
+                <IconButton
+                  size="small"
+                  color="info"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditModal(row);
+                  }}
+                  disabled={isAnyActionLoading}
+                  sx={{
+                    opacity: isAnyActionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <Edit fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+            <Tooltip title="Delete User">
+              <span>
+                <IconButton
+                  size="small"
+                  color="error"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDeleteUser(row);
+                  }}
+                  disabled={isAnyActionLoading}
+                  sx={{
+                    opacity: isAnyActionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <Delete fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
+          </Box>
+        );
+      },
     },
   ];
 
@@ -906,13 +918,12 @@ const UserManager = () => {
         </Paper>
       )}
 
-      {/* Users Table */}
+      {/* Users Table - REMOVED onRowClick */}
       <DataTable
         columns={columns}
         data={filteredUsers}
         loading={loading}
         onRefresh={fetchData}
-        onRowClick={(row) => loadUserDetails(row.id)}
         title="Users"
         rowKey="id"
       />
@@ -956,6 +967,7 @@ const UserManager = () => {
                   <IconButton
                     onClick={() => openEditModal(userDetails.user)}
                     sx={{ color: 'white', mr: 1 }}
+                    disabled={actionLoading}
                   >
                     <Edit />
                   </IconButton>
