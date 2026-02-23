@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import schoolsApi from '../../api/schools';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -30,6 +31,8 @@ import ConfirmDialog from '../common/ConfirmDialog';
 const SchoolManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
+  
   const [schools, setSchools] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
@@ -38,17 +41,20 @@ const SchoolManager = () => {
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [formData, setFormData] = useState({ name: '' });
 
-  useEffect(() => {
-    if (isAdmin()) {
-      fetchSchools();
-    }
-  }, [isAdmin]);
+  // Cache key
+  const schoolsCacheKey = 'schools';
 
-  const fetchSchools = async () => {
+  const fetchSchools = async (forceRefresh = false) => {
     try {
       setLoading(true);
-      const response = await schoolsApi.getAllSchools();
-      setSchools(response.data.data || []);
+      
+      const data = await getCachedData(
+        schoolsCacheKey,
+        () => schoolsApi.getAllSchools(),
+        { forceRefresh }
+      );
+      
+      setSchools(data || []);
     } catch (error) {
       console.error('Failed to fetch schools:', error);
       showError('Failed to load schools');
@@ -56,6 +62,12 @@ const SchoolManager = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (isAdmin()) {
+      fetchSchools();
+    }
+  }, [isAdmin]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -84,9 +96,12 @@ const SchoolManager = () => {
         showSuccess('School created successfully');
       }
 
+      // Invalidate cache after modification
+      invalidateCache(schoolsCacheKey);
+      
       setFormOpen(false);
       resetForm();
-      await fetchSchools();
+      await fetchSchools(true); // Force refresh
     } catch (error) {
       console.error('Failed to save school:', error);
       showError(error.response?.data?.message || 'Failed to save school');
@@ -113,6 +128,9 @@ const SchoolManager = () => {
       setLoading(true);
       await schoolsApi.deleteSchool(selectedSchool.id);
       
+      // Invalidate cache after deletion
+      invalidateCache(schoolsCacheKey);
+      
       setSchools(prev => prev.filter(s => s.id !== selectedSchool.id));
       showSuccess(`School "${selectedSchool.name}" deleted successfully`);
       setDeleteConfirmOpen(false);
@@ -123,6 +141,10 @@ const SchoolManager = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchSchools(true);
   };
 
   const columns = [
@@ -180,7 +202,7 @@ const SchoolManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchSchools}
+            onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
@@ -209,7 +231,7 @@ const SchoolManager = () => {
         columns={columns}
         data={schools}
         loading={loading}
-        onRefresh={fetchSchools}
+        onRefresh={handleRefresh}
         onEdit={handleEdit}
         onDelete={handleDelete}
         title="Schools"
