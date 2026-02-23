@@ -27,7 +27,3 @@ services:
         value: 18
       - key: REACT_APP_API_URL
         value: https://family-academy-backend-a12l.onrender.com/api/v1
-
-
-
-#newrow
