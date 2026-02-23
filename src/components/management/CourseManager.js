@@ -41,13 +41,11 @@ import {
   Refresh,
   Category as CategoryIcon,
   Person,
-  CheckCircle,
   Close,
   Save,
   Lock,
   Assignment,
   Search,
-  Book,
 } from '@mui/icons-material';
 
 const CourseManager = () => {
