@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
+import { useUsers } from '../../contexts/UserContext';
 import coursesApi from '../../api/courses';
 import chaptersApi from '../../api/chapters';
 import videosApi from '../../api/videos';
@@ -225,6 +226,7 @@ const TeacherDashboard = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const theme = useTheme();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -239,18 +241,18 @@ const TeacherDashboard = () => {
     totalExams: 0,
   });
 
-  useEffect(() => {
-    fetchTeacherData();
-  }, []);
-
-  const fetchTeacherData = async () => {
+  const fetchTeacherData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
 
-      // Get all courses
-      const coursesRes = await coursesApi.getAllCourses();
-      const allCourses = coursesRes.data.data || [];
+      // Get all courses with caching
+      const coursesData = await getCachedData(
+        'courses',
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      const allCourses = coursesData || [];
       
       // Filter courses assigned to this teacher
       const assignedCourseIds = user?.assigned_courses || [];
@@ -271,9 +273,13 @@ const TeacherDashboard = () => {
 
       for (const course of courses) {
         try {
-          // Get chapters for this course
-          const chaptersRes = await chaptersApi.getAllChapters({ course_id: course.id });
-          const chapters = chaptersRes.data.data || [];
+          // Get chapters for this course with caching
+          const chaptersData = await getCachedData(
+            getCacheKey('chapters', { course_id: course.id }),
+            () => chaptersApi.getAllChapters({ course_id: course.id }),
+            { forceRefresh }
+          );
+          const chapters = chaptersData || [];
           totalChapters += chapters.length;
           
           let courseVideos = 0;
@@ -283,18 +289,30 @@ const TeacherDashboard = () => {
           // For each chapter, get content
           for (const chapter of chapters) {
             try {
-              const videosRes = await videosApi.getAllVideos({ chapter_id: chapter.id });
-              const videos = videosRes.data.data || [];
+              const videosData = await getCachedData(
+                getCacheKey('videos', { chapter_id: chapter.id }),
+                () => videosApi.getAllVideos({ chapter_id: chapter.id }),
+                { forceRefresh }
+              );
+              const videos = videosData || [];
               courseVideos += videos.length;
               totalVideos += videos.length;
 
-              const notesRes = await notesApi.getAllNotes({ chapter_id: chapter.id });
-              const notes = notesRes.data.data || [];
+              const notesData = await getCachedData(
+                getCacheKey('notes', { chapter_id: chapter.id }),
+                () => notesApi.getAllNotes({ chapter_id: chapter.id }),
+                { forceRefresh }
+              );
+              const notes = notesData || [];
               courseNotes += notes.length;
               totalNotes += notes.length;
 
-              const questionsRes = await questionsApi.getAllQuestions({ chapter_id: chapter.id });
-              const questions = questionsRes.data.data || [];
+              const questionsData = await getCachedData(
+                getCacheKey('questions', { chapter_id: chapter.id }),
+                () => questionsApi.getAllQuestions({ chapter_id: chapter.id }),
+                { forceRefresh }
+              );
+              const questions = questionsData || [];
               courseQuestions += questions.length;
               totalQuestions += questions.length;
             } catch (err) {
@@ -302,9 +320,13 @@ const TeacherDashboard = () => {
             }
           }
 
-          // Get exams for this course
-          const examsRes = await examsApi.getAllExams({ course_id: course.id });
-          const exams = examsRes.data.data || [];
+          // Get exams for this course with caching
+          const examsData = await getCachedData(
+            getCacheKey('exams', { course_id: course.id }),
+            () => examsApi.getAllExams({ course_id: course.id }),
+            { forceRefresh }
+          );
+          const exams = examsData || [];
           totalExams += exams.length;
           
           courseStatsMap[course.id] = {
@@ -331,19 +353,21 @@ const TeacherDashboard = () => {
         totalExams,
       });
 
-      // Fetch recent activity from system logs
+      // Fetch recent activity from system logs with caching
       try {
-        const logsRes = await systemLogsApi.getSystemLogs({ 
-          limit: 5,
-          user_id: user?.id 
-        });
+        const logsData = await getCachedData(
+          getCacheKey('recent-activity', { user_id: user?.id, limit: 5 }),
+          () => systemLogsApi.getSystemLogs({ 
+            limit: 5,
+            user_id: user?.id 
+          }),
+          { forceRefresh }
+        );
         
         let logs = [];
-        const logsData = logsRes.data;
-        
-        if (logsData.data && logsData.data.logs) {
+        if (logsData?.data?.logs) {
           logs = logsData.data.logs;
-        } else if (logsData.data && Array.isArray(logsData.data)) {
+        } else if (logsData?.data && Array.isArray(logsData.data)) {
           logs = logsData.data;
         } else if (Array.isArray(logsData)) {
           logs = logsData;
@@ -370,6 +394,14 @@ const TeacherDashboard = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  useEffect(() => {
+    fetchTeacherData();
+  }, []);
+
+  const handleRefresh = () => {
+    fetchTeacherData(true);
   };
 
   const handleViewCourse = (courseId) => {
@@ -444,7 +476,7 @@ const TeacherDashboard = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }}>
           {error}
-          <Button size="small" onClick={fetchTeacherData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -470,7 +502,7 @@ const TeacherDashboard = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchTeacherData}
+            onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
