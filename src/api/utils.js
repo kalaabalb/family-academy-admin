@@ -1,5 +1,5 @@
+import { useState, useCallback, useEffect } from 'react';
 
-import  { useState, useCallback, useEffect } from 'react';
 /**
  * Handle API errors consistently
  * @param {Error} error - The error object
@@ -416,8 +416,10 @@ export const useCache = (cacheKey, fetchFn, options = {}) => {
 
     try {
       const result = await fetchFn();
-      cacheManager.set(cacheKey, result, ttl);
-      setData(result);
+      // Ensure we always store an array for list data
+      const processedResult = Array.isArray(result) ? result : (result || []);
+      cacheManager.set(cacheKey, processedResult, ttl);
+      setData(processedResult);
     } catch (err) {
       setError(err);
       if (onError) onError(err);
@@ -431,8 +433,9 @@ export const useCache = (cacheKey, fetchFn, options = {}) => {
   }, [loadData]);
 
   const updateData = useCallback((newData) => {
-    setData(newData);
-    cacheManager.set(cacheKey, newData, ttl);
+    const processedData = Array.isArray(newData) ? newData : (newData || []);
+    setData(processedData);
+    cacheManager.set(cacheKey, processedData, ttl);
   }, [cacheKey, ttl]);
 
   const clearCache = useCallback(() => {
@@ -445,7 +448,7 @@ export const useCache = (cacheKey, fetchFn, options = {}) => {
   }, [loadData]);
 
   return {
-    data,
+    data: data || [], // Always return an array, never null
     loading,
     error,
     refresh,

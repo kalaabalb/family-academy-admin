@@ -32,16 +32,28 @@ export const UserProvider = ({ children }) => {
     const { forceRefresh = false, ttl } = options;
     
     if (!forceRefresh && cacheManager.has(key)) {
-      return cacheManager.get(key);
+      const cached = cacheManager.get(key);
+      // Ensure we return an array for list data
+      return cached || [];
     }
     
     try {
-      const data = await fetchFn();
-      cacheManager.set(key, data, ttl);
-      return data;
+      const response = await fetchFn();
+      // Extract data from response based on common patterns
+      let data = response;
+      if (response?.data?.data) {
+        data = response.data.data;
+      } else if (response?.data) {
+        data = response.data;
+      }
+      
+      // Ensure we store an array
+      const processedData = Array.isArray(data) ? data : (data ? [data] : []);
+      cacheManager.set(key, processedData, ttl);
+      return processedData;
     } catch (error) {
       console.error(`Error fetching data for key ${key}:`, error);
-      throw error;
+      return []; // Return empty array on error
     }
   }, []);
 
@@ -78,7 +90,7 @@ export const UserProvider = ({ children }) => {
    * Update users list and invalidate related cache
    */
   const updateUsers = useCallback((newUsers) => {
-    setUsers(newUsers);
+    setUsers(Array.isArray(newUsers) ? newUsers : []);
     // Invalidate any user list caches
     invalidateCache(/^users\?/);
   }, [invalidateCache]);
@@ -87,7 +99,7 @@ export const UserProvider = ({ children }) => {
    * Add a user and invalidate cache
    */
   const addUser = useCallback((user) => {
-    setUsers(prev => [...prev, user]);
+    setUsers(prev => Array.isArray(prev) ? [...prev, user] : [user]);
     invalidateCache(/^users\?/);
   }, [invalidateCache]);
 
@@ -95,9 +107,9 @@ export const UserProvider = ({ children }) => {
    * Update a user and invalidate cache
    */
   const updateUser = useCallback((userId, updates) => {
-    setUsers(prev => prev.map(u => 
-      u.id === userId ? { ...u, ...updates } : u
-    ));
+    setUsers(prev => Array.isArray(prev) 
+      ? prev.map(u => u.id === userId ? { ...u, ...updates } : u)
+      : []);
     // Invalidate specific user cache and lists
     invalidateCache(/^users\?/);
     cacheManager.delete(`user:${userId}`);
@@ -107,7 +119,9 @@ export const UserProvider = ({ children }) => {
    * Remove a user and invalidate cache
    */
   const removeUser = useCallback((userId) => {
-    setUsers(prev => prev.filter(u => u.id !== userId));
+    setUsers(prev => Array.isArray(prev) 
+      ? prev.filter(u => u.id !== userId)
+      : []);
     invalidateCache(/^users\?/);
     cacheManager.delete(`user:${userId}`);
   }, [invalidateCache]);
@@ -127,7 +141,7 @@ export const UserProvider = ({ children }) => {
   // Create the value object with all methods
   const value = {
     // User state
-    users,
+    users: Array.isArray(users) ? users : [],
     setUsers: updateUsers,
     selectedUser,
     setSelectedUser,
