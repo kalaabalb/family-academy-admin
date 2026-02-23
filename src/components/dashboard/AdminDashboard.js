@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useUsers } from '../../contexts/UserContext';
 import usersApi from '../../api/users';
 import categoriesApi from '../../api/categories';
 import paymentsApi from '../../api/payments';
@@ -192,13 +193,14 @@ const AdminDashboard = () => {
   const [recentActivity, setRecentActivity] = useState([]);
   const navigate = useNavigate();
   const theme = useTheme();
+  const { getCachedData, invalidateCache } = useUsers();
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      // Fetch all data in parallel
+      // Fetch all data in parallel with caching
       const [
         usersRes,
         categoriesRes,
@@ -209,14 +211,14 @@ const AdminDashboard = () => {
         subscriptionsRes,
         logsRes,
       ] = await Promise.allSettled([
-        usersApi.getAllUsers({ limit: 1000 }),
-        categoriesApi.getAllCategories(),
-        paymentsApi.getAllPayments(),
-        teachersApi.getAllTeachers(),
-        coursesApi.getAllCourses(),
-        examsApi.getAllExams(),
-        subscriptionsApi.getAllSubscriptions(),
-        systemLogsApi.getSystemLogs({ limit: 5 }),
+        getCachedData('users-stats', () => usersApi.getAllUsers({ limit: 1000 }), { forceRefresh }),
+        getCachedData('categories', () => categoriesApi.getAllCategories(), { forceRefresh }),
+        getCachedData('payments', () => paymentsApi.getAllPayments(), { forceRefresh }),
+        getCachedData('teachers', () => teachersApi.getAllTeachers(), { forceRefresh }),
+        getCachedData('courses', () => coursesApi.getAllCourses(), { forceRefresh }),
+        getCachedData('exams', () => examsApi.getAllExams(), { forceRefresh }),
+        getCachedData('subscriptions', () => subscriptionsApi.getAllSubscriptions(), { forceRefresh }),
+        getCachedData('recent-activity', () => systemLogsApi.getSystemLogs({ limit: 5 }), { forceRefresh }),
       ]);
       
       // Process users data
@@ -226,7 +228,7 @@ const AdminDashboard = () => {
       let unpaidUsers = 0;
       
       if (usersRes.status === 'fulfilled') {
-        const users = usersRes.value.data.data || [];
+        const users = usersRes.value || [];
         totalUsers = users.length;
         activeUsers = users.filter(u => u.account_status === 'active').length;
         expiredUsers = users.filter(u => u.account_status === 'expired').length;
@@ -235,19 +237,19 @@ const AdminDashboard = () => {
       
       // Process other data
       const pendingPayments = paymentsRes.status === 'fulfilled' 
-        ? (paymentsRes.value.data.data || []).filter(p => p.status === 'pending').length 
+        ? (paymentsRes.value || []).filter(p => p.status === 'pending').length 
         : 0;
       const totalTeachers = teachersRes.status === 'fulfilled' 
-        ? (teachersRes.value.data.data || []).length 
+        ? (teachersRes.value || []).length 
         : 0;
       const totalCategories = categoriesRes.status === 'fulfilled' 
-        ? (categoriesRes.value.data.data || []).length 
+        ? (categoriesRes.value || []).length 
         : 0;
       const totalCourses = coursesRes.status === 'fulfilled' 
-        ? (coursesRes.value.data.data || []).length 
+        ? (coursesRes.value || []).length 
         : 0;
       const totalExams = examsRes.status === 'fulfilled' 
-        ? (examsRes.value.data.data || []).length 
+        ? (examsRes.value || []).length 
         : 0;
       
       // Process subscriptions
@@ -256,7 +258,7 @@ const AdminDashboard = () => {
       let revenue = 0;
       
       if (subscriptionsRes.status === 'fulfilled') {
-        const subscriptions = subscriptionsRes.value.data.data || [];
+        const subscriptions = subscriptionsRes.value || [];
         totalSubscriptions = subscriptions.length;
         activeSubscriptions = subscriptions.filter(s => s.status === 'active').length;
         revenue = subscriptions.reduce((sum, sub) => sum + (sub.amount || 0), 0);
@@ -280,11 +282,11 @@ const AdminDashboard = () => {
       // Process recent activity from system logs
       if (logsRes.status === 'fulfilled') {
         let logs = [];
-        const logsData = logsRes.value.data;
+        const logsData = logsRes.value;
         
-        if (logsData.data && logsData.data.logs) {
+        if (logsData?.data?.logs) {
           logs = logsData.data.logs;
-        } else if (logsData.data && Array.isArray(logsData.data)) {
+        } else if (logsData?.data && Array.isArray(logsData.data)) {
           logs = logsData.data;
         } else if (Array.isArray(logsData)) {
           logs = logsData;
@@ -314,9 +316,13 @@ const AdminDashboard = () => {
     fetchDashboardData();
     
     // Refresh data every 5 minutes
-    const interval = setInterval(fetchDashboardData, 5 * 60 * 1000);
+    const interval = setInterval(() => fetchDashboardData(true), 5 * 60 * 1000);
     return () => clearInterval(interval);
   }, []);
+
+  const handleRefresh = () => {
+    fetchDashboardData(true);
+  };
 
   const quickActions = [
     {
@@ -430,7 +436,7 @@ const AdminDashboard = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchDashboardData}
+            onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
@@ -447,7 +453,7 @@ const AdminDashboard = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button size="small" onClick={fetchDashboardData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
