@@ -623,7 +623,7 @@ const SettingsManager = () => {
         data={filteredSettings}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Settings (${filteredSettings.length})`}
+        title={`Settings `}
         rowKey="setting_key"
       />
 

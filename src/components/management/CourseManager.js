@@ -630,7 +630,7 @@ const CourseManager = () => {
         data={filteredCourses}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Courses (${filteredCourses.length})`}
+        title={`Courses `}
         rowKey="id"
       />
 

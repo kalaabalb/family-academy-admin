@@ -914,7 +914,7 @@ const QuestionManager = () => {
         data={filteredQuestions}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Practice Questions (${filteredQuestions.length})`}
+        title={`Practice Questions `}
         rowKey="id"
       />
 

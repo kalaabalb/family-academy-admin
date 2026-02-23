@@ -759,7 +759,7 @@ const NoteManager = () => {
         data={filteredNotes}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Notes (${filteredNotes.length})`}
+        title={`Notes `}
         rowKey="id"
       />
 

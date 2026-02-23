@@ -670,7 +670,7 @@ const VideoManager = () => {
         data={filteredVideos}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Videos (${filteredVideos.length})`}
+        title={`Videos `}
         rowKey="id"
       />
 

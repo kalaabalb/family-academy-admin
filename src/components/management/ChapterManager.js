@@ -556,7 +556,7 @@ const ChapterManager = () => {
         data={filteredChapters}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Chapters (${filteredChapters.length})`}
+        title={`Chapters`}
         rowKey="id"
       />
 

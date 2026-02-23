@@ -622,7 +622,7 @@ const TeacherManager = () => {
         data={filteredTeachers}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Teachers (${filteredTeachers.length})`}
+        title={`Teachers `}
         rowKey="id"
       />
 

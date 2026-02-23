@@ -546,7 +546,7 @@ const CategoryManager = () => {
         data={filteredCategories}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Categories (${filteredCategories.length})`}
+        title={`Categories `}
         rowKey="id"
       />
 

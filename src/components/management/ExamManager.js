@@ -1085,7 +1085,7 @@ const ExamManager = () => {
           data={filteredExams}
           loading={loading}
           onRefresh={handleRefresh}
-          title={`Exams (${filteredExams.length})`}
+          title={`Exams `}
           rowKey="id"
         />
       )}
