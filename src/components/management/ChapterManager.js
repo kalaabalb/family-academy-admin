@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import chaptersApi from '../../api/chapters';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -49,6 +50,7 @@ import {
 const ChapterManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [chapters, setChapters] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -74,32 +76,47 @@ const ChapterManager = () => {
   const [filteredCourses, setFilteredCourses] = useState([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState('');
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const chaptersCacheKey = 'chapters';
+  const categoriesCacheKey = 'categories';
+  const coursesCacheKey = 'courses';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      // Fetch chapters
+      // Fetch chapters with role-based filtering
       const params = {};
       if (isTeacher()) {
         params.created_by = user.id;
       }
       
-      const chaptersRes = await chaptersApi.getAllChapters(params);
-      const chaptersData = chaptersRes.data.data || [];
+      const chaptersData = await getCachedData(
+        getCacheKey('chapters', params),
+        () => chaptersApi.getAllChapters(params),
+        { forceRefresh }
+      );
       
-      // Fetch categories
-      const categoriesRes = await categoriesApi.getAllCategories();
-      setCategories(categoriesRes.data.data || []);
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
       
-      // Fetch courses
-      const coursesRes = await coursesApi.getAllCourses();
-      setCourses(coursesRes.data.data || []);
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      setCategories(categoriesData || []);
+      setCourses(coursesData || []);
       
       // Enrich chapters with course and category names
-      const enrichedChapters = chaptersData.map(chapter => {
-        const course = coursesRes.data.data?.find(c => c.id === chapter.course_id);
-        const category = course ? categoriesRes.data.data?.find(c => c.id === course.category_id) : null;
+      const enrichedChapters = (chaptersData || []).map(chapter => {
+        const course = (coursesData || []).find(c => c.id === chapter.course_id);
+        const category = course ? (categoriesData || []).find(c => c.id === course.category_id) : null;
         return {
           ...chapter,
           course_name: course?.name || 'Unknown Course',
@@ -116,7 +133,7 @@ const ChapterManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [isTeacher, user, showError]);
+  }, [isTeacher, user, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -191,14 +208,22 @@ const ChapterManager = () => {
         
         await chaptersApi.updateChapter(selectedChapter.id, chapterData);
         showSuccess('Chapter updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^chapters/);
+        invalidateCache(coursesCacheKey);
       } else {
         await chaptersApi.createChapter(chapterData);
         showSuccess('Chapter created successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^chapters/);
+        invalidateCache(coursesCacheKey);
       }
       
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save chapter:', err);
@@ -254,6 +279,10 @@ const ChapterManager = () => {
       setActionLoading(true);
       await chaptersApi.deleteChapter(selectedChapter.id);
       
+      // Invalidate caches
+      invalidateCache(/^chapters/);
+      invalidateCache(coursesCacheKey);
+      
       setChapters(prev => prev.filter(c => c.id !== selectedChapter.id));
       
       showSuccess(`Chapter "${selectedChapter.name}" deleted successfully`);
@@ -266,6 +295,10 @@ const ChapterManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   // Filter chapters based on search
@@ -457,7 +490,7 @@ const ChapterManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -487,7 +520,7 @@ const ChapterManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -523,7 +556,7 @@ const ChapterManager = () => {
         columns={columns}
         data={filteredChapters}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Chapters (${filteredChapters.length})`}
         rowKey="id"
       />
