@@ -41,7 +41,6 @@ import {
   Close,
   Save,
   Search,
-  Book,
   PlayCircle,
   Notes,
   Quiz,
