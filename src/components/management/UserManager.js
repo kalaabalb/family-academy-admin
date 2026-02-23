@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import usersApi from '../../api/users';
 import schoolsApi from '../../api/schools';
 import categoriesApi from '../../api/categories';
@@ -100,6 +101,7 @@ import { getRelativeTime } from '../../api/utils';
 const UserManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   const theme = useTheme();
   
   // States
@@ -160,44 +162,61 @@ const UserManager = () => {
     totalStudyHours: 0,
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const usersCacheKey = getCacheKey('users', filters);
+  const schoolsCacheKey = 'schools';
+  const categoriesCacheKey = 'categories';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       
-      const [usersRes, schoolsRes, categoriesRes] = await Promise.all([
-        usersApi.getAllUsers({ limit: 1000 }),
-        schoolsApi.getAllSchools(),
-        categoriesApi.getAllCategories(),
-      ]);
+      // Use cached data with force refresh option
+      const usersData = await getCachedData(
+        usersCacheKey,
+        () => usersApi.getAllUsers({ limit: 1000 }),
+        { forceRefresh }
+      );
       
-      const usersData = usersRes.data.data || [];
-      setUsers(usersData);
-      setSchools(schoolsRes.data.data || []);
-      setCategories(categoriesRes.data.data || []);
+      const schoolsData = await getCachedData(
+        schoolsCacheKey,
+        () => schoolsApi.getAllSchools(),
+        { forceRefresh }
+      );
+      
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
+      
+      setUsers(usersData || []);
+      setSchools(schoolsData || []);
+      setCategories(categoriesData || []);
       
       // Calculate stats
       const today = new Date().toDateString();
-      const newToday = usersData.filter(u => 
+      const newToday = (usersData || []).filter(u => 
         new Date(u.created_at).toDateString() === today
       ).length;
 
-      const activeUsers = usersData.filter(u => u.account_status === 'active');
+      const activeUsers = (usersData || []).filter(u => u.account_status === 'active');
       const avgStreak = activeUsers.length 
         ? activeUsers.reduce((sum, u) => sum + (u.streak_count || 0), 0) / activeUsers.length
         : 0;
 
-      const parentLinkedPercent = usersData.length
-        ? Math.round((usersData.filter(u => u.parent_linked).length / usersData.length) * 100)
+      const parentLinkedPercent = (usersData || []).length
+        ? Math.round(((usersData || []).filter(u => u.parent_linked).length / (usersData || []).length) * 100)
         : 0;
 
-      const totalStudyHours = usersData.reduce((sum, u) => sum + (u.total_study_time || 0), 0) / 60;
+      const totalStudyHours = (usersData || []).reduce((sum, u) => sum + (u.total_study_time || 0), 0) / 60;
 
       setStats({
-        total: usersData.length,
+        total: (usersData || []).length,
         active: activeUsers.length,
-        unpaid: usersData.filter(u => u.account_status === 'unpaid').length,
-        expired: usersData.filter(u => u.account_status === 'expired').length,
-        withParents: usersData.filter(u => u.parent_linked).length,
+        unpaid: (usersData || []).filter(u => u.account_status === 'unpaid').length,
+        expired: (usersData || []).filter(u => u.account_status === 'expired').length,
+        withParents: (usersData || []).filter(u => u.parent_linked).length,
         newToday,
         avgStreak: Math.round(avgStreak * 10) / 10,
         parentLinkedPercent,
@@ -210,7 +229,7 @@ const UserManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [usersCacheKey, schoolsCacheKey, categoriesCacheKey, getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -222,127 +241,136 @@ const UserManager = () => {
     try {
       setLoadingDetails(true);
       
-      const [
-        userRes,
-        userProgressRes,
-        userStreakRes,
-        userAchievementsRes,
-      ] = await Promise.allSettled([
-        usersApi.getUserDetails(userId),
-        usersApi.getUserProgress(userId).catch(err => {
-          console.log('Progress API error:', err);
-          return { data: { data: {} } };
-        }),
-        usersApi.getUserStreak(userId).catch(err => {
-          console.log('Streak API error:', err);
-          return { data: { data: { history: [] } } };
-        }),
-        usersApi.getUserAchievements(userId).catch(err => {
-          console.log('Achievements API error:', err);
-          return { data: { data: [] } };
-        }),
-      ]);
+      const userDetailsKey = `user:${userId}`;
       
-      // Process user data
-      let userData = {};
-      let subscriptionsData = [];
-      let paymentsData = [];
-      let examsData = [];
-      
-      if (userRes.status === 'fulfilled') {
-        const responseData = userRes.value.data.data || {};
-        userData = responseData.user || responseData || {};
-        
-        if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
-          subscriptionsData = responseData.subscriptions;
-        }
-        
-        if (responseData.payments && Array.isArray(responseData.payments)) {
-          paymentsData = responseData.payments;
-        }
-        
-        if (responseData.exams && Array.isArray(responseData.exams)) {
-          examsData = responseData.exams;
-        }
-      }
-      
-      // Process progress data
-      let progressData = {
-        chapters: [],
-        stats: {
-          total_chapters_started: 0,
-          chapters_completed: 0,
-          total_questions_attempted: 0,
-          study_time_hours: 0
-        }
-      };
-      
-      if (userProgressRes.status === 'fulfilled') {
-        const progressResponse = userProgressRes.value.data.data || {};
-        
-        if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
-          progressData = progressResponse;
-        } else if (progressResponse.overall || progressResponse.recent_activity) {
-          progressData.stats = {
-            total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
-            chapters_completed: progressResponse.overall?.chapters_completed || 0,
-            total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
-            study_time_hours: progressResponse.overall?.study_time_hours || 0
+      // Try to get from cache first
+      const cachedDetails = await getCachedData(
+        userDetailsKey,
+        async () => {
+          const [
+            userRes,
+            userProgressRes,
+            userStreakRes,
+            userAchievementsRes,
+          ] = await Promise.allSettled([
+            usersApi.getUserDetails(userId),
+            usersApi.getUserProgress(userId).catch(err => {
+              console.log('Progress API error:', err);
+              return { data: { data: {} } };
+            }),
+            usersApi.getUserStreak(userId).catch(err => {
+              console.log('Streak API error:', err);
+              return { data: { data: { history: [] } } };
+            }),
+            usersApi.getUserAchievements(userId).catch(err => {
+              console.log('Achievements API error:', err);
+              return { data: { data: [] } };
+            }),
+          ]);
+          
+          // Process user data
+          let userData = {};
+          let subscriptionsData = [];
+          let paymentsData = [];
+          let examsData = [];
+          
+          if (userRes.status === 'fulfilled') {
+            const responseData = userRes.value.data.data || {};
+            userData = responseData.user || responseData || {};
+            
+            if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
+              subscriptionsData = responseData.subscriptions;
+            }
+            
+            if (responseData.payments && Array.isArray(responseData.payments)) {
+              paymentsData = responseData.payments;
+            }
+            
+            if (responseData.exams && Array.isArray(responseData.exams)) {
+              examsData = responseData.exams;
+            }
+          }
+          
+          // Process progress data
+          let progressData = {
+            chapters: [],
+            stats: {
+              total_chapters_started: 0,
+              chapters_completed: 0,
+              total_questions_attempted: 0,
+              study_time_hours: 0
+            }
           };
           
-          if (progressResponse.recent_activity && Array.isArray(progressResponse.recent_activity)) {
-            progressData.chapters = progressResponse.recent_activity;
+          if (userProgressRes.status === 'fulfilled') {
+            const progressResponse = userProgressRes.value.data.data || {};
+            
+            if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
+              progressData = progressResponse;
+            } else if (progressResponse.overall || progressResponse.recent_activity) {
+              progressData.stats = {
+                total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
+                chapters_completed: progressResponse.overall?.chapters_completed || 0,
+                total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
+                study_time_hours: progressResponse.overall?.study_time_hours || 0
+              };
+              
+              if (progressResponse.recent_activity && Array.isArray(progressResponse.recent_activity)) {
+                progressData.chapters = progressResponse.recent_activity;
+              }
+            }
           }
-        }
-      }
-      
-      // Process streak data
-      let streakData = { history: [] };
-      if (userStreakRes.status === 'fulfilled') {
-        streakData = userStreakRes.value.data.data || streakData;
-      }
-      
-      // Process achievements data
-      let achievementsData = [];
-      if (userAchievementsRes.status === 'fulfilled') {
-        achievementsData = userAchievementsRes.value.data.data || [];
-      }
-      
-      // Fetch payments if not in user details
-      if (paymentsData.length === 0) {
-        try {
-          const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
-          if (paymentsRes.data && paymentsRes.data.data) {
-            paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
+          
+          // Process streak data
+          let streakData = { history: [] };
+          if (userStreakRes.status === 'fulfilled') {
+            streakData = userStreakRes.value.data.data || streakData;
           }
-        } catch (err) {
-          console.log('Payments fetch failed:', err);
-        }
-      }
-      
-      // Fetch exams
-      if (examsData.length === 0) {
-        try {
-          const examsRes = await examResultsApi.getExamResultsByUser(userId);
-          if (examsRes.data && examsRes.data.data) {
-            examsData = examsRes.data.data;
+          
+          // Process achievements data
+          let achievementsData = [];
+          if (userAchievementsRes.status === 'fulfilled') {
+            achievementsData = userAchievementsRes.value.data.data || [];
           }
-        } catch (err) {
-          console.log('Exam fetch failed:', err);
-        }
-      }
+          
+          // Fetch payments if not in user details
+          if (paymentsData.length === 0) {
+            try {
+              const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
+              if (paymentsRes.data && paymentsRes.data.data) {
+                paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
+              }
+            } catch (err) {
+              console.log('Payments fetch failed:', err);
+            }
+          }
+          
+          // Fetch exams
+          if (examsData.length === 0) {
+            try {
+              const examsRes = await examResultsApi.getExamResultsByUser(userId);
+              if (examsRes.data && examsRes.data.data) {
+                examsData = examsRes.data.data;
+              }
+            } catch (err) {
+              console.log('Exam fetch failed:', err);
+            }
+          }
+          
+          return {
+            user: userData,
+            subscriptions: subscriptionsData,
+            payments: paymentsData,
+            exams: examsData,
+            progress: progressData,
+            streaks: streakData,
+            achievements: achievementsData,
+          };
+        },
+        { ttl: 2 * 60 * 1000 } // 2 minutes TTL for user details
+      );
       
-      const details = {
-        user: userData,
-        subscriptions: subscriptionsData,
-        payments: paymentsData,
-        exams: examsData,
-        progress: progressData,
-        streaks: streakData,
-        achievements: achievementsData,
-      };
-      
-      setUserDetails(details);
+      setUserDetails(cachedDetails);
       setSelectedUser(userId);
       setViewModalOpen(true);
       setTabValue(0);
@@ -386,6 +414,7 @@ const UserManager = () => {
     try {
       await usersApi.updateUser(selectedUser, editForm);
       
+      // Update local state
       setUsers(prev => prev.map(u => 
         u.id === selectedUser 
           ? { 
@@ -395,6 +424,10 @@ const UserManager = () => {
             }
           : u
       ));
+      
+      // Invalidate caches
+      invalidateCache(/^users\?/); // Invalidate all user list caches
+      invalidateCache(`user:${selectedUser}`); // Invalidate specific user cache
       
       if (userDetails?.user?.id === selectedUser) {
         setUserDetails(prev => ({
@@ -428,7 +461,13 @@ const UserManager = () => {
     try {
       await usersApi.deleteUser(selectedUser.id);
       
+      // Update local state
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
+      
+      // Invalidate caches
+      invalidateCache(/^users\?/); // Invalidate all user list caches
+      invalidateCache(`user:${selectedUser.id}`); // Invalidate specific user cache
+      
       setDeleteConfirmOpen(false);
       setViewModalOpen(false);
       setSelectedUser(null);
@@ -455,6 +494,11 @@ const UserManager = () => {
       parent_linked: '',
       search: '',
     });
+  };
+
+  const handleRefresh = () => {
+    // Force refresh all data
+    fetchData(true);
   };
 
   const filteredUsers = useMemo(() => {
@@ -720,7 +764,7 @@ const UserManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
@@ -856,8 +900,8 @@ const UserManager = () => {
                 <Button
                   variant="contained"
                   onClick={() => {
-                    setFilters(prev => ({ ...prev }));
-                    setShowFilters(false);
+                    // Apply filters by refreshing with new cache key
+                    fetchData(true);
                   }}
                   size="small"
                   fullWidth
@@ -867,7 +911,11 @@ const UserManager = () => {
                 </Button>
                 <Button
                   variant="outlined"
-                  onClick={clearFilters}
+                  onClick={() => {
+                    clearFilters();
+                    // Refresh after clearing filters
+                    setTimeout(() => fetchData(true), 100);
+                  }}
                   size="small"
                   fullWidth
                   sx={{ borderRadius: 2 }}
@@ -885,7 +933,7 @@ const UserManager = () => {
         columns={columns}
         data={filteredUsers}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         onRowClick={(row) => loadUserDetails(row.id)}
         title="Users"
         rowKey="id"
