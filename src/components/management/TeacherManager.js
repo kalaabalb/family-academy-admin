@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import teachersApi from '../../api/teachers';
 import coursesApi from '../../api/courses';
 import DataTable from '../common/DataTable';
@@ -57,6 +58,7 @@ import {
 const TeacherManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [teachers, setTeachers] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -85,21 +87,32 @@ const TeacherManager = () => {
     confirm_password: '',
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const teachersCacheKey = 'teachers';
+  const coursesCacheKey = 'courses';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const [teachersRes, coursesRes] = await Promise.all([
-        teachersApi.getAllTeachers(),
-        coursesApi.getAllCourses(),
-      ]);
+      const teachersData = await getCachedData(
+        teachersCacheKey,
+        () => teachersApi.getAllTeachers(),
+        { forceRefresh }
+      );
       
-      const teachersData = teachersRes.data.data || [];
-      const coursesData = coursesRes.data.data || [];
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      const teachersList = teachersData || [];
+      const coursesList = coursesData || [];
       
       // Enrich teachers with course names
-      const enrichedTeachers = teachersData.map(teacher => {
+      const enrichedTeachers = teachersList.map(teacher => {
         let assignedCourseIds = [];
         if (teacher.assigned_course_ids && Array.isArray(teacher.assigned_course_ids)) {
           assignedCourseIds = teacher.assigned_course_ids;
@@ -107,7 +120,7 @@ const TeacherManager = () => {
           assignedCourseIds = teacher.assigned_courses.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
         }
         
-        const assignedCourses = coursesData
+        const assignedCourses = coursesList
           .filter(course => assignedCourseIds.includes(course.id))
           .map(course => course.name);
         
@@ -120,7 +133,7 @@ const TeacherManager = () => {
       });
       
       setTeachers(enrichedTeachers);
-      setCourses(coursesData);
+      setCourses(coursesList);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -129,7 +142,7 @@ const TeacherManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -239,14 +252,21 @@ const TeacherManager = () => {
       if (isEditing && selectedTeacher) {
         await teachersApi.updateTeacher(selectedTeacher.id, teacherData);
         showSuccess('Teacher updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(teachersCacheKey);
+        invalidateCache(/^courses/);
       } else {
         await teachersApi.createTeacher(teacherData);
         showSuccess('Teacher created successfully');
+        
+        // Invalidate caches
+        invalidateCache(teachersCacheKey);
       }
 
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save teacher:', err);
@@ -300,6 +320,10 @@ const TeacherManager = () => {
       });
       
       showSuccess('Password reset successfully');
+      
+      // Invalidate cache for this teacher
+      invalidateCache(teachersCacheKey);
+      
       setResetPasswordOpen(false);
       setSelectedTeacher(null);
       
@@ -323,6 +347,10 @@ const TeacherManager = () => {
       setActionLoading(true);
       await teachersApi.deleteTeacher(selectedTeacher.id);
       
+      // Invalidate caches
+      invalidateCache(teachersCacheKey);
+      invalidateCache(/^courses/);
+      
       setTeachers(prev => prev.filter(t => t.id !== selectedTeacher.id));
       
       showSuccess(`Teacher "${selectedTeacher.name}" deleted successfully`);
@@ -335,6 +363,10 @@ const TeacherManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   // Filter teachers based on search
@@ -525,7 +557,7 @@ const TeacherManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -553,7 +585,7 @@ const TeacherManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -589,7 +621,7 @@ const TeacherManager = () => {
         columns={columns}
         data={filteredTeachers}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Teachers (${filteredTeachers.length})`}
         rowKey="id"
       />
