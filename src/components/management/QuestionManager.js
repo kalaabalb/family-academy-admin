@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import questionsApi from '../../api/questions';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -68,6 +69,7 @@ import {
 const QuestionManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [questions, setQuestions] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -132,22 +134,40 @@ const QuestionManager = () => {
     }]
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const questionsCacheKey = 'questions';
+  const categoriesCacheKey = 'categories';
+  const coursesCacheKey = 'courses';
+  const chaptersCacheKey = 'chapters';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const [categoriesRes, coursesRes, chaptersRes] = await Promise.all([
-        categoriesApi.getAllCategories(),
-        coursesApi.getAllCourses(),
-        chaptersApi.getAllChapters(),
-      ]);
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
       
-      setCategories(categoriesRes.data.data || []);
-      setCourses(coursesRes.data.data || []);
-      setChapters(chaptersRes.data.data || []);
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
       
-      await fetchQuestions();
+      const chaptersData = await getCachedData(
+        chaptersCacheKey,
+        () => chaptersApi.getAllChapters(),
+        { forceRefresh }
+      );
+      
+      setCategories(categoriesData || []);
+      setCourses(coursesData || []);
+      setChapters(chaptersData || []);
+      
+      await fetchQuestions(forceRefresh);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -156,9 +176,9 @@ const QuestionManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
-  const fetchQuestions = useCallback(async () => {
+  const fetchQuestions = useCallback(async (forceRefresh = false) => {
     try {
       const params = {
         question_type: 'practice',
@@ -171,11 +191,14 @@ const QuestionManager = () => {
         }
       });
       
-      const response = await questionsApi.getAllQuestions(params);
-      const questionsData = response.data.data || [];
+      const questionsData = await getCachedData(
+        getCacheKey('questions', params),
+        () => questionsApi.getAllQuestions(params),
+        { forceRefresh }
+      );
       
       // Enrich questions with chapter, course, and category names
-      const enrichedQuestions = questionsData.map(question => {
+      const enrichedQuestions = (questionsData || []).map(question => {
         const chapter = chapters.find(ch => ch.id === question.chapter_id);
         const course = chapter ? courses.find(c => c.id === chapter.course_id) : null;
         const category = course ? categories.find(c => c.id === course.category_id) : null;
@@ -193,7 +216,7 @@ const QuestionManager = () => {
       console.error('Failed to fetch questions:', err);
       showError('Failed to fetch questions');
     }
-  }, [filters, chapters, courses, categories, showError]);
+  }, [filters, chapters, courses, categories, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -243,7 +266,7 @@ const QuestionManager = () => {
 
   const applyFilters = () => {
     setActionLoading(true);
-    fetchQuestions().finally(() => setActionLoading(false));
+    fetchQuestions(true).finally(() => setActionLoading(false));
   };
 
   const clearFilters = () => {
@@ -404,14 +427,22 @@ const QuestionManager = () => {
         
         await questionsApi.updateQuestion(selectedQuestion.id, questionData);
         showSuccess('Practice question updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^questions/);
+        invalidateCache(chaptersCacheKey);
       } else {
         await questionsApi.createQuestion(questionData);
         showSuccess('Practice question created successfully');
+        
+        // Invalidate caches
+        invalidateCache(/^questions/);
+        invalidateCache(chaptersCacheKey);
       }
       
       setFormOpen(false);
       resetForm();
-      await fetchQuestions();
+      await fetchQuestions(true);
       
     } catch (err) {
       console.error('Failed to save question:', err);
@@ -446,9 +477,13 @@ const QuestionManager = () => {
       await questionsApi.createBatchQuestions(batchData.chapter_id, batchData.questions);
       showSuccess(`Successfully created ${batchData.questions.length} practice questions!`);
       
+      // Invalidate caches
+      invalidateCache(/^questions/);
+      invalidateCache(chaptersCacheKey);
+      
       setBatchDialogOpen(false);
       resetBatchForm();
-      await fetchQuestions();
+      await fetchQuestions(true);
       
     } catch (err) {
       console.error('Failed to create batch questions:', err);
@@ -501,6 +536,11 @@ const QuestionManager = () => {
     
     try {
       await questionsApi.deleteQuestion(selectedQuestion.id);
+      
+      // Invalidate caches
+      invalidateCache(/^questions/);
+      invalidateCache(chaptersCacheKey);
+      
       setQuestions(prev => prev.filter(q => q.id !== selectedQuestion.id));
       showSuccess('Practice question deleted successfully');
       setDeleteConfirmOpen(false);
@@ -512,6 +552,10 @@ const QuestionManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   // Filter questions based on search
@@ -673,7 +717,7 @@ const QuestionManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -726,7 +770,7 @@ const QuestionManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -869,7 +913,7 @@ const QuestionManager = () => {
         columns={columns}
         data={filteredQuestions}
         loading={loading}
-        onRefresh={fetchQuestions}
+        onRefresh={handleRefresh}
         title={`Practice Questions (${filteredQuestions.length})`}
         rowKey="id"
       />
