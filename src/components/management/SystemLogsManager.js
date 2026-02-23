@@ -121,11 +121,7 @@ const SystemLogsManager = () => {
       if (filters.user_id) params.user_id = filters.user_id;
       if (filters.search) params.search = filters.search;
       
-      const response = await getCachedData(
-        getCacheKey('system-logs', params),
-        () => systemLogsApi.getSystemLogs(params),
-        { forceRefresh }
-      );
+      const response = await systemLogsApi.getSystemLogs(params);
       
       // Handle different response structures
       let logsData = [];
@@ -135,14 +131,19 @@ const SystemLogsManager = () => {
         if (Array.isArray(response.data)) {
           logsData = response.data;
           total = logsData.length;
-        } else if (response.data.logs) {
-          logsData = response.data.logs || [];
-          total = response.data.pagination?.total || logsData.length;
+        } else if (response.data.data) {
+          if (Array.isArray(response.data.data)) {
+            logsData = response.data.data;
+            total = logsData.length;
+          } else if (response.data.data.logs) {
+            logsData = response.data.data.logs || [];
+            total = response.data.data.pagination?.total || logsData.length;
+          }
         }
       }
       
-      setLogs(logsData);
-      setPagination(prev => ({ ...prev, total }));
+      setLogs(logsData || []);
+      setPagination(prev => ({ ...prev, total: total || logsData.length }));
       setError('');
     } catch (err) {
       console.error('Failed to fetch system logs:', err);
@@ -155,21 +156,30 @@ const SystemLogsManager = () => {
 
   const fetchLogStats = async (forceRefresh = false) => {
     try {
-      const statsData = await getCachedData(
-        statsCacheKey,
-        () => systemLogsApi.getLogStats(),
-        { forceRefresh }
-      );
+      const response = await systemLogsApi.getLogStats();
       
-      setStats(statsData || {
-        counts: { total: 0, info: 0, warn: 0, error: 0, debug: 0 },
-        summary: {
-          days_with_logs: 0,
-          logs_per_day: 0,
-          error_rate: 0,
-          warning_rate: 0
-        }
-      });
+      if (response.data?.success && response.data?.data) {
+        setStats(response.data.data);
+      } else if (response.data?.data) {
+        setStats(response.data.data);
+      } else {
+        // Calculate stats from logs if API fails
+        const total = logs.length;
+        const info = logs.filter(l => l.level === 'info' || !l.level).length;
+        const warn = logs.filter(l => l.level === 'warn' || l.level === 'warning').length;
+        const error = logs.filter(l => l.level === 'error').length;
+        const debug = logs.filter(l => l.level === 'debug').length;
+        
+        setStats({
+          counts: { total, info, warn, error, debug },
+          summary: {
+            days_with_logs: 1,
+            logs_per_day: total,
+            error_rate: total ? (error / total) * 100 : 0,
+            warning_rate: total ? (warn / total) * 100 : 0
+          }
+        });
+      }
     } catch (err) {
       console.error('Failed to fetch log stats:', err);
     }
@@ -178,7 +188,6 @@ const SystemLogsManager = () => {
   useEffect(() => {
     if (isAdmin()) {
       fetchLogs();
-      fetchLogStats();
     }
   }, [isAdmin]);
 
@@ -187,6 +196,12 @@ const SystemLogsManager = () => {
       fetchLogs();
     }
   }, [pagination.page, pagination.rowsPerPage, filters.level, filters.action, filters.start_date, filters.end_date, filters.user_id]);
+
+  useEffect(() => {
+    if (logs.length > 0) {
+      fetchLogStats();
+    }
+  }, [logs]);
 
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
@@ -412,39 +427,39 @@ const SystemLogsManager = () => {
         </Alert>
       )}
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards - Now show from logs data */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Total Logs"
-            value={stats.counts?.total || 0}
+            value={logs.length}
             icon={<Storage />}
             color="#1976d2"
-            subtitle={`${stats.summary?.logs_per_day || 0} per day avg`}
+            subtitle={`${logs.length} entries`}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Errors"
-            value={stats.counts?.error || 0}
+            value={logs.filter(l => l.level === 'error').length}
             icon={<ErrorIcon />}
             color="#f44336"
-            subtitle={`${stats.summary?.error_rate || 0}% of total`}
+            subtitle={`${logs.length ? ((logs.filter(l => l.level === 'error').length / logs.length) * 100).toFixed(1) : 0}% of total`}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Warnings"
-            value={stats.counts?.warn || 0}
+            value={logs.filter(l => l.level === 'warn' || l.level === 'warning').length}
             icon={<Warning />}
             color="#ff9800"
-            subtitle={`${stats.summary?.warning_rate || 0}% of total`}
+            subtitle={`${logs.length ? ((logs.filter(l => l.level === 'warn' || l.level === 'warning').length / logs.length) * 100).toFixed(1) : 0}% of total`}
           />
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
             title="Info"
-            value={stats.counts?.info || 0}
+            value={logs.filter(l => l.level === 'info' || !l.level).length}
             icon={<Info />}
             color="#2196f3"
             subtitle="Information logs"
@@ -573,7 +588,7 @@ const SystemLogsManager = () => {
       <Paper sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" fontWeight="bold">
-            Log Entries ({pagination.total})
+            Log Entries ({logs.length})
           </Typography>
           
           <Stack direction="row" spacing={1}>

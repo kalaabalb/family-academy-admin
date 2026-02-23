@@ -20,7 +20,10 @@ import {
   Chip,
   IconButton,
   Tooltip,
-
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
   Grid,
   Card,
   CardContent,
@@ -40,9 +43,12 @@ import {
   Search,
   FilterList,
   Download,
+  Visibility,
   Person,
+  AccessTime,
   Info,
   CheckCircle,
+  Cancel,
   Block,
 } from '@mui/icons-material';
 
@@ -85,33 +91,39 @@ const DeviceManager = () => {
       setLoading(true);
       setError('');
       
+      // Fetch devices
       const devicesData = await getCachedData(
         getCacheKey('devices', filters),
         () => devicesApi.getAllDevices(filters),
         { forceRefresh }
       );
       
+      // Fetch users
       const usersData = await getCachedData(
         usersCacheKey,
         () => usersApi.getAllUsers(),
         { forceRefresh }
       );
       
-      const statsData = await getCachedData(
-        statsCacheKey,
-        () => devicesApi.getDeviceStats(),
-        { forceRefresh }
-      );
-      
       setDevices(devicesData || []);
       setUsers(usersData || []);
       
+      // Calculate stats from devices data (don't rely on stats API)
+      const total = (devicesData || []).length;
+      const primary = (devicesData || []).filter(d => d.device_category === 'primary' || d.device_type !== 'tv').length;
+      const tv = (devicesData || []).filter(d => d.device_category === 'secondary' || d.device_type === 'tv').length;
+      const paired = (devicesData || []).filter(d => d.is_paired === true).length;
+      
+      // Get unique users with devices
+      const uniqueUserIds = new Set((devicesData || []).map(d => d.user_id).filter(id => id));
+      const active = uniqueUserIds.size;
+      
       setStats({
-        total: statsData?.counts?.total || 0,
-        primary: statsData?.counts?.primary_count || 0,
-        tv: statsData?.counts?.tv_count || 0,
-        paired: statsData?.counts?.tv_paired_count || 0,
-        active: statsData?.counts?.users_with_devices || 0,
+        total,
+        primary,
+        tv,
+        paired,
+        active,
       });
       
     } catch (err) {
@@ -500,7 +512,7 @@ const DeviceManager = () => {
 
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
-      {/* Statistics Cards */}
+      {/* Statistics Cards - Now calculated from devices data */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard

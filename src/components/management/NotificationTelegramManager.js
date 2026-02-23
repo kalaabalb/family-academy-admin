@@ -297,31 +297,50 @@ const NotificationTelegramManager = () => {
     }
   }, [getCachedData, showError]);
 
-  // Fetch parent stats
-  const fetchParentStats = useCallback(async (forceRefresh = false) => {
-    try {
-      const statsData = await getCachedData(
-        parentStatsCacheKey,
-        () => telegramApi.getParentStats(),
-        { forceRefresh, ttl: 5 * 60 * 1000 } // 5 minutes TTL
-      );
-      setParentStats(statsData || {
-        total: 0,
-        active: 0,
-        notificationsSent: 0,
-        openRate: 0,
-      });
-    } catch (err) {
-      console.error('Failed to fetch parent stats:', err);
-    }
-  }, [getCachedData]);
+// In the fetchAllData function, update the parent stats section:
 
-  useEffect(() => {
-    if (isAdmin()) {
-      fetchAllData();
-      fetchParentStats();
-    }
-  }, [isAdmin, fetchAllData, fetchParentStats]);
+// Fetch parent stats - handle 500 error gracefully
+const fetchParentStats = useCallback(async (forceRefresh = false) => {
+  try {
+    const statsData = await getCachedData(
+      parentStatsCacheKey,
+      async () => {
+        try {
+          const response = await telegramApi.getParentStats();
+          return response.data?.data || {
+            total: 0,
+            active: 0,
+            notificationsSent: 0,
+            openRate: 0,
+          };
+        } catch (err) {
+          console.warn('Parent stats API returned 500, using defaults');
+          return {
+            total: 0,
+            active: 0,
+            notificationsSent: 0,
+            openRate: 0,
+          };
+        }
+      },
+      { forceRefresh, ttl: 5 * 60 * 1000 } // 5 minutes TTL
+    );
+    setParentStats(statsData || {
+      total: 0,
+      active: 0,
+      notificationsSent: 0,
+      openRate: 0,
+    });
+  } catch (err) {
+    console.error('Failed to fetch parent stats:', err);
+    setParentStats({
+      total: 0,
+      active: 0,
+      notificationsSent: 0,
+      openRate: 0,
+    });
+  }
+}, [getCachedData]);
 
   // Handle form changes
   const handleNotificationFormChange = (e) => {
