@@ -1,10 +1,19 @@
 import React, { createContext, useState, useContext, useCallback } from 'react';
 import { cacheManager, generateCacheKey } from '../api/utils';
 
-const UserContext = createContext({});
+// Create context
+const UserContext = createContext(null);
 
-export const useUsers = () => useContext(UserContext);
+// Custom hook to use the context
+export const useUsers = () => {
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error('useUsers must be used within a UserProvider');
+  }
+  return context;
+};
 
+// Provider component
 export const UserProvider = ({ children }) => {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -115,6 +124,7 @@ export const UserProvider = ({ children }) => {
     return generateCacheKey(type, params);
   }, []);
 
+  // Create the value object with all methods
   const value = {
     // User state
     users,
@@ -137,7 +147,11 @@ export const UserProvider = ({ children }) => {
     removeUser
   };
 
-  return <UserContext.Provider value={value}>{children}</UserContext.Provider>;
+  return (
+    <UserContext.Provider value={value}>
+      {children}
+    </UserContext.Provider>
+  );
 };
 
 export default UserContext;

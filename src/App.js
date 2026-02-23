@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { UserProvider } from './contexts/UserContext'; // Add this import
 import PrivateRoute from './auth/PrivateRoute';
 import AdminRoute from './auth/AdminRoute';
 
@@ -60,178 +61,180 @@ function App() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <NotificationProvider>
-  <Router
-  future={{
-    v7_startTransition: true,
-    v7_relativeSplatPath: true,
-  }}
->
+        <Router
+          future={{
+            v7_startTransition: true,
+            v7_relativeSplatPath: true,
+          }}
+        >
           <AuthProvider>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              
-              <Route path="/" element={
-                <PrivateRoute>
-                  <Navigate to="/dashboard" />
-                </PrivateRoute>
-              } />
-              
-              <Route path="/dashboard" element={
-                <PrivateRoute>
-                  <DashboardPage />
-                </PrivateRoute>
-              } />
-              
-              {/* Admin Only Routes */}
-              <Route path="/schools" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <SchoolManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/categories" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <CategoryManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/courses" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <CourseManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/payments" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <PaymentManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/users" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <UserManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/teachers" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <TeacherManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              {/* Admin + Teacher Routes */}
-              <Route path="/chapters" element={
-                <PrivateRoute>
-                  <Layout>
-                    <ChapterManager />
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/videos" element={
-                <PrivateRoute>
-                  <Layout>
-                    <VideoManager />
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/notes" element={
-                <PrivateRoute>
-                  <Layout>
-                    <NoteManager />
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/questions" element={
-                <PrivateRoute>
-                  <Layout>
-                    <QuestionManager />
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/exams" element={
-                <PrivateRoute>
-                  <Layout>
-                    <ExamManager />
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              {/* Admin Only Routes - continued */}
-              <Route path="/notifications" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <NotificationTelegramManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
+            <UserProvider> {/* Add this wrapper */}
+              <Routes>
+                <Route path="/login" element={<Login />} />
+                
+                <Route path="/" element={
+                  <PrivateRoute>
+                    <Navigate to="/dashboard" />
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/dashboard" element={
+                  <PrivateRoute>
+                    <DashboardPage />
+                  </PrivateRoute>
+                } />
+                
+                {/* Admin Only Routes */}
+                <Route path="/schools" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <SchoolManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/categories" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <CategoryManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/courses" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <CourseManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/payments" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <PaymentManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/users" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <UserManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/teachers" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <TeacherManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                {/* Admin + Teacher Routes */}
+                <Route path="/chapters" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <ChapterManager />
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/videos" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <VideoManager />
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/notes" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <NoteManager />
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/questions" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <QuestionManager />
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/exams" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <ExamManager />
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                {/* Admin Only Routes - continued */}
+                <Route path="/notifications" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <NotificationTelegramManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
 
-              <Route path="/settings" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <SettingsManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
+                <Route path="/settings" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <SettingsManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
 
-              <Route path="/devices" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <DeviceManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              <Route path="/system-logs" element={
-                <PrivateRoute>
-                  <Layout>
-                    <AdminRoute>
-                      <SystemLogsManager />
-                    </AdminRoute>
-                  </Layout>
-                </PrivateRoute>
-              } />
-              
-              {/* Fallback route */}
-              <Route path="*" element={
-                <PrivateRoute>
-                  <Navigate to="/dashboard" />
-                </PrivateRoute>
-              } />
-            </Routes>
+                <Route path="/devices" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <DeviceManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                <Route path="/system-logs" element={
+                  <PrivateRoute>
+                    <Layout>
+                      <AdminRoute>
+                        <SystemLogsManager />
+                      </AdminRoute>
+                    </Layout>
+                  </PrivateRoute>
+                } />
+                
+                {/* Fallback route */}
+                <Route path="*" element={
+                  <PrivateRoute>
+                    <Navigate to="/dashboard" />
+                  </PrivateRoute>
+                } />
+              </Routes>
+            </UserProvider> {/* Close UserProvider */}
           </AuthProvider>
         </Router>
       </NotificationProvider>
