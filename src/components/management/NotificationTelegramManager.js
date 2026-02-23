@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import notificationsApi from '../../api/notifications';
 import telegramApi from '../../api/telegram';
 import usersApi from '../../api/users';
@@ -185,6 +186,7 @@ const SCHEDULED_TEMPLATES = [
 const NotificationTelegramManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   // Tab state
   const [tabValue, setTabValue] = useState(0);
@@ -234,20 +236,34 @@ const NotificationTelegramManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
+
+  // Cache keys
+  const notificationsCacheKey = 'notifications';
+  const telegramStatusCacheKey = 'telegram-status';
+  const usersCacheKey = 'users';
+  const parentStatsCacheKey = 'parent-stats';
   
   // Fetch all data
-  const fetchAllData = useCallback(async () => {
+  const fetchAllData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       
       // Fetch notifications history
-      const notificationsRes = await notificationsApi.getNotificationHistory();
-      setNotifications(notificationsRes.data.data || []);
+      const notificationsData = await getCachedData(
+        notificationsCacheKey,
+        () => notificationsApi.getNotificationHistory(),
+        { forceRefresh }
+      );
+      setNotifications(notificationsData || []);
       
       // Fetch telegram status
       try {
-        const telegramRes = await telegramApi.getBotStatus();
-        setTelegramStatus(telegramRes.data.data || {});
+        const telegramData = await getCachedData(
+          telegramStatusCacheKey,
+          () => telegramApi.getBotStatus(),
+          { forceRefresh, ttl: 2 * 60 * 1000 } // 2 minutes TTL
+        );
+        setTelegramStatus(telegramData || {});
       } catch (telegramError) {
         console.warn('Could not fetch telegram status:', telegramError);
         setTelegramStatus({
@@ -263,10 +279,14 @@ const NotificationTelegramManager = () => {
       }
       
       // Fetch users for targeting
-      const usersRes = await usersApi.getAllUsers({ limit: 100 });
-      setUsers(usersRes.data.data || []);
+      const usersData = await getCachedData(
+        usersCacheKey,
+        () => usersApi.getAllUsers({ limit: 100 }),
+        { forceRefresh }
+      );
+      setUsers(usersData || []);
       
-      // Fetch scheduled notifications
+      // Fetch scheduled notifications (static data)
       setScheduledNotifications(SCHEDULED_TEMPLATES);
       
     } catch (error) {
@@ -275,13 +295,17 @@ const NotificationTelegramManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   // Fetch parent stats
-  const fetchParentStats = async () => {
+  const fetchParentStats = useCallback(async (forceRefresh = false) => {
     try {
-      const response = await telegramApi.getParentStats();
-      setParentStats(response.data.data || {
+      const statsData = await getCachedData(
+        parentStatsCacheKey,
+        () => telegramApi.getParentStats(),
+        { forceRefresh, ttl: 5 * 60 * 1000 } // 5 minutes TTL
+      );
+      setParentStats(statsData || {
         total: 0,
         active: 0,
         notificationsSent: 0,
@@ -290,14 +314,14 @@ const NotificationTelegramManager = () => {
     } catch (err) {
       console.error('Failed to fetch parent stats:', err);
     }
-  };
+  }, [getCachedData]);
 
   useEffect(() => {
     if (isAdmin()) {
       fetchAllData();
       fetchParentStats();
     }
-  }, [isAdmin, fetchAllData]);
+  }, [isAdmin, fetchAllData, fetchParentStats]);
 
   // Handle form changes
   const handleNotificationFormChange = (e) => {
@@ -343,6 +367,9 @@ const NotificationTelegramManager = () => {
       await notificationsApi.sendNotification(payload);
       showSuccess('Notification sent successfully!');
       
+      // Invalidate cache
+      invalidateCache(notificationsCacheKey);
+      
       // Reset form
       setNotificationForm({
         title: '',
@@ -358,7 +385,7 @@ const NotificationTelegramManager = () => {
       });
       
       // Refresh data
-      fetchAllData();
+      await fetchAllData(true);
       setTabValue(0);
       
     } catch (error) {
@@ -401,6 +428,10 @@ const NotificationTelegramManager = () => {
       setActionLoading(true);
       const response = await telegramApi.testBotConnection();
       showSuccess(response.data.message || 'Telegram bot connection successful!');
+      
+      // Invalidate cache to refresh status
+      invalidateCache(telegramStatusCacheKey);
+      await fetchAllData(true);
     } catch (error) {
       showError('Telegram test failed: ' + (error.response?.data?.message || error.message));
     } finally {
@@ -414,7 +445,10 @@ const NotificationTelegramManager = () => {
       setActionLoading(true);
       await telegramApi.updateBotSettings(telegramSettings);
       showSuccess('Telegram settings updated successfully');
-      fetchAllData();
+      
+      // Invalidate cache
+      invalidateCache(telegramStatusCacheKey);
+      await fetchAllData(true);
     } catch (error) {
       showError('Failed to update settings: ' + (error.response?.data?.message || error.message));
     } finally {
@@ -428,7 +462,10 @@ const NotificationTelegramManager = () => {
       setActionLoading(true);
       await notificationsApi.deleteNotification(notification.id);
       showSuccess('Notification deleted successfully');
-      fetchAllData();
+      
+      // Invalidate cache
+      invalidateCache(notificationsCacheKey);
+      await fetchAllData(true);
     } catch (error) {
       showError('Failed to delete notification');
     } finally {
@@ -450,7 +487,10 @@ const NotificationTelegramManager = () => {
       
       await notificationsApi.sendNotification(payload);
       showSuccess('Notification resent successfully');
-      fetchAllData();
+      
+      // Invalidate cache
+      invalidateCache(notificationsCacheKey);
+      await fetchAllData(true);
     } catch (error) {
       showError('Failed to resend notification');
     } finally {
@@ -466,6 +506,11 @@ const NotificationTelegramManager = () => {
       )
     );
     showSuccess(`Template ${enabled ? 'enabled' : 'disabled'}`);
+  };
+
+  const handleRefresh = () => {
+    fetchAllData(true);
+    fetchParentStats(true);
   };
 
   // Filter notifications
@@ -654,10 +699,7 @@ const NotificationTelegramManager = () => {
         <Button
           variant="outlined"
           startIcon={<Refresh />}
-          onClick={() => {
-            fetchAllData();
-            fetchParentStats();
-          }}
+          onClick={handleRefresh}
           disabled={loading || actionLoading}
           sx={{ borderRadius: 2 }}
         >
@@ -820,7 +862,7 @@ const NotificationTelegramManager = () => {
             columns={notificationColumns}
             data={filteredNotifications}
             loading={loading}
-            onRefresh={fetchAllData}
+            onRefresh={handleRefresh}
             title="Notification History"
             rowKey="id"
           />
@@ -1334,6 +1376,10 @@ const NotificationTelegramManager = () => {
                         setActionLoading(true);
                         await telegramApi.sendProgressToAllParents();
                         showSuccess('Weekly progress reports sent to all parents!');
+                        
+                        // Invalidate parent stats cache
+                        invalidateCache(parentStatsCacheKey);
+                        await fetchParentStats(true);
                       } catch (err) {
                         showError('Failed to send reports');
                       } finally {
