@@ -86,7 +86,7 @@ export const AuthProvider = ({ children }) => {
       logout();
     }, SESSION_TIMEOUT);
     setSessionTimeout(timeout);
-  }, []);
+  }, [logout, sessionTimeout]);
 
   // Load user from cookies on mount
   useEffect(() => {
