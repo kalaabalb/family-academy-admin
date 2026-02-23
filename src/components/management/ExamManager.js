@@ -31,14 +31,12 @@ import {
   CircularProgress,
   Tab,
   Tabs,
-  List,
   Checkbox,
   Radio,
   FormControlLabel,
   InputAdornment,
   LinearProgress,
-  Card,
-  CardContent,
+
 } from '@mui/material';
 import {
   Add,
@@ -51,20 +49,12 @@ import {
   Save,
   FilterList,
   Search,
-  ExpandMore,
-  Category as CategoryIcon,
-  Book,
-  Timer,
+  Category ,
+ 
   Event,
-  EmojiEvents,
   ImportExport,
   Upload,
-  Download,
-  Visibility,
-  AccessTime,
-  CheckCircle,
-  Warning,
-  Schedule,
+
 } from '@mui/icons-material';
 
 const ExamManager = () => {
@@ -150,9 +140,7 @@ const ExamManager = () => {
   });
 
   // Cache keys
-  const examsCacheKey = 'exams';
   const coursesCacheKey = 'courses';
-  const questionsCacheKey = 'questions';
 
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
