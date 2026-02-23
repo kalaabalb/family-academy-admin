@@ -6,19 +6,20 @@ import App from './App';
 import theme from './theme';
 import './App.css';
 
-// Simple Error Boundary Component
+// Error Boundary Component
 class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null };
+    this.state = { hasError: false, error: null, errorInfo: null };
   }
 
   static getDerivedStateFromError(error) {
-    return { hasError: true, error };
+    return { hasError: true };
   }
 
   componentDidCatch(error, errorInfo) {
     console.error('Application Error:', error, errorInfo);
+    this.setState({ error, errorInfo });
   }
 
   render() {
@@ -54,9 +55,24 @@ class ErrorBoundary extends React.Component {
                 borderRadius: '6px',
                 cursor: 'pointer',
                 fontSize: '16px',
+                marginRight: '10px',
               }}
             >
               Refresh Page
+            </button>
+            <button
+              onClick={() => this.setState({ hasError: false })}
+              style={{
+                padding: '10px 24px',
+                backgroundColor: '#9e9e9e',
+                color: 'white',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '16px',
+              }}
+            >
+              Try Again
             </button>
           </div>
         </div>

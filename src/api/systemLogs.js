@@ -31,7 +31,9 @@ const systemLogsApi = {
               days_with_logs: 0,
               latest_log: null,
               oldest_log: null,
-              logs_per_day: 0
+              logs_per_day: 0,
+              error_rate: 0,
+              warning_rate: 0
             }
           }
         }
@@ -39,10 +41,12 @@ const systemLogsApi = {
     }
   },
   
-  // Clear old logs
+  // Clear old logs (admin)
   clearOldLogs: async (days = 30) => {
     try {
-      const response = await axiosInstance.delete('/system-logs/clear', { params: { days } });
+      const response = await axiosInstance.delete('/system-logs/clear', { 
+        params: { days } 
+      });
       return response;
     } catch (error) {
       console.error('Error clearing old logs:', error);
@@ -50,7 +54,7 @@ const systemLogsApi = {
     }
   },
   
-  // Export logs
+  // Export logs (admin)
   exportLogs: async (format = 'csv', params = {}) => {
     try {
       const response = await axiosInstance.get('/system-logs/export', {

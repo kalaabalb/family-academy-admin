@@ -25,6 +25,10 @@ import {
   DialogActions,
   Grid,
   Stack,
+  LinearProgress,
+  Paper,
+  InputAdornment,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -35,6 +39,11 @@ import {
   LockOpen,
   Close,
   Save,
+  Search,
+  Book,
+  PlayCircle,
+  Notes,
+  Quiz,
 } from '@mui/icons-material';
 
 const ChapterManager = () => {
@@ -45,7 +54,9 @@ const ChapterManager = () => {
   const [categories, setCategories] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -75,7 +86,7 @@ const ChapterManager = () => {
       }
       
       const chaptersRes = await chaptersApi.getAllChapters(params);
-      setChapters(chaptersRes.data.data || []);
+      const chaptersData = chaptersRes.data.data || [];
       
       // Fetch categories
       const categoriesRes = await categoriesApi.getAllCategories();
@@ -84,6 +95,19 @@ const ChapterManager = () => {
       // Fetch courses
       const coursesRes = await coursesApi.getAllCourses();
       setCourses(coursesRes.data.data || []);
+      
+      // Enrich chapters with course and category names
+      const enrichedChapters = chaptersData.map(chapter => {
+        const course = coursesRes.data.data?.find(c => c.id === chapter.course_id);
+        const category = course ? categoriesRes.data.data?.find(c => c.id === course.category_id) : null;
+        return {
+          ...chapter,
+          course_name: course?.name || 'Unknown Course',
+          category_name: category?.name || 'Unknown Category',
+        };
+      });
+      
+      setChapters(enrichedChapters);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -95,8 +119,10 @@ const ChapterManager = () => {
   }, [isTeacher, user, showError]);
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (isAdmin() || isTeacher()) {
+      fetchData();
+    }
+  }, [isAdmin, isTeacher, fetchData]);
 
   const handleCategoryChange = (categoryId) => {
     setSelectedCategoryId(categoryId);
@@ -131,17 +157,17 @@ const ChapterManager = () => {
 
   const handleSubmit = async () => {
     try {
-      setLoading(true);
+      setActionLoading(true);
       
       if (!formData.name.trim()) {
         showError('Chapter name is required');
-        setLoading(false);
+        setActionLoading(false);
         return;
       }
 
       if (!formData.course_id) {
         showError('Please select a course');
-        setLoading(false);
+        setActionLoading(false);
         return;
       }
 
@@ -159,7 +185,7 @@ const ChapterManager = () => {
         // Teachers can only update chapters they created
         if (isTeacher() && selectedChapter.created_by !== user.id) {
           showError('You can only edit chapters you created');
-          setLoading(false);
+          setActionLoading(false);
           return;
         }
         
@@ -178,7 +204,7 @@ const ChapterManager = () => {
       console.error('Failed to save chapter:', err);
       showError(err.response?.data?.message || 'Failed to save chapter');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -225,10 +251,9 @@ const ChapterManager = () => {
     if (!selectedChapter) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await chaptersApi.deleteChapter(selectedChapter.id);
       
-      // Optimistic update
       setChapters(prev => prev.filter(c => c.id !== selectedChapter.id));
       
       showSuccess(`Chapter "${selectedChapter.name}" deleted successfully`);
@@ -239,35 +264,46 @@ const ChapterManager = () => {
       console.error('Failed to delete chapter:', err);
       showError(err.response?.data?.message || 'Failed to delete chapter');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
+
+  // Filter chapters based on search
+  const filteredChapters = chapters.filter(chapter => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      chapter.name.toLowerCase().includes(query) ||
+      (chapter.course_name && chapter.course_name.toLowerCase().includes(query)) ||
+      (chapter.category_name && chapter.category_name.toLowerCase().includes(query))
+    );
+  });
 
   const columns = [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          #{value}
+        </Typography>
+      ),
     },
     {
       field: 'name',
       headerName: 'Chapter Name',
       flex: 1,
       render: (value, row) => (
-        <Typography variant="body2" fontWeight="500">
-          {value}
-        </Typography>
+        <Box>
+          <Typography variant="body2" fontWeight="medium">
+            {value}
+          </Typography>
+          <Typography variant="caption" color="text.secondary">
+            {row.course_name} • {row.category_name}
+          </Typography>
+        </Box>
       ),
-    },
-    {
-      field: 'course_name',
-      headerName: 'Course',
-      width: 150,
-    },
-    {
-      field: 'category_name',
-      headerName: 'Category',
-      width: 120,
     },
     {
       field: 'status',
@@ -293,6 +329,7 @@ const ChapterManager = () => {
           size="small"
           color="info"
           variant="outlined"
+          icon={<PlayCircle fontSize="small" />}
         />
       ),
     },
@@ -306,6 +343,7 @@ const ChapterManager = () => {
           size="small"
           color="secondary"
           variant="outlined"
+          icon={<Notes fontSize="small" />}
         />
       ),
     },
@@ -319,7 +357,19 @@ const ChapterManager = () => {
           size="small"
           color="primary"
           variant="outlined"
+          icon={<Quiz fontSize="small" />}
         />
+      ),
+    },
+    {
+      field: 'created_by_name',
+      headerName: 'Created By',
+      width: 120,
+      render: (value, row) => (
+        <Typography variant="caption">
+          {row.creator_role === 'admin' ? 'Admin' : 'Teacher'}
+          {row.created_by === user?.id && ' (You)'}
+        </Typography>
       ),
     },
     {
@@ -347,7 +397,11 @@ const ChapterManager = () => {
                   size="small"
                   onClick={() => handleEdit(row)}
                   color="primary"
-                  disabled={!canEdit}
+                  disabled={!canEdit || actionLoading}
+                  sx={{
+                    opacity: actionLoading || !canEdit ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
                 >
                   <Edit fontSize="small" />
                 </IconButton>
@@ -360,7 +414,11 @@ const ChapterManager = () => {
                   size="small"
                   onClick={() => handleDelete(row)}
                   color="error"
-                  disabled={!canEdit}
+                  disabled={!canEdit || actionLoading}
+                  sx={{
+                    opacity: actionLoading || !canEdit ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
                 >
                   <Delete fontSize="small" />
                 </IconButton>
@@ -400,7 +458,7 @@ const ChapterManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -413,7 +471,7 @@ const ChapterManager = () => {
                 resetForm();
                 setFormOpen(true);
               }}
-              disabled={loading}
+              disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Add Chapter
@@ -422,6 +480,10 @@ const ChapterManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -431,23 +493,45 @@ const ChapterManager = () => {
         </Alert>
       )}
 
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search chapters by name, course, or category..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+
       {/* Chapters Table */}
       <DataTable
         columns={columns}
-        data={chapters}
+        data={filteredChapters}
         loading={loading}
         onRefresh={fetchData}
-        title={`Chapters`}
-        tableId="chapters-table"
-        searchable={true}
-        pagination={true}
+        title={`Chapters (${filteredChapters.length})`}
         rowKey="id"
       />
 
       {/* Add/Edit Chapter Dialog */}
       <Dialog
         open={formOpen}
-        onClose={() => !loading && setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -458,9 +542,9 @@ const ChapterManager = () => {
               {isEditing ? 'Edit Chapter' : 'Add New Chapter'}
             </Typography>
             <IconButton
-              onClick={() => !loading && setFormOpen(false)}
+              onClick={() => !actionLoading && setFormOpen(false)}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -478,7 +562,7 @@ const ChapterManager = () => {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter chapter title"
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
 
@@ -490,7 +574,7 @@ const ChapterManager = () => {
                     value={selectedCategoryId}
                     onChange={(e) => handleCategoryChange(e.target.value)}
                     label="Category"
-                    disabled={loading}
+                    disabled={actionLoading}
                   >
                     <MenuItem value="">Select Category</MenuItem>
                     {categories.map(cat => (
@@ -511,7 +595,7 @@ const ChapterManager = () => {
                   value={formData.course_id}
                   onChange={handleInputChange}
                   label="Course *"
-                  disabled={loading || (isAdmin() && !selectedCategoryId)}
+                  disabled={actionLoading || (isAdmin() && !selectedCategoryId)}
                 >
                   <MenuItem value="">Select Course</MenuItem>
                   {(isAdmin() ? filteredCourses : courses).map(course => (
@@ -524,36 +608,36 @@ const ChapterManager = () => {
             </Grid>
 
             {isAdmin() && (
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Status</InputLabel>
-                  <Select
-                    name="status"
-                    value={formData.status}
-                    onChange={handleInputChange}
-                    label="Status"
-                    disabled={loading}
-                  >
-                    <MenuItem value="locked">Locked (Requires subscription)</MenuItem>
-                    <MenuItem value="free">Free (Available to all users)</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
+              <>
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth>
+                    <InputLabel>Status</InputLabel>
+                    <Select
+                      name="status"
+                      value={formData.status}
+                      onChange={handleInputChange}
+                      label="Status"
+                      disabled={actionLoading}
+                    >
+                      <MenuItem value="locked">Locked (Requires subscription)</MenuItem>
+                      <MenuItem value="free">Free (Available to all users)</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
 
-            {isAdmin() && (
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  label="Release Date (Optional)"
-                  name="release_date"
-                  type="datetime-local"
-                  value={formData.release_date}
-                  onChange={handleInputChange}
-                  InputLabelProps={{ shrink: true }}
-                  disabled={loading}
-                />
-              </Grid>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Release Date (Optional)"
+                    name="release_date"
+                    type="datetime-local"
+                    value={formData.release_date}
+                    onChange={handleInputChange}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={actionLoading}
+                  />
+                </Grid>
+              </>
             )}
 
             {isTeacher() && (
@@ -575,7 +659,7 @@ const ChapterManager = () => {
               setFormOpen(false);
               resetForm();
             }}
-            disabled={loading}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -583,11 +667,11 @@ const ChapterManager = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={loading || !formData.name.trim() || !formData.course_id}
-            startIcon={<Save />}
+            disabled={actionLoading || !formData.name.trim() || !formData.course_id}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Saving...' : (isEditing ? 'Update Chapter' : 'Create Chapter')}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Chapter' : 'Create Chapter')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -598,12 +682,11 @@ const ChapterManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Chapter"
-        message={`Are you sure you want to delete chapter "${selectedChapter?.name}"? 
-        This will also delete all associated content (videos, notes, questions).`}
+        message={`Are you sure you want to delete chapter "${selectedChapter?.name}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
-        loading={loading}
+        loading={actionLoading}
       />
     </Box>
   );

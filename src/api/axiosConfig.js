@@ -1,8 +1,8 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
 
-// Base URL from your backend
-const API_BASE_URL = 'https://family-academy-backend-a12l.onrender.com/api/v1';
+// Base URL from environment variable or default
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://family-academy-backend-a12l.onrender.com/api/v1';
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -28,14 +28,14 @@ const processQueue = (error, token = null) => {
   failedQueue = [];
 };
 
-// Get token from multiple sources
+// Get token from cookies only (simplified)
 const getToken = () => {
-  return Cookies.get('token') || localStorage.getItem('token') || sessionStorage.getItem('token');
+  return Cookies.get('token');
 };
 
-// Get refresh token from multiple sources
+// Get refresh token from cookies only
 const getRefreshToken = () => {
-  return Cookies.get('refreshToken') || localStorage.getItem('refreshToken') || sessionStorage.getItem('refreshToken');
+  return Cookies.get('refreshToken');
 };
 
 // Request interceptor
@@ -67,12 +67,6 @@ axiosInstance.interceptors.response.use(
         Cookies.remove('token', { path: '/' });
         Cookies.remove('user', { path: '/' });
         Cookies.remove('refreshToken', { path: '/' });
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('refreshToken');
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        sessionStorage.removeItem('refreshToken');
         window.location.href = '/login';
         return Promise.reject(error);
       }
@@ -103,15 +97,21 @@ axiosInstance.interceptors.response.use(
 
         const { token, refreshToken: newRefreshToken } = response.data.data;
         
-        // Update token in all storage
-        Cookies.set('token', token, { expires: 7, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
-        localStorage.setItem('token', token);
-        sessionStorage.setItem('token', token);
+        // Update token in cookies only
+        Cookies.set('token', token, { 
+          expires: 7, 
+          secure: process.env.NODE_ENV === 'production', 
+          sameSite: 'lax', 
+          path: '/' 
+        });
         
         if (newRefreshToken) {
-          Cookies.set('refreshToken', newRefreshToken, { expires: 7, secure: process.env.NODE_ENV === 'production', sameSite: 'strict', path: '/' });
-          localStorage.setItem('refreshToken', newRefreshToken);
-          sessionStorage.setItem('refreshToken', newRefreshToken);
+          Cookies.set('refreshToken', newRefreshToken, { 
+            expires: 7, 
+            secure: process.env.NODE_ENV === 'production', 
+            sameSite: 'lax', 
+            path: '/' 
+          });
         }
         
         axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -122,16 +122,10 @@ axiosInstance.interceptors.response.use(
       } catch (refreshError) {
         processQueue(refreshError, null);
         
-        // Clear all storage
+        // Clear all cookies
         Cookies.remove('token', { path: '/' });
         Cookies.remove('user', { path: '/' });
         Cookies.remove('refreshToken', { path: '/' });
-        localStorage.removeItem('token');
-        localStorage.removeItem('user');
-        localStorage.removeItem('refreshToken');
-        sessionStorage.removeItem('token');
-        sessionStorage.removeItem('user');
-        sessionStorage.removeItem('refreshToken');
         
         window.location.href = '/login';
         return Promise.reject(refreshError);

@@ -31,14 +31,9 @@ import {
   Card,
   CardContent,
   InputAdornment,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
   Tab,
   Tabs,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add,
@@ -46,7 +41,7 @@ import {
   Delete,
   Refresh,
   Save,
-  Cancel,
+  Close,
   Settings,
   Security,
   Payment,
@@ -60,23 +55,23 @@ import {
   Warning,
   CheckCircle,
   Category as CategoryIcon,
-  KeyboardArrowDown,
-  KeyboardArrowUp,
   Visibility,
   VisibilityOff,
   Lock,
   LockOpen,
+  Search,
 } from '@mui/icons-material';
 
 const SettingsManager = () => {
   const { isAdmin } = useAuth();
-  const { success: showSuccess, error: showError, info: showInfo } = useNotification();
+  const { success: showSuccess, error: showError } = useNotification();
   
   const [settings, setSettings] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -93,10 +88,6 @@ const SettingsManager = () => {
     display_order: 0,
     description: '',
   });
-  
-  const [expandedSettings, setExpandedSettings] = useState({});
-  const [bulkEditMode, setBulkEditMode] = useState(false);
-  const [editedValues, setEditedValues] = useState({});
 
   // Data type options with user-friendly labels
   const dataTypeOptions = [
@@ -110,7 +101,7 @@ const SettingsManager = () => {
     { value: 'json', label: 'JSON Data', icon: '📊', description: 'Structured data (for developers)' },
   ];
 
-  // Category options with icons - EXPANDED FOR ALL POSSIBLE CATEGORIES
+  // Category options with icons
   const categoryOptions = [
     { value: 'general', label: 'General', icon: <Settings />, color: 'primary' },
     { value: 'payment', label: 'Payment', icon: <Payment />, color: 'success' },
@@ -120,7 +111,6 @@ const SettingsManager = () => {
     { value: 'system', label: 'System', icon: <DeviceHub />, color: 'secondary' },
     { value: 'contact', label: 'Contact', icon: <ContactMail />, color: 'primary' },
     { value: 'upload', label: 'Upload', icon: <CloudUpload />, color: 'success' },
-    { value: 'parent_link', label: 'Parent Link', icon: <Lock />, color: 'secondary' },
   ];
 
   const fetchSettings = useCallback(async () => {
@@ -128,18 +118,12 @@ const SettingsManager = () => {
       setLoading(true);
       setError('');
       
-      const [settingsRes, categoriesRes] = await Promise.all([
-        settingsApi.getAllSettings(),
-        settingsApi.getCategories(),
-      ]);
-      
+      const settingsRes = await settingsApi.getAllSettings();
       setSettings(settingsRes.data.data || []);
-      setCategories(categoriesRes.data.data || []);
       
     } catch (err) {
       console.error('Failed to fetch settings:', err);
-      const errMsg = err.response?.data?.message || 'Failed to load settings';
-      setError(errMsg);
+      setError(err.response?.data?.message || 'Failed to load settings');
       showError('Failed to load settings');
     } finally {
       setLoading(false);
@@ -164,15 +148,7 @@ const SettingsManager = () => {
     setFormData(prev => ({
       ...prev,
       data_type: value,
-      // Reset value when changing data type
       setting_value: '',
-    }));
-  };
-
-  const handleBulkValueChange = (key, value) => {
-    setEditedValues(prev => ({
-      ...prev,
-      [key]: value,
     }));
   };
 
@@ -242,19 +218,16 @@ const SettingsManager = () => {
           break;
       }
 
+      setActionLoading(true);
+
       const settingData = {
         ...formData,
         setting_value: validatedValue,
         setting_key: formData.setting_key.toLowerCase().trim(),
       };
 
-      if (isEditing && selectedSetting) {
-        await settingsApi.upsertSetting(settingData);
-        showSuccess('Setting updated successfully');
-      } else {
-        await settingsApi.upsertSetting(settingData);
-        showSuccess('Setting created successfully');
-      }
+      await settingsApi.upsertSetting(settingData);
+      showSuccess(isEditing ? 'Setting updated successfully' : 'Setting created successfully');
 
       setFormOpen(false);
       resetForm();
@@ -262,33 +235,9 @@ const SettingsManager = () => {
       
     } catch (err) {
       console.error('Failed to save setting:', err);
-      const errMsg = err.response?.data?.message || 'Failed to save setting';
-      showError(errMsg);
-    }
-  };
-
-  const handleBulkSave = async () => {
-    try {
-      const updates = Object.entries(editedValues).map(([key, value]) => ({
-        setting_key: key,
-        setting_value: value,
-      }));
-
-      if (updates.length === 0) {
-        showInfo('No changes to save');
-        return;
-      }
-
-      await settingsApi.updateMultipleSettings(updates);
-      showSuccess(`${updates.length} setting(s) updated successfully`);
-      setBulkEditMode(false);
-      setEditedValues({});
-      await fetchSettings();
-      
-    } catch (err) {
-      console.error('Failed to save bulk updates:', err);
-      const errMsg = err.response?.data?.message || 'Failed to save changes';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to save setting');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -319,9 +268,9 @@ const SettingsManager = () => {
     if (!selectedSetting) return;
 
     try {
+      setActionLoading(true);
       await settingsApi.deleteSetting(selectedSetting.setting_key);
       
-      // Optimistic update
       setSettings(prev => prev.filter(s => s.setting_key !== selectedSetting.setting_key));
       
       showSuccess(`Setting "${selectedSetting.display_name}" deleted successfully`);
@@ -330,8 +279,9 @@ const SettingsManager = () => {
       
     } catch (err) {
       console.error('Failed to delete setting:', err);
-      const errMsg = err.response?.data?.message || 'Failed to delete setting';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to delete setting');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -339,104 +289,35 @@ const SettingsManager = () => {
     if (!window.confirm('This will initialize default settings. Any existing settings will be updated. Continue?')) return;
     
     try {
-      setLoading(true);
+      setActionLoading(true);
       await settingsApi.initializeDefaultSettings();
       showSuccess('Default settings initialized successfully');
       await fetchSettings();
     } catch (err) {
       console.error('Failed to initialize defaults:', err);
-      const errMsg = err.response?.data?.message || 'Failed to initialize default settings';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to initialize default settings');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
-  const toggleSettingExpand = (key) => {
-    setExpandedSettings(prev => ({
-      ...prev,
-      [key]: !prev[key],
-    }));
-  };
-
-  const renderSettingValueInput = (setting) => {
-    const value = editedValues[setting.setting_key] !== undefined 
-      ? editedValues[setting.setting_key] 
-      : setting.setting_value || '';
+  // Filter settings based on tab and search
+  const filteredSettings = settings.filter(setting => {
+    // Category filter
+    if (activeTab !== 'all' && setting.category !== activeTab) return false;
     
-    const dataType = dataTypeOptions.find(opt => opt.value === setting.data_type) || dataTypeOptions[0];
-    
-    switch (setting.data_type) {
-      case 'boolean':
-        return (
-          <FormControlLabel
-            control={
-              <Switch
-                checked={value === true || value === 'true'}
-                onChange={(e) => handleBulkValueChange(setting.setting_key, e.target.checked)}
-                color="primary"
-                size="small"
-              />
-            }
-            label={value === true || value === 'true' ? 'Yes' : 'No'}
-            sx={{ m: 0 }}
-          />
-        );
-      
-      case 'number':
-        return (
-          <TextField
-            type="number"
-            value={value}
-            onChange={(e) => handleBulkValueChange(setting.setting_key, e.target.value)}
-            size="small"
-            fullWidth
-            InputProps={{ sx: { fontSize: '0.875rem' } }}
-          />
-        );
-      
-      case 'password':
-        return (
-          <TextField
-            type="password"
-            value={value}
-            onChange={(e) => handleBulkValueChange(setting.setting_key, e.target.value)}
-            size="small"
-            fullWidth
-            InputProps={{ sx: { fontSize: '0.875rem' } }}
-          />
-        );
-      
-      case 'json':
-        return (
-          <TextField
-            multiline
-            rows={2}
-            value={value}
-            onChange={(e) => handleBulkValueChange(setting.setting_key, e.target.value)}
-            size="small"
-            fullWidth
-            InputProps={{ sx: { fontSize: '0.875rem', fontFamily: 'monospace' } }}
-            placeholder='{"key": "value"}'
-          />
-        );
-      
-      default:
-        return (
-          <TextField
-            value={value}
-            onChange={(e) => handleBulkValueChange(setting.setting_key, e.target.value)}
-            size="small"
-            fullWidth
-            InputProps={{ sx: { fontSize: '0.875rem' } }}
-          />
-        );
+    // Search filter
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      return (
+        setting.setting_key.toLowerCase().includes(query) ||
+        setting.display_name.toLowerCase().includes(query) ||
+        (setting.description && setting.description.toLowerCase().includes(query))
+      );
     }
-  };
-
-  const filteredSettings = activeTab === 'all' 
-    ? settings
-    : settings.filter(s => s.category === activeTab);
+    
+    return true;
+  });
 
   const columns = [
     {
@@ -548,24 +429,38 @@ const SettingsManager = () => {
       headerName: 'Actions',
       width: 120,
       render: (value, row) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
           <Tooltip title="Edit Setting">
-            <IconButton
-              size="small"
-              onClick={() => handleEdit(row)}
-              color="primary"
-            >
-              <Edit fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleEdit(row)}
+                color="primary"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Edit fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           <Tooltip title="Delete Setting">
-            <IconButton
-              size="small"
-              onClick={() => handleDelete(row)}
-              color="error"
-            >
-              <Delete fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleDelete(row)}
+                color="error"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       ),
@@ -600,7 +495,7 @@ const SettingsManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchSettings}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -609,7 +504,7 @@ const SettingsManager = () => {
             variant="outlined"
             startIcon={<CheckCircle />}
             onClick={handleInitializeDefaults}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Reset Defaults
@@ -621,7 +516,7 @@ const SettingsManager = () => {
               resetForm();
               setFormOpen(true);
             }}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Add Setting
@@ -629,6 +524,10 @@ const SettingsManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert 
           severity="error" 
@@ -636,15 +535,36 @@ const SettingsManager = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button 
-            size="small" 
-            onClick={fetchSettings}
-            sx={{ ml: 2 }}
-          >
+          <Button size="small" onClick={fetchSettings} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
       )}
+
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search settings by key, name, or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
 
       {/* Tabs for Categories */}
       <Paper sx={{ mb: 3, borderRadius: 2 }}>
@@ -673,68 +593,20 @@ const SettingsManager = () => {
         </Tabs>
       </Paper>
 
-      {/* Bulk Edit Controls */}
-      {bulkEditMode && (
-        <Paper sx={{ p: 2, mb: 3, borderRadius: 2, bgcolor: 'warning.light' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-              <Warning color="warning" />
-              <Box>
-                <Typography variant="subtitle2" fontWeight="bold">
-                  Bulk Edit Mode
-                </Typography>
-                <Typography variant="caption" color="text.secondary">
-                  Edit values directly in the table. Click Save Changes when done.
-                </Typography>
-              </Box>
-            </Box>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
-                variant="outlined"
-                size="small"
-                startIcon={<Cancel />}
-                onClick={() => {
-                  setBulkEditMode(false);
-                  setEditedValues({});
-                }}
-                sx={{ borderRadius: 2 }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                size="small"
-                startIcon={<Save />}
-                onClick={handleBulkSave}
-                disabled={Object.keys(editedValues).length === 0}
-                sx={{ borderRadius: 2 }}
-              >
-                Save Changes ({Object.keys(editedValues).length})
-              </Button>
-            </Box>
-          </Box>
-        </Paper>
-      )}
-
       {/* Settings Table */}
       <DataTable
         columns={columns}
         data={filteredSettings}
         loading={loading}
         onRefresh={fetchSettings}
-        onEdit={handleEdit}
-        onDelete={handleDelete}
-        title={`Settings `}
-        tableId="settings-table"
-        searchable={true}
-        pagination={true}
+        title={`Settings (${filteredSettings.length})`}
         rowKey="setting_key"
       />
 
       {/* Add/Edit Setting Dialog */}
       <Dialog 
         open={formOpen} 
-        onClose={() => setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -747,8 +619,9 @@ const SettingsManager = () => {
             <IconButton
               onClick={() => setFormOpen(false)}
               size="small"
+              disabled={actionLoading}
             >
-              <Cancel />
+              <Close />
             </IconButton>
           </Box>
         </DialogTitle>
@@ -763,7 +636,7 @@ const SettingsManager = () => {
                 value={formData.setting_key}
                 onChange={handleInputChange}
                 required
-                disabled={isEditing}
+                disabled={isEditing || actionLoading}
                 helperText="Lowercase with underscores (e.g., payment_bank_name)"
                 variant="outlined"
                 size="medium"
@@ -781,6 +654,7 @@ const SettingsManager = () => {
                 helperText="User-friendly name for this setting"
                 variant="outlined"
                 size="medium"
+                disabled={actionLoading}
               />
             </Grid>
             
@@ -793,6 +667,7 @@ const SettingsManager = () => {
                   onChange={handleInputChange}
                   label="Category *"
                   variant="outlined"
+                  disabled={actionLoading}
                 >
                   {categoryOptions.map(category => (
                     <MenuItem key={category.value} value={category.value}>
@@ -814,6 +689,7 @@ const SettingsManager = () => {
                   onChange={(e) => handleDataTypeChange(e.target.value)}
                   label="Data Type *"
                   variant="outlined"
+                  disabled={actionLoading}
                 >
                   {dataTypeOptions.map(option => (
                     <MenuItem key={option.value} value={option.value}>
@@ -843,6 +719,7 @@ const SettingsManager = () => {
                       checked={formData.setting_value === true || formData.setting_value === 'true'}
                       onChange={(e) => setFormData(prev => ({ ...prev, setting_value: e.target.checked }))}
                       color="primary"
+                      disabled={actionLoading}
                     />
                   }
                   label={formData.setting_value === true || formData.setting_value === 'true' ? 'Enabled (Yes)' : 'Disabled (No)'}
@@ -857,6 +734,7 @@ const SettingsManager = () => {
                   name="setting_value"
                   variant="outlined"
                   size="medium"
+                  disabled={actionLoading}
                   InputProps={{ sx: { fontFamily: 'monospace' } }}
                   placeholder='{"key": "value"}'
                   helperText="Enter valid JSON data"
@@ -870,6 +748,7 @@ const SettingsManager = () => {
                   name="setting_value"
                   variant="outlined"
                   size="medium"
+                  disabled={actionLoading}
                   helperText="Password will be stored securely"
                 />
               ) : (
@@ -881,6 +760,7 @@ const SettingsManager = () => {
                   name="setting_value"
                   variant="outlined"
                   size="medium"
+                  disabled={actionLoading}
                   placeholder={`Enter ${formData.data_type} value...`}
                 />
               )}
@@ -897,6 +777,7 @@ const SettingsManager = () => {
                 rows={2}
                 variant="outlined"
                 size="medium"
+                disabled={actionLoading}
                 placeholder="Describe what this setting does..."
               />
             </Grid>
@@ -911,6 +792,7 @@ const SettingsManager = () => {
                 onChange={handleInputChange}
                 variant="outlined"
                 size="medium"
+                disabled={actionLoading}
                 InputProps={{ inputProps: { min: 0 } }}
                 helperText="Lower numbers appear first"
               />
@@ -924,6 +806,7 @@ const SettingsManager = () => {
                     onChange={handleInputChange}
                     name="is_public"
                     color="primary"
+                    disabled={actionLoading}
                   />
                 }
                 label={
@@ -943,6 +826,7 @@ const SettingsManager = () => {
           <Button 
             onClick={() => setFormOpen(false)} 
             variant="outlined"
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -950,10 +834,11 @@ const SettingsManager = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={!formData.setting_key.trim() || !formData.display_name.trim() || !formData.category}
+            disabled={actionLoading || !formData.setting_key.trim() || !formData.display_name.trim() || !formData.category}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {isEditing ? 'Update Setting' : 'Create Setting'}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Setting' : 'Create Setting')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -964,10 +849,11 @@ const SettingsManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Setting"
-        message={`Are you sure you want to delete setting "${selectedSetting?.display_name}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete setting "${selectedSetting?.display_name}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
+        loading={actionLoading}
       />
     </Box>
   );

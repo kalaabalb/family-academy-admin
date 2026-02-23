@@ -92,7 +92,10 @@ import {
   ExpandLess,
   CheckCircleOutline,
   RadioButtonUnchecked,
+  CloudUpload,
+  OpenInNew,
 } from '@mui/icons-material';
+import { getRelativeTime } from '../../api/utils';
 
 const UserManager = () => {
   const { isAdmin, user } = useAuth();
@@ -133,6 +136,8 @@ const UserManager = () => {
     search: '',
   });
   
+  const [showFilters, setShowFilters] = useState(false);
+  
   // Edit form
   const [editForm, setEditForm] = useState({
     account_status: '',
@@ -160,7 +165,7 @@ const UserManager = () => {
       setLoading(true);
       
       const [usersRes, schoolsRes, categoriesRes] = await Promise.all([
-        usersApi.getAllUsers(),
+        usersApi.getAllUsers({ limit: 1000 }),
         schoolsApi.getAllSchools(),
         categoriesApi.getAllCategories(),
       ]);
@@ -217,9 +222,6 @@ const UserManager = () => {
     try {
       setLoadingDetails(true);
       
-      console.log('Loading details for user:', userId);
-      
-      // Fetch ALL user data using existing API endpoints
       const [
         userRes,
         userProgressRes,
@@ -241,37 +243,26 @@ const UserManager = () => {
         }),
       ]);
       
-      // Process user data - this contains subscriptions and payments!
+      // Process user data
       let userData = {};
       let subscriptionsData = [];
       let paymentsData = [];
       let examsData = [];
       
       if (userRes.status === 'fulfilled') {
-        console.log('User details response:', userRes.value.data);
-        
-        // The user details endpoint returns a comprehensive object
         const responseData = userRes.value.data.data || {};
-        
-        // Extract user object
         userData = responseData.user || responseData || {};
         
-        // Extract subscriptions - they should be in the response!
         if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
           subscriptionsData = responseData.subscriptions;
-          console.log('Found subscriptions in user details:', subscriptionsData);
         }
         
-        // Extract payments - they should be in the response!
         if (responseData.payments && Array.isArray(responseData.payments)) {
           paymentsData = responseData.payments;
-          console.log('Found payments in user details:', paymentsData);
         }
         
-        // Extract exams - they might be in the response!
         if (responseData.exams && Array.isArray(responseData.exams)) {
           examsData = responseData.exams;
-          console.log('Found exams in user details:', examsData);
         }
       }
       
@@ -287,23 +278,10 @@ const UserManager = () => {
       };
       
       if (userProgressRes.status === 'fulfilled') {
-        console.log('Progress response raw:', userProgressRes.value.data);
-        
         const progressResponse = userProgressRes.value.data.data || {};
         
-        // Handle different possible structures
         if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
           progressData = progressResponse;
-        } else if (progressResponse.data && progressResponse.data.chapters) {
-          progressData = progressResponse.data;
-        } else if (Array.isArray(progressResponse)) {
-          progressData.chapters = progressResponse;
-          progressData.stats = {
-            total_chapters_started: progressResponse.length,
-            chapters_completed: progressResponse.filter(c => c.completed).length,
-            total_questions_attempted: progressResponse.reduce((sum, c) => sum + (c.questions_attempted || 0), 0),
-            study_time_hours: Math.round((userData.total_study_time || 0) / 60)
-          };
         } else if (progressResponse.overall || progressResponse.recent_activity) {
           progressData.stats = {
             total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
@@ -316,53 +294,41 @@ const UserManager = () => {
             progressData.chapters = progressResponse.recent_activity;
           }
         }
-        
-        console.log('Processed progress data:', progressData);
       }
       
       // Process streak data
       let streakData = { history: [] };
       if (userStreakRes.status === 'fulfilled') {
-        console.log('Streak response:', userStreakRes.value.data);
         streakData = userStreakRes.value.data.data || streakData;
       }
       
       // Process achievements data
       let achievementsData = [];
       if (userAchievementsRes.status === 'fulfilled') {
-        console.log('Achievements response:', userAchievementsRes.value.data);
         achievementsData = userAchievementsRes.value.data.data || [];
       }
       
-      // FIX 1: PAYMENTS - Working!
+      // Fetch payments if not in user details
       if (paymentsData.length === 0) {
         try {
           const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
           if (paymentsRes.data && paymentsRes.data.data) {
             paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
-            console.log('Fetched and filtered payments for user:', paymentsData);
           }
         } catch (err) {
           console.log('Payments fetch failed:', err);
         }
       }
       
-      // FIX 2: EXAMS - Using the working endpoint (now shows data!)
+      // Fetch exams
       if (examsData.length === 0) {
         try {
           const examsRes = await examResultsApi.getExamResultsByUser(userId);
           if (examsRes.data && examsRes.data.data) {
             examsData = examsRes.data.data;
-            console.log('✅ Fetched exam results via new endpoint:', examsData);
           }
         } catch (err) {
           console.log('Exam fetch failed:', err);
-          
-          // Fallback: Try to get from user details
-          if (userData.exam_results) {
-            examsData = userData.exam_results;
-            console.log('Got exams from user details:', examsData);
-          }
         }
       }
       
@@ -376,7 +342,6 @@ const UserManager = () => {
         achievements: achievementsData,
       };
       
-      console.log('Final user details:', details);
       setUserDetails(details);
       setSelectedUser(userId);
       setViewModalOpen(true);
@@ -520,7 +485,6 @@ const UserManager = () => {
       const date = new Date();
       date.setDate(today.getDate() - i);
       
-      // Check if this date exists in streak history
       const dateStr = date.toISOString().split('T')[0];
       const hasStreak = streakHistory?.some(
         (s) => s.streak_date?.split('T')[0] === dateStr
@@ -629,34 +593,17 @@ const UserManager = () => {
       ),
     },
     {
-      field: 'subscribed_categories',
-      headerName: 'Subscriptions',
-      width: 180,
-      render: (value, row) => {
-        const categories = value ? value.split(',').map(c => c.trim()) : [];
-        return (
-          <Box>
-            {categories.length > 0 ? (
-              categories.map((cat, i) => (
-                <Chip
-                  key={i}
-                  label={cat}
-                  size="small"
-                  color="success"
-                  variant="outlined"
-                  sx={{ mr: 0.5, mb: 0.5 }}
-                />
-              ))
-            ) : (
-              <Chip
-                label={row.account_status === 'active' ? 'Active' : 'No subscriptions'}
-                size="small"
-                color={row.account_status === 'active' ? 'info' : 'default'}
-              />
-            )}
-          </Box>
-        );
-      },
+      field: 'parent_linked',
+      headerName: 'Parent',
+      width: 100,
+      render: (value) => (
+        <Chip
+          label={value ? 'Linked' : 'Not Linked'}
+          size="small"
+          color={value ? 'info' : 'default'}
+          variant="outlined"
+        />
+      ),
     },
     {
       field: 'created_at',
@@ -677,43 +624,61 @@ const UserManager = () => {
       render: (value, row) => (
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Tooltip title="View Details">
-            <IconButton
-              size="small"
-              color="primary"
-              onClick={(e) => {
-                e.stopPropagation();
-                loadUserDetails(row.id);
-              }}
-              disabled={actionLoading}
-            >
-              <Visibility fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color="primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  loadUserDetails(row.id);
+                }}
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Visibility fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           <Tooltip title="Edit User">
-            <IconButton
-              size="small"
-              color="info"
-              onClick={(e) => {
-                e.stopPropagation();
-                openEditModal(row);
-              }}
-              disabled={actionLoading}
-            >
-              <Edit fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color="info"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEditModal(row);
+                }}
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Edit fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           <Tooltip title="Delete User">
-            <IconButton
-              size="small"
-              color="error"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleDeleteUser(row);
-              }}
-              disabled={actionLoading}
-            >
-              <Delete fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                color="error"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleDeleteUser(row);
+                }}
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       ),
@@ -733,14 +698,39 @@ const UserManager = () => {
   return (
     <Box sx={{ p: 3 }}>
       {/* Header */}
-      <Box sx={{ mb: 4 }}>
-        <Typography variant="h4" fontWeight="bold" gutterBottom color="primary">
-          User Management
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          Manage student accounts, subscriptions, payments, and track progress
-        </Typography>
+      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          <Typography variant="h4" fontWeight="bold" gutterBottom color="primary">
+            User Management
+          </Typography>
+          <Typography variant="body1" color="text.secondary">
+            Manage student accounts, subscriptions, payments, and track progress
+          </Typography>
+        </Box>
+        
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            sx={{ borderRadius: 2 }}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchData}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Refresh
+          </Button>
+        </Stack>
       </Box>
+
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Stats Cards */}
       <Grid container spacing={2} sx={{ mb: 3 }}>
@@ -782,87 +772,113 @@ const UserManager = () => {
         ))}
       </Grid>
 
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Search Users"
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              placeholder="Search by username, email, phone..."
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Person />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>School</InputLabel>
-              <Select
-                name="school_id"
-                value={filters.school_id}
+      {/* Filters Section */}
+      {showFilters && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" fontWeight="medium" gutterBottom>
+            Filter Users
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                label="Search"
+                name="search"
+                value={filters.search}
                 onChange={handleFilterChange}
-                label="School"
-              >
-                <MenuItem value="">All Schools</MenuItem>
-                {schools.map(school => (
-                  <MenuItem key={school.id} value={school.id}>
-                    {school.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+                size="small"
+                placeholder="Search by username, email, phone..."
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Person fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>School</InputLabel>
+                <Select
+                  name="school_id"
+                  value={filters.school_id}
+                  onChange={handleFilterChange}
+                  label="School"
+                >
+                  <MenuItem value="">All Schools</MenuItem>
+                  {schools.map(school => (
+                    <MenuItem key={school.id} value={school.id}>
+                      {school.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  name="status"
+                  value={filters.status}
+                  onChange={handleFilterChange}
+                  label="Status"
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="active">Active</MenuItem>
+                  <MenuItem value="unpaid">Unpaid</MenuItem>
+                  <MenuItem value="expired">Expired</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Parent Linked</InputLabel>
+                <Select
+                  name="parent_linked"
+                  value={filters.parent_linked}
+                  onChange={handleFilterChange}
+                  label="Parent Linked"
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="yes">Yes</MenuItem>
+                  <MenuItem value="no">No</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <Box sx={{ display: 'flex', gap: 1 }}>
+                <Button
+                  variant="contained"
+                  onClick={() => {
+                    setFilters(prev => ({ ...prev }));
+                    setShowFilters(false);
+                  }}
+                  size="small"
+                  fullWidth
+                  sx={{ borderRadius: 2 }}
+                >
+                  Apply
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={clearFilters}
+                  size="small"
+                  fullWidth
+                  sx={{ borderRadius: 2 }}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Grid>
           </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                name="status"
-                value={filters.status}
-                onChange={handleFilterChange}
-                label="Status"
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="active">Active</MenuItem>
-                <MenuItem value="unpaid">Unpaid</MenuItem>
-                <MenuItem value="expired">Expired</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Parent Linked</InputLabel>
-              <Select
-                name="parent_linked"
-                value={filters.parent_linked}
-                onChange={handleFilterChange}
-                label="Parent Linked"
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="yes">Yes</MenuItem>
-                <MenuItem value="no">No</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={clearFilters}
-              startIcon={<Clear />}
-            >
-              Clear
-            </Button>
-          </Grid>
-        </Grid>
-      </Paper>
+        </Paper>
+      )}
 
       {/* Users Table */}
       <DataTable
@@ -871,10 +887,7 @@ const UserManager = () => {
         loading={loading}
         onRefresh={fetchData}
         onRowClick={(row) => loadUserDetails(row.id)}
-        title={`Users `}
-        tableId="users-table"
-        searchable={false}
-        pagination={true}
+        title="Users"
         rowKey="id"
       />
 
@@ -897,13 +910,21 @@ const UserManager = () => {
           <>
             <DialogTitle sx={{ m: 0, p: 3, pb: 2, bgcolor: 'primary.main', color: 'white' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <Box>
-                  <Typography variant="h5" fontWeight="bold">
-                    {userDetails.user.username}
-                  </Typography>
-                  <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                    ID: {userDetails.user.id} • Joined: {new Date(userDetails.user.created_at).toLocaleDateString()}
-                  </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar
+                    src={userDetails.user.profile_image}
+                    sx={{ width: 56, height: 56, border: '2px solid white' }}
+                  >
+                    {userDetails.user.username?.[0]?.toUpperCase()}
+                  </Avatar>
+                  <Box>
+                    <Typography variant="h5" fontWeight="bold">
+                      {userDetails.user.username}
+                    </Typography>
+                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                      ID: {userDetails.user.id} • Joined: {new Date(userDetails.user.created_at).toLocaleDateString()}
+                    </Typography>
+                  </Box>
                 </Box>
                 <Box>
                   <IconButton
@@ -1112,7 +1133,6 @@ const UserManager = () => {
                           {(userDetails.progress.chapters || userDetails.progress.recent_activity || [])
                             .slice(progressPage * rowsPerPage, progressPage * rowsPerPage + rowsPerPage)
                             .map((chapter) => {
-                              // FIX: Ensure video_progress is a number
                               const videoProgress = Number(chapter.video_progress) || 0;
                               const questionsAttempted = Number(chapter.questions_attempted) || 0;
                               const questionsCorrect = Number(chapter.questions_correct) || 0;
@@ -1313,9 +1333,7 @@ const UserManager = () => {
                           No Subscriptions Found
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {userDetails.user.account_status === 'active' 
-                            ? 'User is active but subscription data not loaded properly.' 
-                            : 'User has no active or past subscriptions.'}
+                          User has no active or past subscriptions.
                         </Typography>
                       </Paper>
                     ) : (
@@ -1445,7 +1463,6 @@ const UserManager = () => {
                                 <TableCell>Method</TableCell>
                                 <TableCell>Type</TableCell>
                                 <TableCell>Status</TableCell>
-                                <TableCell>Account Holder</TableCell>
                               </TableRow>
                             </TableHead>
                             <TableBody>
@@ -1473,7 +1490,6 @@ const UserManager = () => {
                                         }
                                       />
                                     </TableCell>
-                                    <TableCell>{payment.account_holder_name || '-'}</TableCell>
                                   </TableRow>
                                 ))}
                             </TableBody>
@@ -1508,7 +1524,7 @@ const UserManager = () => {
                           No Exam Results
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {userDetails.user.username} hasn't taken any exams yet.
+                          User hasn't taken any exams yet.
                         </Typography>
                       </Paper>
                     ) : (
@@ -1530,7 +1546,6 @@ const UserManager = () => {
                                 .slice(examsPage * rowsPerPage, examsPage * rowsPerPage + rowsPerPage)
                                 .map((exam, index) => {
                                   const passed = exam.score >= (exam.passing_score || 50);
-                                  // FIX: Ensure exam.score is a number
                                   const scoreValue = Number(exam.score) || 0;
                                   
                                   return (
@@ -1653,12 +1668,27 @@ const UserManager = () => {
         onClose={() => !actionLoading && setEditModalOpen(false)}
         maxWidth="sm"
         fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
       >
-        <DialogTitle>Edit User Profile</DialogTitle>
-        <DialogContent dividers>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" fontWeight="bold">
+              Edit User Profile
+            </Typography>
+            <IconButton
+              onClick={() => setEditModalOpen(false)}
+              size="small"
+              disabled={actionLoading}
+            >
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={2}>
             <Grid item xs={12}>
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel>Account Status</InputLabel>
                 <Select
                   value={editForm.account_status}
@@ -1672,7 +1702,7 @@ const UserManager = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
-              <FormControl fullWidth>
+              <FormControl fullWidth size="small">
                 <InputLabel>School</InputLabel>
                 <Select
                   value={editForm.school_id}
@@ -1691,6 +1721,7 @@ const UserManager = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 label="Email"
                 value={editForm.email}
                 onChange={(e) => setEditForm(prev => ({ ...prev, email: e.target.value }))}
@@ -1700,6 +1731,7 @@ const UserManager = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 label="Phone"
                 value={editForm.phone}
                 onChange={(e) => setEditForm(prev => ({ ...prev, phone: e.target.value }))}
@@ -1709,6 +1741,7 @@ const UserManager = () => {
             <Grid item xs={12}>
               <TextField
                 fullWidth
+                size="small"
                 multiline
                 rows={3}
                 label="Admin Notes"
@@ -1719,15 +1752,24 @@ const UserManager = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setEditModalOpen(false)}>Cancel</Button>
+        
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button
+            onClick={() => setEditModalOpen(false)}
+            variant="outlined"
+            disabled={actionLoading}
+            sx={{ borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
           <Button
             variant="contained"
             onClick={handleUpdateUser}
             disabled={actionLoading}
             startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
+            sx={{ borderRadius: 2 }}
           >
-            Save Changes
+            {actionLoading ? 'Saving...' : 'Save Changes'}
           </Button>
         </DialogActions>
       </Dialog>

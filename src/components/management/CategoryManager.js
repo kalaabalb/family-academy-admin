@@ -26,6 +26,9 @@ import {
   Grid,
   Avatar,
   CircularProgress,
+  LinearProgress,
+  InputAdornment,
+  Paper
 } from '@mui/material';
 import {
   Add,
@@ -39,7 +42,9 @@ import {
   Book,
   Image,
   Close,
-  Warning,
+  Save,
+  FilterList,
+  Search,
 } from '@mui/icons-material';
 
 const CategoryManager = () => {
@@ -48,6 +53,7 @@ const CategoryManager = () => {
   
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
@@ -55,6 +61,7 @@ const CategoryManager = () => {
   const [selectedCategory, setSelectedCategory] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [uploadingImage, setUploadingImage] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formData, setFormData] = useState({
     name: '',
@@ -93,8 +100,7 @@ const CategoryManager = () => {
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
-      const errMsg = err.response?.data?.message || 'Failed to load categories';
-      setError(errMsg);
+      setError(err.response?.data?.message || 'Failed to load categories');
       showError('Failed to load categories');
     } finally {
       setLoading(false);
@@ -132,11 +138,9 @@ const CategoryManager = () => {
     setUploadingImage(true);
     
     try {
-      // FIXED: Use categoriesApi.uploadCategoryImage directly
       const response = await categoriesApi.uploadCategoryImage(file);
       
       if (response.data && response.data.success) {
-        // FIXED: The backend returns the URL directly in data
         const imageUrl = response.data.data || response.data.url;
         setFormData(prev => ({
           ...prev,
@@ -169,17 +173,17 @@ const CategoryManager = () => {
 
   const handleSubmit = async () => {
     try {
-      setLoading(true);
+      setActionLoading(true);
       
       if (!formData.name.trim()) {
         showError('Category name is required');
-        setLoading(false);
+        setActionLoading(false);
         return;
       }
 
       if (formData.status === 'active' && (!formData.price || parseFloat(formData.price) <= 0)) {
         showError('Price is required for active categories');
-        setLoading(false);
+        setActionLoading(false);
         return;
       }
 
@@ -193,14 +197,7 @@ const CategoryManager = () => {
       };
 
       if (isEditing && selectedCategory) {
-        const response = await categoriesApi.updateCategory(selectedCategory.id, submitData);
-        
-        // FIXED: Update the category in state with the response data
-        if (response.data && response.data.data) {
-          setCategories(prev => prev.map(c => 
-            c.id === selectedCategory.id ? { ...c, ...response.data.data } : c
-          ));
-        }
+        await categoriesApi.updateCategory(selectedCategory.id, submitData);
         showSuccess('Category updated successfully');
       } else {
         await categoriesApi.createCategory(submitData);
@@ -215,7 +212,7 @@ const CategoryManager = () => {
       console.error('Failed to save category:', err);
       showError(err.response?.data?.message || 'Failed to save category');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -234,6 +231,10 @@ const CategoryManager = () => {
   };
 
   const handleDelete = (category) => {
+    if (category.course_count > 0) {
+      showError('Cannot delete category with existing courses. Delete the courses first.');
+      return;
+    }
     setSelectedCategory(category);
     setDeleteConfirmOpen(true);
   };
@@ -242,7 +243,7 @@ const CategoryManager = () => {
     if (!selectedCategory) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await categoriesApi.deleteCategory(selectedCategory.id);
       
       setCategories(prev => prev.filter(c => c.id !== selectedCategory.id));
@@ -255,7 +256,7 @@ const CategoryManager = () => {
       console.error('Failed to delete category:', err);
       showError(err.response?.data?.message || 'Failed to delete category');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -263,6 +264,16 @@ const CategoryManager = () => {
     if (!price && price !== 0) return '-';
     return `${parseFloat(price).toLocaleString()} Birr`;
   };
+
+  // Filter categories based on search
+  const filteredCategories = categories.filter(cat => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      cat.name.toLowerCase().includes(query) ||
+      (cat.description && cat.description.toLowerCase().includes(query))
+    );
+  });
 
   const columns = [
     {
@@ -378,22 +389,33 @@ const CategoryManager = () => {
       render: (value, row) => (
         <Box sx={{ display: 'flex', gap: 0.5 }}>
           <Tooltip title="Edit Category">
-            <IconButton
-              size="small"
-              onClick={() => handleEdit(row)}
-              color="primary"
-            >
-              <Edit fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleEdit(row)}
+                color="primary"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Edit fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           
           <Tooltip title={row.course_count > 0 ? "Cannot delete category with courses" : "Delete Category"}>
             <span>
               <IconButton
                 size="small"
-                onClick={() => row.course_count === 0 && handleDelete(row)}
+                onClick={() => handleDelete(row)}
                 color="error"
-                disabled={row.course_count > 0}
+                disabled={row.course_count > 0 || actionLoading}
+                sx={{
+                  opacity: actionLoading || row.course_count > 0 ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
               >
                 <Delete fontSize="small" />
               </IconButton>
@@ -431,7 +453,7 @@ const CategoryManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -443,7 +465,7 @@ const CategoryManager = () => {
               resetForm();
               setFormOpen(true);
             }}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Add Category
@@ -451,6 +473,10 @@ const CategoryManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -460,23 +486,45 @@ const CategoryManager = () => {
         </Alert>
       )}
 
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search categories by name or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+
       {/* Categories Table */}
       <DataTable
         columns={columns}
-        data={categories}
+        data={filteredCategories}
         loading={loading}
         onRefresh={fetchData}
-        title={`Categories`}
-        tableId="categories-table"
-        searchable={true}
-        pagination={true}
+        title={`Categories (${filteredCategories.length})`}
         rowKey="id"
       />
 
       {/* Add/Edit Category Dialog */}
       <Dialog
         open={formOpen}
-        onClose={() => !loading && setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -487,9 +535,9 @@ const CategoryManager = () => {
               {isEditing ? 'Edit Category' : 'Add New Category'}
             </Typography>
             <IconButton
-              onClick={() => !loading && setFormOpen(false)}
+              onClick={() => !actionLoading && setFormOpen(false)}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -518,14 +566,14 @@ const CategoryManager = () => {
                     id="category-image-upload"
                     type="file"
                     onChange={handleImageUpload}
-                    disabled={uploadingImage || loading}
+                    disabled={uploadingImage || actionLoading}
                   />
                   <label htmlFor="category-image-upload">
                     <Button
                       variant="outlined"
                       component="span"
                       startIcon={<Image />}
-                      disabled={uploadingImage || loading}
+                      disabled={uploadingImage || actionLoading}
                       sx={{ borderRadius: 2 }}
                     >
                       {uploadingImage ? <CircularProgress size={24} /> : (formData.image_url ? 'Change Image' : 'Upload Image')}
@@ -557,7 +605,7 @@ const CategoryManager = () => {
                 onChange={handleInputChange}
                 required
                 placeholder="e.g., Grade 9, Grade 10"
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
             
@@ -569,7 +617,7 @@ const CategoryManager = () => {
                   value={formData.status}
                   onChange={handleInputChange}
                   label="Status *"
-                  disabled={loading}
+                  disabled={actionLoading}
                 >
                   <MenuItem value="active">Active</MenuItem>
                   <MenuItem value="coming_soon">Coming Soon</MenuItem>
@@ -590,7 +638,7 @@ const CategoryManager = () => {
                     required
                     inputProps={{ min: 0, step: 0.01 }}
                     helperText="Required for active categories"
-                    disabled={loading}
+                    disabled={actionLoading}
                   />
                 </Grid>
                 
@@ -602,7 +650,7 @@ const CategoryManager = () => {
                       value={formData.billing_cycle}
                       onChange={handleInputChange}
                       label="Billing Cycle *"
-                      disabled={loading}
+                      disabled={actionLoading}
                     >
                       <MenuItem value="monthly">Monthly</MenuItem>
                       <MenuItem value="semester">Semester</MenuItem>
@@ -630,7 +678,7 @@ const CategoryManager = () => {
                 multiline
                 rows={3}
                 placeholder="Enter category description..."
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
           </Grid>
@@ -639,8 +687,11 @@ const CategoryManager = () => {
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button
             variant="outlined"
-            onClick={() => setFormOpen(false)}
-            disabled={loading}
+            onClick={() => {
+              setFormOpen(false);
+              resetForm();
+            }}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -649,13 +700,14 @@ const CategoryManager = () => {
             variant="contained"
             onClick={handleSubmit}
             disabled={
-              loading || 
+              actionLoading || 
               !formData.name.trim() || 
               (formData.status === 'active' && (!formData.price || parseFloat(formData.price) <= 0))
             }
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Saving...' : (isEditing ? 'Update Category' : 'Create Category')}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Category' : 'Create Category')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -666,18 +718,11 @@ const CategoryManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Category"
-        message={
-          selectedCategory ? 
-            selectedCategory.course_count > 0 
-              ? `Category "${selectedCategory.name}" has ${selectedCategory.course_count} courses and cannot be deleted. Delete the courses first.`
-              : `Are you sure you want to delete category "${selectedCategory.name}"? This action cannot be undone.`
-            : 'Delete category?'
-        }
+        message={`Are you sure you want to delete category "${selectedCategory?.name}"? This action cannot be undone.`}
         confirmText="Delete"
         cancelText="Cancel"
-        severity={selectedCategory?.course_count > 0 ? 'warning' : 'error'}
-        loading={loading}
-        disabled={selectedCategory?.course_count > 0}
+        severity="error"
+        loading={actionLoading}
       />
     </Box>
   );

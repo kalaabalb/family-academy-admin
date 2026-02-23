@@ -32,15 +32,7 @@ import {
   CircularProgress,
   InputAdornment,
   Avatar,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemIcon,
-  ListItemSecondaryAction,
-  Card,
-  CardContent,
-  Tab,
-  Tabs,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add,
@@ -57,12 +49,9 @@ import {
   Save,
   CheckCircle,
   Cancel,
-  Email,
-  Phone,
-  CalendarToday,
   VpnKey,
   Assignment,
-  Group,
+  Search,
 } from '@mui/icons-material';
 
 const TeacherManager = () => {
@@ -72,7 +61,9 @@ const TeacherManager = () => {
   const [teachers, setTeachers] = useState([]);
   const [courses, setCourses] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -104,8 +95,32 @@ const TeacherManager = () => {
         coursesApi.getAllCourses(),
       ]);
       
-      setTeachers(teachersRes.data.data || []);
-      setCourses(coursesRes.data.data || []);
+      const teachersData = teachersRes.data.data || [];
+      const coursesData = coursesRes.data.data || [];
+      
+      // Enrich teachers with course names
+      const enrichedTeachers = teachersData.map(teacher => {
+        let assignedCourseIds = [];
+        if (teacher.assigned_course_ids && Array.isArray(teacher.assigned_course_ids)) {
+          assignedCourseIds = teacher.assigned_course_ids;
+        } else if (teacher.assigned_courses) {
+          assignedCourseIds = teacher.assigned_courses.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
+        }
+        
+        const assignedCourses = coursesData
+          .filter(course => assignedCourseIds.includes(course.id))
+          .map(course => course.name);
+        
+        return {
+          ...teacher,
+          assigned_course_ids: assignedCourseIds,
+          assigned_course_names: assignedCourses.join(', ') || 'No courses assigned',
+          course_count: assignedCourseIds.length,
+        };
+      });
+      
+      setTeachers(enrichedTeachers);
+      setCourses(coursesData);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -208,7 +223,7 @@ const TeacherManager = () => {
     if (!validateForm()) return;
     
     try {
-      setLoading(true);
+      setActionLoading(true);
       
       const teacherData = {
         name: formData.name.trim(),
@@ -237,7 +252,7 @@ const TeacherManager = () => {
       console.error('Failed to save teacher:', err);
       showError(err.response?.data?.message || 'Failed to save teacher');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -245,20 +260,12 @@ const TeacherManager = () => {
     setSelectedTeacher(teacher);
     setIsEditing(true);
     
-    // Parse assigned course IDs
-    let assignedCourses = [];
-    if (teacher.assigned_course_ids && Array.isArray(teacher.assigned_course_ids)) {
-      assignedCourses = teacher.assigned_course_ids;
-    } else if (teacher.assigned_courses) {
-      assignedCourses = teacher.assigned_courses.split(',').map(id => parseInt(id)).filter(id => !isNaN(id));
-    }
-    
     setFormData({
       name: teacher.name || '',
       username: teacher.username || '',
       password: '', // Leave empty for edit
       status: teacher.status || 'active',
-      course_ids: assignedCourses,
+      course_ids: teacher.assigned_course_ids || [],
     });
     
     setFormOpen(true);
@@ -287,7 +294,7 @@ const TeacherManager = () => {
     }
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await teachersApi.resetTeacherPassword(selectedTeacher.id, {
         new_password: resetPasswordData.new_password,
       });
@@ -300,7 +307,7 @@ const TeacherManager = () => {
       console.error('Failed to reset password:', err);
       showError(err.response?.data?.message || 'Failed to reset password');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -313,7 +320,7 @@ const TeacherManager = () => {
     if (!selectedTeacher) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await teachersApi.deleteTeacher(selectedTeacher.id);
       
       setTeachers(prev => prev.filter(t => t.id !== selectedTeacher.id));
@@ -326,9 +333,20 @@ const TeacherManager = () => {
       console.error('Failed to delete teacher:', err);
       showError(err.response?.data?.message || 'Failed to delete teacher');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
+
+  // Filter teachers based on search
+  const filteredTeachers = teachers.filter(teacher => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      teacher.name.toLowerCase().includes(query) ||
+      teacher.username.toLowerCase().includes(query) ||
+      (teacher.assigned_course_names && teacher.assigned_course_names.toLowerCase().includes(query))
+    );
+  });
 
   const columns = [
     {
@@ -336,7 +354,7 @@ const TeacherManager = () => {
       headerName: 'ID',
       width: 70,
       render: (value) => (
-        <Typography variant="body2" color="text.secondary" fontWeight="medium">
+        <Typography variant="body2" color="text.secondary">
           #{value}
         </Typography>
       ),
@@ -379,7 +397,7 @@ const TeacherManager = () => {
       field: 'course_count',
       headerName: 'Courses',
       width: 100,
-      render: (value, row) => (
+      render: (value) => (
         <Chip
           label={value || 0}
           size="small"
@@ -426,33 +444,54 @@ const TeacherManager = () => {
       render: (value, row) => (
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Tooltip title="Edit Teacher">
-            <IconButton
-              size="small"
-              onClick={() => handleEdit(row)}
-              color="primary"
-            >
-              <Edit fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleEdit(row)}
+                color="primary"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Edit fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           
           <Tooltip title="Reset Password">
-            <IconButton
-              size="small"
-              onClick={() => handleResetPassword(row)}
-              color="warning"
-            >
-              <LockReset fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleResetPassword(row)}
+                color="warning"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <LockReset fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
           
           <Tooltip title="Delete Teacher">
-            <IconButton
-              size="small"
-              onClick={() => handleDelete(row)}
-              color="error"
-            >
-              <Delete fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleDelete(row)}
+                color="error"
+                disabled={actionLoading}
+                sx={{
+                  opacity: actionLoading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Box>
       ),
@@ -487,7 +526,7 @@ const TeacherManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -499,7 +538,7 @@ const TeacherManager = () => {
               resetForm();
               setFormOpen(true);
             }}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Add Teacher
@@ -507,6 +546,10 @@ const TeacherManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -516,23 +559,45 @@ const TeacherManager = () => {
         </Alert>
       )}
 
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search teachers by name, username, or assigned courses..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+
       {/* Teachers Table */}
       <DataTable
         columns={columns}
-        data={teachers}
+        data={filteredTeachers}
         loading={loading}
         onRefresh={fetchData}
-        title={`Teachers`}
-        tableId="teachers-table"
-        searchable={true}
-        pagination={true}
+        title={`Teachers (${filteredTeachers.length})`}
         rowKey="id"
       />
 
       {/* Add/Edit Teacher Dialog */}
       <Dialog
         open={formOpen}
-        onClose={() => !loading && setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
@@ -544,13 +609,13 @@ const TeacherManager = () => {
             </Typography>
             <IconButton
               onClick={() => {
-                if (!loading) {
+                if (!actionLoading) {
                   setFormOpen(false);
                   resetForm();
                 }
               }}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -567,7 +632,7 @@ const TeacherManager = () => {
                 value={formData.name}
                 onChange={handleInputChange}
                 required
-                disabled={loading}
+                disabled={actionLoading}
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -586,7 +651,7 @@ const TeacherManager = () => {
                 value={formData.username}
                 onChange={handleInputChange}
                 required
-                disabled={loading || isEditing}
+                disabled={actionLoading || isEditing}
                 helperText={isEditing ? "Username cannot be changed" : "Letters, numbers, underscores"}
                 InputProps={{
                   startAdornment: (
@@ -608,7 +673,7 @@ const TeacherManager = () => {
                   value={formData.password}
                   onChange={handleInputChange}
                   required
-                  disabled={loading}
+                  disabled={actionLoading}
                   helperText="Minimum 6 characters"
                   InputProps={{
                     startAdornment: (
@@ -621,6 +686,7 @@ const TeacherManager = () => {
                         <IconButton
                           onClick={() => setShowPassword(!showPassword)}
                           edge="end"
+                          disabled={actionLoading}
                         >
                           {showPassword ? <VisibilityOff /> : <Visibility />}
                         </IconButton>
@@ -648,7 +714,7 @@ const TeacherManager = () => {
                   value={formData.status}
                   onChange={handleInputChange}
                   label="Status"
-                  disabled={loading}
+                  disabled={actionLoading}
                 >
                   <MenuItem value="active">Active</MenuItem>
                   <MenuItem value="inactive">Inactive</MenuItem>
@@ -665,7 +731,7 @@ const TeacherManager = () => {
                 <Button
                   size="small"
                   onClick={handleSelectAllCourses}
-                  disabled={loading || courses.length === 0}
+                  disabled={actionLoading || courses.length === 0}
                 >
                   {formData.course_ids.length === courses.length ? 'Deselect All' : 'Select All'}
                 </Button>
@@ -685,7 +751,7 @@ const TeacherManager = () => {
                           <Checkbox
                             checked={formData.course_ids.includes(course.id)}
                             onChange={() => handleCourseToggle(course.id)}
-                            disabled={loading}
+                            disabled={actionLoading}
                           />
                         }
                         label={
@@ -718,7 +784,7 @@ const TeacherManager = () => {
               setFormOpen(false);
               resetForm();
             }}
-            disabled={loading}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -727,15 +793,15 @@ const TeacherManager = () => {
             variant="contained"
             onClick={handleSubmit}
             disabled={
-              loading || 
+              actionLoading || 
               !formData.name.trim() || 
               !formData.username.trim() ||
               (!isEditing && !formData.password)
             }
-            startIcon={loading ? <CircularProgress size={20} /> : <Save />}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Saving...' : (isEditing ? 'Update Teacher' : 'Create Teacher')}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Teacher' : 'Create Teacher')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -743,7 +809,7 @@ const TeacherManager = () => {
       {/* Reset Password Dialog */}
       <Dialog
         open={resetPasswordOpen}
-        onClose={() => !loading && setResetPasswordOpen(false)}
+        onClose={() => !actionLoading && setResetPasswordOpen(false)}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -755,13 +821,13 @@ const TeacherManager = () => {
             </Typography>
             <IconButton
               onClick={() => {
-                if (!loading) {
+                if (!actionLoading) {
                   setResetPasswordOpen(false);
                   setResetPasswordData({ new_password: '', confirm_password: '' });
                 }
               }}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -779,7 +845,7 @@ const TeacherManager = () => {
                 onChange={(e) => setResetPasswordData(prev => ({ ...prev, new_password: e.target.value }))}
                 required
                 helperText="Minimum 6 characters"
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
             <Grid item xs={12}>
@@ -796,7 +862,7 @@ const TeacherManager = () => {
                     ? "Passwords do not match"
                     : "Re-enter the new password"
                 }
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
           </Grid>
@@ -809,7 +875,7 @@ const TeacherManager = () => {
               setResetPasswordOpen(false);
               setResetPasswordData({ new_password: '', confirm_password: '' });
             }}
-            disabled={loading}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -818,16 +884,16 @@ const TeacherManager = () => {
             variant="contained"
             onClick={confirmResetPassword}
             disabled={
-              loading ||
+              actionLoading ||
               !resetPasswordData.new_password ||
               !resetPasswordData.confirm_password ||
               resetPasswordData.new_password.length < 6 ||
               resetPasswordData.new_password !== resetPasswordData.confirm_password
             }
-            startIcon={loading ? <CircularProgress size={20} /> : <LockReset />}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <LockReset />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Resetting...' : 'Reset Password'}
+            {actionLoading ? 'Resetting...' : 'Reset Password'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -838,11 +904,11 @@ const TeacherManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Teacher"
-        message={`Are you sure you want to delete teacher "${selectedTeacher?.name}"? All their content will be reassigned to admin.`}
+        message={`Are you sure you want to delete teacher "${selectedTeacher?.name}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
-        loading={loading}
+        loading={actionLoading}
       />
     </Box>
   );

@@ -7,6 +7,7 @@ import videosApi from '../../api/videos';
 import notesApi from '../../api/notes';
 import questionsApi from '../../api/questions';
 import examsApi from '../../api/exams';
+import systemLogsApi from '../../api/systemLogs';
 import {
   Box,
   Grid,
@@ -51,9 +52,10 @@ import {
   Visibility,
   BarChart,
   Refresh,
+  LocalFireDepartment,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
-import { formatDate, getRelativeTime } from '../../api/utils';
+import { getRelativeTime } from '../../api/utils';
 
 const StatCard = ({ title, value, icon, color, loading, onClick }) => (
   <Card 
@@ -134,11 +136,11 @@ const CourseCard = ({ course, stats, onView, onManage }) => {
               {course.name}
             </Typography>
             <Typography variant="caption" color="text.secondary">
-              {course.category_name} • {course.chapter_count || 0} Chapters
+              {course.category_name} • {stats?.chapters || 0} Chapters
             </Typography>
           </Box>
           <Chip
-            label={course.status || 'Active'}
+            label="Active"
             size="small"
             color="success"
             variant="outlined"
@@ -227,13 +229,14 @@ const TeacherDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [assignedCourses, setAssignedCourses] = useState([]);
+  const [courseStats, setCourseStats] = useState({});
+  const [recentActivity, setRecentActivity] = useState([]);
   const [stats, setStats] = useState({
     totalChapters: 0,
     totalVideos: 0,
     totalNotes: 0,
     totalQuestions: 0,
     totalExams: 0,
-    recentActivity: [],
   });
 
   useEffect(() => {
@@ -263,50 +266,103 @@ const TeacherDashboard = () => {
       let totalNotes = 0;
       let totalQuestions = 0;
       let totalExams = 0;
+      
+      const courseStatsMap = {};
 
       for (const course of courses) {
         try {
           // Get chapters for this course
-          const chaptersRes = await chaptersApi.getChaptersForStudent(course.id);
+          const chaptersRes = await chaptersApi.getAllChapters({ course_id: course.id });
           const chapters = chaptersRes.data.data || [];
           totalChapters += chapters.length;
+          
+          let courseVideos = 0;
+          let courseNotes = 0;
+          let courseQuestions = 0;
 
           // For each chapter, get content
           for (const chapter of chapters) {
             try {
-              const videosRes = await videosApi.getVideosForChapter(chapter.id);
-              totalVideos += (videosRes.data.data || []).length;
+              const videosRes = await videosApi.getAllVideos({ chapter_id: chapter.id });
+              const videos = videosRes.data.data || [];
+              courseVideos += videos.length;
+              totalVideos += videos.length;
 
-              const notesRes = await notesApi.getNotesForChapter(chapter.id);
-              totalNotes += (notesRes.data.data || []).length;
+              const notesRes = await notesApi.getAllNotes({ chapter_id: chapter.id });
+              const notes = notesRes.data.data || [];
+              courseNotes += notes.length;
+              totalNotes += notes.length;
 
-              const questionsRes = await questionsApi.getPracticeQuestions(chapter.id);
-              totalQuestions += (questionsRes.data.data || []).length;
+              const questionsRes = await questionsApi.getAllQuestions({ chapter_id: chapter.id });
+              const questions = questionsRes.data.data || [];
+              courseQuestions += questions.length;
+              totalQuestions += questions.length;
             } catch (err) {
               console.error(`Error fetching content for chapter ${chapter.id}:`, err);
             }
           }
 
           // Get exams for this course
-          const examsRes = await examsApi.getAvailableExams(course.id);
-          totalExams += (examsRes.data.data || []).length;
+          const examsRes = await examsApi.getAllExams({ course_id: course.id });
+          const exams = examsRes.data.data || [];
+          totalExams += exams.length;
+          
+          courseStatsMap[course.id] = {
+            chapters: chapters.length,
+            videos: courseVideos,
+            notes: courseNotes,
+            questions: courseQuestions,
+            exams: exams.length,
+          };
+          
         } catch (err) {
           console.error(`Error fetching data for course ${course.id}:`, err);
+          courseStatsMap[course.id] = { chapters: 0, videos: 0, notes: 0, questions: 0, exams: 0 };
         }
       }
 
+      setCourseStats(courseStatsMap);
+      
       setStats({
         totalChapters,
         totalVideos,
         totalNotes,
         totalQuestions,
         totalExams,
-        recentActivity: [
-          { id: 1, action: 'Chapter 5 updated', course: 'Mathematics', time: '2 hours ago' },
-          { id: 2, action: 'New video added', course: 'Physics', time: '5 hours ago' },
-          { id: 3, action: 'Exam created', course: 'Chemistry', time: '1 day ago' },
-        ],
       });
+
+      // Fetch recent activity from system logs
+      try {
+        const logsRes = await systemLogsApi.getSystemLogs({ 
+          limit: 5,
+          user_id: user?.id 
+        });
+        
+        let logs = [];
+        const logsData = logsRes.data;
+        
+        if (logsData.data && logsData.data.logs) {
+          logs = logsData.data.logs;
+        } else if (logsData.data && Array.isArray(logsData.data)) {
+          logs = logsData.data;
+        } else if (Array.isArray(logsData)) {
+          logs = logsData;
+        }
+        
+        const formatted = logs.slice(0, 5).map(log => ({
+          id: log.id,
+          action: log.action || 'Content Update',
+          course: log.details?.course_name || 'Unknown Course',
+          time: getRelativeTime(log.created_at),
+          status: log.level === 'error' ? 'error' : 
+                  log.level === 'warn' ? 'warning' : 'info',
+        }));
+        
+        setRecentActivity(formatted);
+      } catch (err) {
+        console.error('Failed to fetch recent activity:', err);
+        setRecentActivity([]);
+      }
 
     } catch (error) {
       console.error('Failed to fetch teacher data:', error);
@@ -394,6 +450,8 @@ const TeacherDashboard = () => {
         </Alert>
       )}
 
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
       {/* Stats Grid */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         {statCards.map((stat, index) => (
@@ -414,6 +472,7 @@ const TeacherDashboard = () => {
             startIcon={<Refresh />}
             onClick={fetchTeacherData}
             disabled={loading}
+            sx={{ borderRadius: 2 }}
           >
             Refresh
           </Button>
@@ -435,12 +494,7 @@ const TeacherDashboard = () => {
               <Grid item xs={12} md={6} key={course.id}>
                 <CourseCard
                   course={course}
-                  stats={{
-                    chapters: stats.totalChapters,
-                    videos: stats.totalVideos,
-                    notes: stats.totalNotes,
-                    questions: stats.totalQuestions,
-                  }}
+                  stats={courseStats[course.id] || { chapters: 0, videos: 0, notes: 0, questions: 0 }}
                   onView={handleViewCourse}
                   onManage={handleManageContent}
                 />
@@ -455,28 +509,49 @@ const TeacherDashboard = () => {
         <Typography variant="h6" fontWeight="bold" gutterBottom>
           Recent Activity
         </Typography>
-        <List>
-          {stats.recentActivity.map((activity, index) => (
-            <React.Fragment key={activity.id}>
-              <ListItem>
-                <ListItemAvatar>
-                  <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main' }}>
-                    <Info />
-                  </Avatar>
-                </ListItemAvatar>
-                <ListItemText
-                  primary={activity.action}
-                  secondary={`${activity.course} • ${activity.time}`}
-                />
-                <ListItemSecondaryAction>
-                  <Chip label="Updated" size="small" color="info" variant="outlined" />
-                </ListItemSecondaryAction>
-              </ListItem>
-              {index < stats.recentActivity.length - 1 && <Divider variant="inset" component="li" />}
-            </React.Fragment>
-          ))}
-        </List>
+        {recentActivity.length === 0 ? (
+          <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+            No recent activity
+          </Typography>
+        ) : (
+          <List>
+            {recentActivity.map((activity, index) => (
+              <React.Fragment key={activity.id}>
+                <ListItem>
+                  <ListItemAvatar>
+                    <Avatar sx={{ bgcolor: alpha(theme.palette.primary.main, 0.1), color: 'primary.main' }}>
+                      {activity.status === 'success' ? <CheckCircle /> :
+                       activity.status === 'warning' ? <Warning /> : <Info />}
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText
+                    primary={activity.action}
+                    secondary={`${activity.course} • ${activity.time}`}
+                  />
+                  <ListItemSecondaryAction>
+                    <Chip 
+                      label={activity.status === 'success' ? 'Success' : 
+                             activity.status === 'warning' ? 'Warning' : 'Info'} 
+                      size="small" 
+                      color={activity.status === 'success' ? 'success' : 
+                             activity.status === 'warning' ? 'warning' : 'info'}
+                      variant="outlined"
+                    />
+                  </ListItemSecondaryAction>
+                </ListItem>
+                {index < recentActivity.length - 1 && <Divider variant="inset" component="li" />}
+              </React.Fragment>
+            ))}
+          </List>
+        )}
       </Paper>
+
+      {/* Footer */}
+      <Box sx={{ mt: 4, pt: 3, borderTop: `1px solid ${theme.palette.divider}`, textAlign: 'center' }}>
+        <Typography variant="caption" color="text.secondary">
+          Last updated: {new Date().toLocaleString()}
+        </Typography>
+      </Box>
     </Box>
   );
 };

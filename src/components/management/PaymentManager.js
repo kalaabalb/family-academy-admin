@@ -30,8 +30,10 @@ import {
   Card,
   CardContent,
   LinearProgress,
+  Divider,
 } from '@mui/material';
 import {
+  OpenInNew,
   Refresh,
   CheckCircle,
   Cancel,
@@ -45,12 +47,10 @@ import {
   MonetizationOn,
   ArrowUpward,
   ArrowDownward,
-  MoreVert,
   AttachMoney,
   AccountBalance,
   CreditCard,
-  CloudUpload,
-  PersonOutline,
+  Close,
 } from '@mui/icons-material';
 
 const PaymentManager = () => {
@@ -83,7 +83,9 @@ const PaymentManager = () => {
   
   const [verifyDialogOpen, setVerifyDialogOpen] = useState(false);
   const [rejectDialogOpen, setRejectDialogOpen] = useState(false);
+  const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
+  const [viewingPayment, setViewingPayment] = useState(null);
   const [adminNotes, setAdminNotes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -93,11 +95,17 @@ const PaymentManager = () => {
       setLoading(true);
       setError('');
       
-      // Fetch payments
-      const paymentsRes = await paymentsApi.getAllPayments();
+      const [paymentsRes, categoriesRes, usersRes] = await Promise.all([
+        paymentsApi.getAllPayments(),
+        categoriesApi.getAllCategories(),
+        usersApi.getAllUsers(),
+      ]);
+      
       const paymentsData = paymentsRes.data.data || [];
       setPayments(paymentsData);
       setFilteredPayments(paymentsData);
+      setCategories(categoriesRes.data.data || []);
+      setUsers(usersRes.data.data || []);
       
       // Calculate stats
       const total = paymentsData.length;
@@ -110,18 +118,9 @@ const PaymentManager = () => {
       
       setStats({ total, pending, verified, rejected, totalAmount });
       
-      // Fetch categories for filter
-      const categoriesRes = await categoriesApi.getAllCategories();
-      setCategories(categoriesRes.data.data || []);
-      
-      // Fetch users for filter
-      const usersRes = await usersApi.getAllUsers();
-      setUsers(usersRes.data.data || []);
-      
     } catch (err) {
       console.error('Failed to fetch data:', err);
-      const errMsg = err.response?.data?.message || 'Failed to load payments';
-      setError(errMsg);
+      setError(err.response?.data?.message || 'Failed to load payments');
       showError('Failed to load payments');
     } finally {
       setLoading(false);
@@ -163,8 +162,7 @@ const PaymentManager = () => {
         p.user_username?.toLowerCase().includes(searchLower) ||
         p.category_name?.toLowerCase().includes(searchLower) ||
         p.payment_method?.toLowerCase().includes(searchLower) ||
-        p.account_holder_name?.toLowerCase().includes(searchLower) ||
-        p.admin_notes?.toLowerCase().includes(searchLower)
+        p.account_holder_name?.toLowerCase().includes(searchLower)
       );
     }
     
@@ -203,10 +201,10 @@ const PaymentManager = () => {
     if (!selectedPayment) return;
 
     try {
+      setLoading(true);
       await paymentsApi.verifyPayment(selectedPayment.id, adminNotes);
       showSuccess('Payment verified successfully');
       
-      // Update payment status locally
       setPayments(prev => prev.map(p => 
         p.id === selectedPayment.id 
           ? { ...p, status: 'verified', admin_notes: adminNotes, verified_at: new Date().toISOString() }
@@ -219,8 +217,9 @@ const PaymentManager = () => {
       
     } catch (err) {
       console.error('Failed to verify payment:', err);
-      const errMsg = err.response?.data?.message || 'Failed to verify payment';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to verify payment');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -228,10 +227,10 @@ const PaymentManager = () => {
     if (!selectedPayment) return;
 
     try {
+      setLoading(true);
       await paymentsApi.rejectPayment(selectedPayment.id, rejectionReason);
       showSuccess('Payment rejected successfully');
       
-      // Update payment status locally
       setPayments(prev => prev.map(p => 
         p.id === selectedPayment.id 
           ? { ...p, status: 'rejected', rejection_reason: rejectionReason }
@@ -244,9 +243,15 @@ const PaymentManager = () => {
       
     } catch (err) {
       console.error('Failed to reject payment:', err);
-      const errMsg = err.response?.data?.message || 'Failed to reject payment';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to reject payment');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const handleViewDetails = (payment) => {
+    setViewingPayment(payment);
+    setViewDetailsOpen(true);
   };
 
   const handleViewProof = (payment) => {
@@ -258,7 +263,6 @@ const PaymentManager = () => {
   };
 
   const handleExport = () => {
-    // Prepare data for export
     const exportData = filteredPayments.map(payment => ({
       ID: payment.id,
       User: payment.user_username,
@@ -274,7 +278,6 @@ const PaymentManager = () => {
       'Rejection Reason': payment.rejection_reason || '',
     }));
     
-    // Convert to CSV
     const headers = Object.keys(exportData[0] || {});
     const csvRows = [
       headers.join(','),
@@ -409,19 +412,6 @@ const PaymentManager = () => {
       ),
     },
     {
-      field: 'account_holder_name',
-      headerName: 'Account Holder',
-      width: 150,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <PersonOutline fontSize="small" color="action" />
-          <Typography variant="body2">
-            {value || row.account_holder_name || '-'}
-          </Typography>
-        </Box>
-      ),
-    },
-    {
       field: 'status',
       headerName: 'Status',
       width: 100,
@@ -448,27 +438,21 @@ const PaymentManager = () => {
       ),
     },
     {
-      field: 'verified_at',
-      headerName: 'Verified',
-      width: 130,
-      render: (value, row) => (
-        row.status === 'verified' ? (
-          <Typography variant="caption" color="text.secondary">
-            {formatDate(value)}
-          </Typography>
-        ) : (
-          <Typography variant="caption" color="text.secondary">
-            Pending
-          </Typography>
-        )
-      ),
-    },
-    {
       field: 'actions',
       headerName: 'Actions',
-      width: 150,
+      width: 200,
       render: (value, row) => (
         <Stack direction="row" spacing={0.5}>
+          <Tooltip title="View Details">
+            <IconButton
+              size="small"
+              onClick={() => handleViewDetails(row)}
+              color="info"
+            >
+              <Visibility fontSize="small" />
+            </IconButton>
+          </Tooltip>
+          
           {row.status === 'pending' && (
             <>
               <Tooltip title="Verify Payment">
@@ -497,18 +481,18 @@ const PaymentManager = () => {
               </Tooltip>
             </>
           )}
-          <Tooltip title="View Proof">
-            <span> {/* Add span wrapper for disabled state */}
+          
+          {row.proof_image_path && (
+            <Tooltip title="View Full Screen Proof">
               <IconButton
                 size="small"
                 onClick={() => handleViewProof(row)}
-                color="info"
-                disabled={!row.proof_image_path}
+                color="secondary"
               >
-                <Visibility fontSize="small" />
+                <OpenInNew fontSize="small" />
               </IconButton>
-            </span>
-          </Tooltip>
+            </Tooltip>
+          )}
         </Stack>
       ),
     },
@@ -551,7 +535,7 @@ const PaymentManager = () => {
               variant="outlined"
               startIcon={<Download />}
               onClick={handleExport}
-              disabled={filteredPayments.length === 0}
+              disabled={filteredPayments.length === 0 || loading}
               sx={{ borderRadius: 2 }}
             >
               Export
@@ -583,7 +567,7 @@ const PaymentManager = () => {
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%', borderColor: 'warning.light' }}>
+            <Card sx={{ borderRadius: 2, height: '100%' }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Pending
@@ -595,7 +579,7 @@ const PaymentManager = () => {
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%', borderColor: 'success.light' }}>
+            <Card sx={{ borderRadius: 2, height: '100%' }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Verified
@@ -607,7 +591,7 @@ const PaymentManager = () => {
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%', borderColor: 'error.light' }}>
+            <Card sx={{ borderRadius: 2, height: '100%' }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Rejected
@@ -619,7 +603,7 @@ const PaymentManager = () => {
             </Card>
           </Grid>
           <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%', borderColor: 'info.light' }}>
+            <Card sx={{ borderRadius: 2, height: '100%' }}>
               <CardContent sx={{ p: 2 }}>
                 <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                   Total Revenue
@@ -646,6 +630,8 @@ const PaymentManager = () => {
         </Alert>
       )}
 
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
       {/* Filters Section */}
       {showFilters && (
         <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
@@ -662,7 +648,7 @@ const PaymentManager = () => {
                 value={filters.search}
                 onChange={handleFilterChange}
                 size="small"
-                placeholder="Search by user, category, method, account holder..."
+                placeholder="Search by user, category, method..."
               />
             </Grid>
             
@@ -791,28 +777,253 @@ const PaymentManager = () => {
         data={filteredPayments}
         loading={loading}
         onRefresh={fetchData}
-        title={`Payments`}
-        tableId="payments-table"
-        searchable={false} // We have our own search in filters
-        pagination={true}
+        title="Payments"
         rowKey="id"
       />
+
+      {/* View Details Dialog */}
+      <Dialog
+        open={viewDetailsOpen}
+        onClose={() => setViewDetailsOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
+      >
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Payment />
+              <Typography variant="h6" fontWeight="bold">
+                Payment Details #{viewingPayment?.id}
+              </Typography>
+            </Box>
+            <IconButton onClick={() => setViewDetailsOpen(false)} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        
+        <DialogContent dividers sx={{ p: 3 }}>
+          {viewingPayment && (
+            <Grid container spacing={3}>
+              {/* Payment Information */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                    Payment Information
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Amount:</Typography>
+                      <Typography variant="body2" fontWeight="bold" color="success.main">
+                        {formatAmount(viewingPayment.amount)}
+                      </Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Type:</Typography>
+                      <Chip
+                        label={viewingPayment.payment_type?.replace('_', ' ')}
+                        size="small"
+                        color="secondary"
+                        variant="outlined"
+                      />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Method:</Typography>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                        {getPaymentMethodIcon(viewingPayment.payment_method)}
+                        <Typography variant="body2">
+                          {viewingPayment.payment_method?.replace('_', ' ') || 'Unknown'}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Status:</Typography>
+                      <Chip
+                        label={viewingPayment.status}
+                        size="small"
+                        color={viewingPayment.status === 'verified' ? 'success' : 
+                               viewingPayment.status === 'pending' ? 'warning' : 'error'}
+                      />
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Submitted:</Typography>
+                      <Typography variant="body2">
+                        {formatDate(viewingPayment.created_at)}
+                      </Typography>
+                    </Box>
+                    {viewingPayment.verified_at && (
+                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <Typography variant="body2" color="text.secondary">Verified:</Typography>
+                        <Typography variant="body2">
+                          {formatDate(viewingPayment.verified_at)}
+                        </Typography>
+                      </Box>
+                    )}
+                  </Box>
+                </Card>
+              </Grid>
+              
+              {/* User Information */}
+              <Grid item xs={12} md={6}>
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                    User Information
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.light' }}>
+                        {viewingPayment.user_username?.[0]?.toUpperCase()}
+                      </Avatar>
+                      <Box>
+                        <Typography variant="body2" fontWeight="medium">
+                          {viewingPayment.user_username}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          User ID: {viewingPayment.user_id}
+                        </Typography>
+                      </Box>
+                    </Box>
+                    <Divider />
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Category:</Typography>
+                      <Typography variant="body2">{viewingPayment.category_name}</Typography>
+                    </Box>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                      <Typography variant="body2" color="text.secondary">Account Holder:</Typography>
+                      <Typography variant="body2">{viewingPayment.account_holder_name || '-'}</Typography>
+                    </Box>
+                  </Box>
+                </Card>
+              </Grid>
+              
+              {/* Payment Proof */}
+              <Grid item xs={12}>
+                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                    Payment Proof
+                  </Typography>
+                  {viewingPayment.proof_image_path ? (
+                    <Box
+                      sx={{
+                        mt: 2,
+                        display: 'flex',
+                        flexDirection: 'column',
+                        alignItems: 'center',
+                        gap: 2,
+                      }}
+                    >
+                      <Box
+                        component="img"
+                        src={viewingPayment.proof_image_path}
+                        alt="Payment Proof"
+                        sx={{
+                          maxWidth: '100%',
+                          maxHeight: 400,
+                          objectFit: 'contain',
+                          borderRadius: 1,
+                          boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
+                        }}
+                      />
+                      <Button
+                        variant="outlined"
+                        startIcon={<OpenInNew />}
+                        onClick={() => handleViewProof(viewingPayment)}
+                      >
+                        Open in New Tab
+                      </Button>
+                    </Box>
+                  ) : (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                      No proof image available
+                    </Typography>
+                  )}
+                </Card>
+              </Grid>
+              
+              {/* Admin Notes */}
+              {viewingPayment.admin_notes && (
+                <Grid item xs={12}>
+                  <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                      Admin Notes
+                    </Typography>
+                    <Typography variant="body2">{viewingPayment.admin_notes}</Typography>
+                  </Card>
+                </Grid>
+              )}
+              
+              {/* Rejection Reason */}
+              {viewingPayment.rejection_reason && (
+                <Grid item xs={12}>
+                  <Card variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'error.light' }}>
+                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="error.dark">
+                      Rejection Reason
+                    </Typography>
+                    <Typography variant="body2" color="error.dark">
+                      {viewingPayment.rejection_reason}
+                    </Typography>
+                  </Card>
+                </Grid>
+              )}
+            </Grid>
+          )}
+        </DialogContent>
+        
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setViewDetailsOpen(false)}
+            sx={{ borderRadius: 2 }}
+          >
+            Close
+          </Button>
+          {viewingPayment?.status === 'pending' && (
+            <>
+              <Button
+                variant="contained"
+                color="success"
+                onClick={() => {
+                  setViewDetailsOpen(false);
+                  setSelectedPayment(viewingPayment);
+                  setVerifyDialogOpen(true);
+                }}
+                sx={{ borderRadius: 2 }}
+              >
+                Verify Payment
+              </Button>
+              <Button
+                variant="contained"
+                color="error"
+                onClick={() => {
+                  setViewDetailsOpen(false);
+                  setSelectedPayment(viewingPayment);
+                  setRejectDialogOpen(true);
+                }}
+                sx={{ borderRadius: 2 }}
+              >
+                Reject Payment
+              </Button>
+            </>
+          )}
+        </DialogActions>
+      </Dialog>
 
       {/* Verify Payment Dialog */}
       <Dialog
         open={verifyDialogOpen}
-        onClose={() => setVerifyDialogOpen(false)}
+        onClose={() => !loading && setVerifyDialogOpen(false)}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
       >
-        <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="h6" fontWeight="bold">
               Verify Payment
             </Typography>
-            <IconButton onClick={() => setVerifyDialogOpen(false)} size="small">
-              <Cancel />
+            <IconButton onClick={() => setVerifyDialogOpen(false)} size="small" disabled={loading}>
+              <Close />
             </IconButton>
           </Box>
         </DialogTitle>
@@ -861,15 +1072,6 @@ const PaymentManager = () => {
                     {selectedPayment.account_holder_name || 'Not specified'}
                   </Typography>
                 </Grid>
-                <Grid item xs={12}>
-                  <Button
-                    startIcon={<Visibility />}
-                    onClick={() => handleViewProof(selectedPayment)}
-                    sx={{ borderRadius: 2 }}
-                  >
-                    View Payment Proof
-                  </Button>
-                </Grid>
               </Grid>
               
               <TextField
@@ -881,6 +1083,7 @@ const PaymentManager = () => {
                 rows={3}
                 placeholder="Add any notes about this payment verification..."
                 variant="outlined"
+                disabled={loading}
               />
             </Box>
           )}
@@ -890,6 +1093,7 @@ const PaymentManager = () => {
           <Button
             onClick={() => setVerifyDialogOpen(false)}
             variant="outlined"
+            disabled={loading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -898,9 +1102,10 @@ const PaymentManager = () => {
             onClick={handleVerifyPayment}
             variant="contained"
             color="success"
+            disabled={loading}
             sx={{ borderRadius: 2 }}
           >
-            Verify Payment
+            {loading ? 'Verifying...' : 'Verify Payment'}
           </Button>
         </DialogActions>
       </Dialog>
@@ -908,18 +1113,18 @@ const PaymentManager = () => {
       {/* Reject Payment Dialog */}
       <Dialog
         open={rejectDialogOpen}
-        onClose={() => setRejectDialogOpen(false)}
+        onClose={() => !loading && setRejectDialogOpen(false)}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
       >
-        <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="h6" fontWeight="bold">
               Reject Payment
             </Typography>
-            <IconButton onClick={() => setRejectDialogOpen(false)} size="small">
-              <Cancel />
+            <IconButton onClick={() => setRejectDialogOpen(false)} size="small" disabled={loading}>
+              <Close />
             </IconButton>
           </Box>
         </DialogTitle>
@@ -972,6 +1177,7 @@ const PaymentManager = () => {
                 variant="outlined"
                 error={!rejectionReason.trim()}
                 helperText={!rejectionReason.trim() ? "Rejection reason is required" : ""}
+                disabled={loading}
               />
             </Box>
           )}
@@ -981,6 +1187,7 @@ const PaymentManager = () => {
           <Button
             onClick={() => setRejectDialogOpen(false)}
             variant="outlined"
+            disabled={loading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -989,21 +1196,13 @@ const PaymentManager = () => {
             onClick={handleRejectPayment}
             variant="contained"
             color="error"
-            disabled={!rejectionReason.trim()}
+            disabled={loading || !rejectionReason.trim()}
             sx={{ borderRadius: 2 }}
           >
-            Reject Payment
+            {loading ? 'Rejecting...' : 'Reject Payment'}
           </Button>
         </DialogActions>
       </Dialog>
-
-      {/* Footer */}
-      <Box sx={{ mt: 4, pt: 3, borderTop: 1, borderColor: 'divider', textAlign: 'center' }}>
-        <Typography variant="caption" color="text.secondary">
-          Last updated: {new Date().toLocaleString()} • 
-          Showing {filteredPayments.length} of {payments.length} payments
-        </Typography>
-      </Box>
     </Box>
   );
 };

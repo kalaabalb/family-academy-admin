@@ -32,8 +32,10 @@ import {
   Stack,
   CircularProgress,
   InputAdornment,
+  LinearProgress,
 } from '@mui/material';
 import {
+  FilterList,
   Add,
   Edit,
   Delete,
@@ -46,7 +48,8 @@ import {
   Visibility,
   AccessTime,
   Search,
-  Clear,
+  MenuBook,
+  Notes as NotesIcon,
 } from '@mui/icons-material';
 
 const NoteManager = () => {
@@ -58,7 +61,9 @@ const NoteManager = () => {
   const [courses, setCourses] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -72,8 +77,9 @@ const NoteManager = () => {
     category_id: '',
     course_id: '',
     chapter_id: '',
-    search: '',
   });
+  
+  const [showFilters, setShowFilters] = useState(false);
   
   // For cascading dropdowns in form
   const [formFilteredCourses, setFormFilteredCourses] = useState([]);
@@ -104,7 +110,7 @@ const NoteManager = () => {
       }
       
       const notesRes = await notesApi.getAllNotes(params);
-      setNotes(notesRes.data.data || []);
+      const notesData = notesRes.data.data || [];
       
       // Fetch categories
       const categoriesRes = await categoriesApi.getAllCategories();
@@ -116,7 +122,23 @@ const NoteManager = () => {
       
       // Fetch chapters
       const chaptersRes = await chaptersApi.getAllChapters();
-      setChapters(chaptersRes.data.data || []);
+      const chaptersData = chaptersRes.data.data || [];
+      setChapters(chaptersData);
+      
+      // Enrich notes with course and category names
+      const enrichedNotes = notesData.map(note => {
+        const chapter = chaptersData.find(ch => ch.id === note.chapter_id);
+        const course = chapter ? coursesRes.data.data?.find(c => c.id === chapter.course_id) : null;
+        const category = course ? categoriesRes.data.data?.find(c => c.id === course.category_id) : null;
+        return {
+          ...note,
+          chapter_name: chapter?.name || 'Unknown Chapter',
+          course_name: course?.name || 'Unknown Course',
+          category_name: category?.name || 'Unknown Category',
+        };
+      });
+      
+      setNotes(enrichedNotes);
       
     } catch (err) {
       console.error('Failed to fetch data:', err);
@@ -179,7 +201,6 @@ const NoteManager = () => {
       category_id: '',
       course_id: '',
       chapter_id: '',
-      search: '',
     });
   };
 
@@ -256,7 +277,7 @@ const NoteManager = () => {
     if (!validateForm()) return;
     
     try {
-      setLoading(true);
+      setActionLoading(true);
       
       const noteData = {
         title: formData.title.trim(),
@@ -269,7 +290,7 @@ const NoteManager = () => {
         // Check if teacher can edit
         if (isTeacher() && selectedNote.created_by !== user.id) {
           showError('You can only edit notes you created');
-          setLoading(false);
+          setActionLoading(false);
           return;
         }
         
@@ -288,7 +309,7 @@ const NoteManager = () => {
       console.error('Failed to save note:', err);
       showError(err.response?.data?.message || 'Failed to save note');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -349,7 +370,7 @@ const NoteManager = () => {
     if (!selectedNote) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await notesApi.deleteNote(selectedNote.id);
       
       setNotes(prev => prev.filter(n => n.id !== selectedNote.id));
@@ -362,27 +383,42 @@ const NoteManager = () => {
       console.error('Failed to delete note:', err);
       showError(err.response?.data?.message || 'Failed to delete note');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
-  // Filter notes based on filters
+  // Filter notes based on filters and search
   const filteredNotes = notes.filter(note => {
+    // Apply filters
     if (filters.category_id && note.category_id !== parseInt(filters.category_id)) return false;
     if (filters.course_id && note.course_id !== parseInt(filters.course_id)) return false;
     if (filters.chapter_id && note.chapter_id !== parseInt(filters.chapter_id)) return false;
-    if (filters.search) {
-      const searchLower = filters.search.toLowerCase();
+    
+    // Apply search
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
       return (
-        note.title.toLowerCase().includes(searchLower) ||
-        (note.content && note.content.toLowerCase().includes(searchLower)) ||
-        (note.category_name && note.category_name.toLowerCase().includes(searchLower))
+        note.title.toLowerCase().includes(query) ||
+        (note.content && note.content.toLowerCase().includes(query)) ||
+        (note.category_name && note.category_name.toLowerCase().includes(query)) ||
+        (note.course_name && note.course_name.toLowerCase().includes(query))
       );
     }
+    
     return true;
   });
 
   const columns = [
+    {
+      field: 'id',
+      headerName: 'ID',
+      width: 70,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          #{value}
+        </Typography>
+      ),
+    },
     {
       field: 'title',
       headerName: 'Title',
@@ -445,33 +481,54 @@ const NoteManager = () => {
         return (
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Tooltip title="Preview Note">
-              <IconButton
-                size="small"
-                onClick={() => handlePreview(row)}
-                color="info"
-              >
-                <Visibility fontSize="small" />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => handlePreview(row)}
+                  color="info"
+                  disabled={actionLoading}
+                  sx={{
+                    opacity: actionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
             {canEdit && (
               <>
                 <Tooltip title="Edit Note">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleEdit(row)}
-                    color="primary"
-                  >
-                    <Edit fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleEdit(row)}
+                      color="primary"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
                 <Tooltip title="Delete Note">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDelete(row)}
-                    color="error"
-                  >
-                    <Delete fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(row)}
+                      color="error"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </>
             )}
@@ -509,10 +566,19 @@ const NoteManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
           {(isAdmin() || isTeacher()) && (
             <Button
@@ -522,7 +588,7 @@ const NoteManager = () => {
                 resetForm();
                 setFormOpen(true);
               }}
-              disabled={loading}
+              disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Create Note
@@ -531,6 +597,10 @@ const NoteManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -540,97 +610,112 @@ const NoteManager = () => {
         </Alert>
       )}
 
-      {/* Filters */}
+      {/* Search Bar */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Search notes..."
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-                endAdornment: filters.search && (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setFilters(prev => ({ ...prev, search: '' }))}>
-                      <Clear />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Category</InputLabel>
-              <Select
-                name="category_id"
-                value={filters.category_id}
-                onChange={handleFilterChange}
-                label="Category"
-              >
-                <MenuItem value="">All Categories</MenuItem>
-                {categories.map(cat => (
-                  <MenuItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Course</InputLabel>
-              <Select
-                name="course_id"
-                value={filters.course_id}
-                onChange={handleFilterChange}
-                label="Course"
-                disabled={!filters.category_id}
-              >
-                <MenuItem value="">All Courses</MenuItem>
-                {filteredCourses.map(course => (
-                  <MenuItem key={course.id} value={course.id}>
-                    {course.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Chapter</InputLabel>
-              <Select
-                name="chapter_id"
-                value={filters.chapter_id}
-                onChange={handleFilterChange}
-                label="Chapter"
-                disabled={!filters.course_id}
-              >
-                <MenuItem value="">All Chapters</MenuItem>
-                {filteredChapters.map(chapter => (
-                  <MenuItem key={chapter.id} value={chapter.id}>
-                    {chapter.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
-        {(filters.category_id || filters.course_id || filters.chapter_id || filters.search) && (
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button size="small" onClick={clearFilters} startIcon={<Clear />}>
-              Clear Filters
-            </Button>
-          </Box>
-        )}
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search notes by title or content..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
       </Paper>
+
+      {/* Filters Section */}
+      {showFilters && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" fontWeight="medium" gutterBottom>
+            Filter Notes
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Category</InputLabel>
+                <Select
+                  name="category_id"
+                  value={filters.category_id}
+                  onChange={handleFilterChange}
+                  label="Category"
+                >
+                  <MenuItem value="">All Categories</MenuItem>
+                  {categories.map(cat => (
+                    <MenuItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Course</InputLabel>
+                <Select
+                  name="course_id"
+                  value={filters.course_id}
+                  onChange={handleFilterChange}
+                  label="Course"
+                  disabled={!filters.category_id}
+                >
+                  <MenuItem value="">All Courses</MenuItem>
+                  {filteredCourses.map(course => (
+                    <MenuItem key={course.id} value={course.id}>
+                      {course.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Chapter</InputLabel>
+                <Select
+                  name="chapter_id"
+                  value={filters.chapter_id}
+                  onChange={handleFilterChange}
+                  label="Chapter"
+                  disabled={!filters.course_id}
+                >
+                  <MenuItem value="">All Chapters</MenuItem>
+                  {filteredChapters.map(chapter => (
+                    <MenuItem key={chapter.id} value={chapter.id}>
+                      {chapter.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="outlined"
+                  onClick={clearFilters}
+                  size="small"
+                >
+                  Clear Filters
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
 
       {/* Notes Table */}
       <DataTable
@@ -638,17 +723,14 @@ const NoteManager = () => {
         data={filteredNotes}
         loading={loading}
         onRefresh={fetchData}
-        title={`Notes`}
-        tableId="notes-table"
-        searchable={false}
-        pagination={true}
+        title={`Notes (${filteredNotes.length})`}
         rowKey="id"
       />
 
       {/* Create/Edit Note Dialog */}
       <Dialog
         open={formOpen}
-        onClose={() => !loading && setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="lg"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -660,13 +742,13 @@ const NoteManager = () => {
             </Typography>
             <IconButton
               onClick={() => {
-                if (!loading) {
+                if (!actionLoading) {
                   setFormOpen(false);
                   resetForm();
                 }
               }}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -683,7 +765,7 @@ const NoteManager = () => {
                 value={formData.title}
                 onChange={handleInputChange}
                 required
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
 
@@ -697,7 +779,7 @@ const NoteManager = () => {
                       value={formData.category_id}
                       onChange={handleInputChange}
                       label="Category *"
-                      disabled={loading}
+                      disabled={actionLoading}
                     >
                       <MenuItem value="">Select Category</MenuItem>
                       {categories.map(cat => (
@@ -717,7 +799,7 @@ const NoteManager = () => {
                       value={formData.course_id}
                       onChange={handleInputChange}
                       label="Course *"
-                      disabled={loading || !formData.category_id}
+                      disabled={actionLoading || !formData.category_id}
                     >
                       <MenuItem value="">Select Course</MenuItem>
                       {formFilteredCourses.map(course => (
@@ -739,7 +821,7 @@ const NoteManager = () => {
                   value={formData.chapter_id}
                   onChange={handleInputChange}
                   label="Chapter *"
-                  disabled={loading || (isAdmin() && !formData.course_id)}
+                  disabled={actionLoading || (isAdmin() && !formData.course_id)}
                 >
                   <MenuItem value="">Select Chapter</MenuItem>
                   {(isAdmin() ? formFilteredChapters : chapters).map(chapter => (
@@ -761,7 +843,7 @@ const NoteManager = () => {
                   value={formData.release_date}
                   onChange={handleInputChange}
                   InputLabelProps={{ shrink: true }}
-                  disabled={loading}
+                  disabled={actionLoading}
                 />
               </Grid>
             )}
@@ -775,7 +857,7 @@ const NoteManager = () => {
                 onChange={handleContentChange}
                 placeholder="Start writing your note content here..."
                 height={400}
-                readOnly={loading}
+                readOnly={actionLoading}
               />
             </Grid>
           </Grid>
@@ -788,7 +870,7 @@ const NoteManager = () => {
               setFormOpen(false);
               resetForm();
             }}
-            disabled={loading}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -797,15 +879,15 @@ const NoteManager = () => {
             variant="contained"
             onClick={handleSubmit}
             disabled={
-              loading || 
+              actionLoading || 
               !formData.title.trim() || 
               !formData.chapter_id ||
               !formData.content?.replace(/<[^>]*>/g, '').trim()
             }
-            startIcon={loading ? <CircularProgress size={20} /> : <Save />}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Saving...' : (isEditing ? 'Update Note' : 'Create Note')}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Note' : 'Create Note')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -918,11 +1000,11 @@ const NoteManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Note"
-        message={`Are you sure you want to delete the note "${selectedNote?.title}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete the note "${selectedNote?.title}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
-        loading={loading}
+        loading={actionLoading}
       />
     </Box>
   );

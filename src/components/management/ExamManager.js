@@ -33,11 +33,11 @@ import {
   List,
   Checkbox,
   Radio,
-  RadioGroup,
   FormControlLabel,
-  FormLabel,
   InputAdornment,
-  AccordionSummary,
+  LinearProgress,
+  Card,
+  CardContent,
 } from '@mui/material';
 import {
   Add,
@@ -46,7 +46,6 @@ import {
   Refresh,
   Quiz,
   QuestionAnswer,
-  RemoveCircle,
   Close,
   Save,
   FilterList,
@@ -58,9 +57,13 @@ import {
   Event,
   EmojiEvents,
   ImportExport,
-  ArrowDownward,
   Upload,
   Download,
+  Visibility,
+  AccessTime,
+  CheckCircle,
+  Warning,
+  Schedule,
 } from '@mui/icons-material';
 
 const ExamManager = () => {
@@ -74,13 +77,15 @@ const ExamManager = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   // UI states
-  const [activeTab, setActiveTab] = useState(0); // 0: List, 1: Create/Edit, 2: Manage Questions
+  const [activeTab, setActiveTab] = useState(0); // 0: List, 1: Create/Edit
   const [formOpen, setFormOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   
   // Question management states
   const [examQuestions, setExamQuestions] = useState([]);
@@ -177,13 +182,25 @@ const ExamManager = () => {
       }
       
       const examsRes = await examsApi.getAllExams(params);
-      setExams(examsRes.data.data || []);
+      const examsData = examsRes.data.data || [];
+      
+      // Enrich exams with course names
+      const enrichedExams = examsData.map(exam => {
+        const course = courses.find(c => c.id === exam.course_id);
+        return {
+          ...exam,
+          course_name: course?.name || 'Unknown Course',
+          status: getExamStatus(exam),
+        };
+      });
+      
+      setExams(enrichedExams);
       
     } catch (err) {
       console.error('Failed to fetch exams:', err);
       showError('Failed to fetch exams');
     }
-  }, [isTeacher, user, showError]);
+  }, [isTeacher, user, courses, showError]);
 
   const fetchExamQuestions = useCallback(async (examId) => {
     if (!examId) return;
@@ -523,6 +540,7 @@ const ExamManager = () => {
     }
   };
 
+  // FIXED: Edit navigation now works properly
   const handleEdit = (exam) => {
     setSelectedExam(exam);
     setIsEditing(true);
@@ -541,13 +559,15 @@ const ExamManager = () => {
       show_results_immediately: exam.show_results_immediately === 1 || exam.show_results_immediately === true,
     });
     
-    setFormOpen(true);
+    // Navigate to create/edit tab
+    setActiveTab(1);
+    setFormOpen(false); // Don't open dialog, just show the form in tab
   };
 
   const handleManageQuestions = (exam) => {
     setSelectedExam(exam);
     fetchExamQuestions(exam.id);
-    setActiveTab(2);
+    setActiveTab(2); // Switch to questions tab
   };
 
   const handleDelete = (exam) => {
@@ -666,11 +686,27 @@ const ExamManager = () => {
     return 'active';
   };
 
+  // Filter exams based on search
+  const filteredExams = exams.filter(exam => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      exam.title.toLowerCase().includes(query) ||
+      (exam.course_name && exam.course_name.toLowerCase().includes(query)) ||
+      exam.exam_type.toLowerCase().includes(query)
+    );
+  });
+
   const columns = [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          #{value}
+        </Typography>
+      ),
     },
     {
       field: 'title',
@@ -709,17 +745,14 @@ const ExamManager = () => {
       field: 'status',
       headerName: 'Status',
       width: 100,
-      render: (value, row) => {
-        const status = getExamStatus(row);
-        return (
-          <Chip
-            label={status}
-            size="small"
-            color={status === 'active' ? 'success' : status === 'upcoming' ? 'info' : 'default'}
-            variant="outlined"
-          />
-        );
-      },
+      render: (value) => (
+        <Chip
+          label={value}
+          size="small"
+          color={value === 'active' ? 'success' : value === 'upcoming' ? 'info' : 'default'}
+          variant="outlined"
+        />
+      ),
     },
     {
       field: 'question_count',
@@ -732,6 +765,26 @@ const ExamManager = () => {
           color={value > 0 ? 'primary' : 'default'}
           variant="outlined"
         />
+      ),
+    },
+    {
+      field: 'start_date',
+      headerName: 'Start Date',
+      width: 120,
+      render: (value) => (
+        <Typography variant="caption">
+          {value ? new Date(value).toLocaleDateString() : '-'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'end_date',
+      headerName: 'End Date',
+      width: 120,
+      render: (value) => (
+        <Typography variant="caption">
+          {value ? new Date(value).toLocaleDateString() : '-'}
+        </Typography>
       ),
     },
     {
@@ -844,11 +897,6 @@ const ExamManager = () => {
       ),
     },
     {
-      field: 'chapter_name',
-      headerName: 'Chapter',
-      width: 150,
-    },
-    {
       field: 'actions',
       headerName: 'Actions',
       width: 100,
@@ -899,16 +947,21 @@ const ExamManager = () => {
         <Stack direction="row" spacing={2}>
           <Button
             variant="outlined"
-            startIcon={actionLoading ? <CircularProgress size={20} /> : <Refresh />}
+            startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            disabled={loading || actionLoading}
+            sx={{ borderRadius: 2 }}
           >
-            {actionLoading ? 'Loading...' : 'Refresh'}
+            Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
           {(isAdmin() || isTeacher()) && activeTab !== 2 && (
             <Button
@@ -916,82 +969,21 @@ const ExamManager = () => {
               startIcon={<Add />}
               onClick={() => {
                 resetForm();
-                setFormOpen(true);
+                setActiveTab(1);
               }}
               disabled={actionLoading}
-              sx={{
-                borderRadius: 2,
-                opacity: actionLoading ? 0.7 : 1,
-                transition: 'opacity 0.2s',
-              }}
+              sx={{ borderRadius: 2 }}
             >
               Create Exam
             </Button>
           )}
-          {activeTab === 2 && selectedExam && (
-            <>
-              <Button
-                variant="outlined"
-                startIcon={<Upload />}
-                onClick={() => {
-                  resetBatchQuestions();
-                  setQuestionCreateDialogOpen(true);
-                }}
-                disabled={actionLoading}
-                sx={{
-                  borderRadius: 2,
-                  opacity: actionLoading ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                Batch Questions
-              </Button>
-              <Button
-                variant="contained"
-                startIcon={<Add />}
-                onClick={() => {
-                  resetQuestionForm();
-                  setQuestionCreateDialogOpen(true);
-                }}
-                disabled={actionLoading}
-                sx={{
-                  borderRadius: 2,
-                  opacity: actionLoading ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                Add Question
-              </Button>
-              <Button
-                variant="outlined"
-                startIcon={<Quiz />}
-                onClick={() => {
-                  setQuestionDialogOpen(true);
-                  fetchAvailableQuestions();
-                }}
-                disabled={actionLoading}
-                sx={{
-                  borderRadius: 2,
-                  opacity: actionLoading ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                Import Questions
-              </Button>
-            </>
-          )}
         </Stack>
       </Box>
 
-      {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
-          <Tab label="Exams List" />
-          <Tab label="Create/Edit Exam" disabled={!formOpen && activeTab !== 1} />
-          {selectedExam && <Tab label={`Manage Questions (${examQuestions.length})`} />}
-        </Tabs>
-      </Box>
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -1001,17 +993,50 @@ const ExamManager = () => {
         </Alert>
       )}
 
+      {/* Tabs */}
+      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+        <Tabs value={activeTab} onChange={(e, newValue) => setActiveTab(newValue)}>
+          <Tab label="Exams List" />
+          <Tab label="Create/Edit Exam" disabled={activeTab !== 1 && !isEditing} />
+          {selectedExam && <Tab label={`Manage Questions (${examQuestions.length})`} />}
+        </Tabs>
+      </Box>
+
+      {/* Search Bar (only in list tab) */}
+      {activeTab === 0 && (
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <TextField
+            fullWidth
+            size="small"
+            placeholder="Search exams by title or course..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchQuery('')}>
+                    <Close />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Paper>
+      )}
+
       {/* Tab 0: Exams List */}
       {activeTab === 0 && (
         <DataTable
           columns={columns}
-          data={exams}
+          data={filteredExams}
           loading={loading}
           onRefresh={fetchExams}
-          title={`Exams`}
-          tableId="exams-table"
-          searchable={true}
-          pagination={true}
+          title={`Exams (${filteredExams.length})`}
           rowKey="id"
         />
       )}
@@ -1190,11 +1215,7 @@ const ExamManager = () => {
                     resetForm();
                   }}
                   disabled={actionLoading}
-                  sx={{
-                    borderRadius: 2,
-                    opacity: actionLoading ? 0.5 : 1,
-                    transition: 'opacity 0.2s',
-                  }}
+                  sx={{ borderRadius: 2 }}
                 >
                   Cancel
                 </Button>
@@ -1203,11 +1224,7 @@ const ExamManager = () => {
                   onClick={handleSubmit}
                   disabled={actionLoading || !formData.title.trim() || !formData.course_id}
                   startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
-                  sx={{
-                    borderRadius: 2,
-                    opacity: actionLoading ? 0.7 : 1,
-                    transition: 'opacity 0.2s',
-                  }}
+                  sx={{ borderRadius: 2 }}
                 >
                   {actionLoading ? 'Saving...' : (isEditing ? 'Update Exam' : 'Create Exam')}
                 </Button>
@@ -1248,7 +1265,6 @@ const ExamManager = () => {
                     variant="outlined"
                     onClick={() => setActiveTab(1)}
                     disabled={actionLoading}
-                    sx={{ opacity: actionLoading ? 0.5 : 1 }}
                   >
                     Edit Exam
                   </Button>
@@ -1256,6 +1272,43 @@ const ExamManager = () => {
               </Grid>
             </Grid>
           </Paper>
+
+          {/* Question Management Actions */}
+          <Box sx={{ mb: 3, display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+            <Button
+              variant="outlined"
+              startIcon={<Upload />}
+              onClick={() => {
+                resetBatchQuestions();
+                setQuestionCreateDialogOpen(true);
+              }}
+              disabled={actionLoading}
+            >
+              Batch Upload
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<Add />}
+              onClick={() => {
+                resetQuestionForm();
+                setQuestionCreateDialogOpen(true);
+              }}
+              disabled={actionLoading}
+            >
+              Add Question
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<ImportExport />}
+              onClick={() => {
+                setQuestionDialogOpen(true);
+                fetchAvailableQuestions();
+              }}
+              disabled={actionLoading}
+            >
+              Import Questions
+            </Button>
+          </Box>
 
           {examQuestions.length === 0 ? (
             <Paper sx={{ p: 4, textAlign: 'center', borderRadius: 2 }}>
@@ -1266,44 +1319,6 @@ const ExamManager = () => {
               <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
                 Add questions to this exam from your practice question bank or create new ones
               </Typography>
-              <Stack direction="row" spacing={2} justifyContent="center">
-                <Button
-                  variant="outlined"
-                  startIcon={<Upload />}
-                  onClick={() => {
-                    resetBatchQuestions();
-                    setQuestionCreateDialogOpen(true);
-                  }}
-                  disabled={actionLoading}
-                  sx={{ opacity: actionLoading ? 0.5 : 1 }}
-                >
-                  Batch Upload
-                </Button>
-                <Button
-                  variant="contained"
-                  startIcon={<Add />}
-                  onClick={() => {
-                    resetQuestionForm();
-                    setQuestionCreateDialogOpen(true);
-                  }}
-                  disabled={actionLoading}
-                  sx={{ opacity: actionLoading ? 0.5 : 1 }}
-                >
-                  Create Question
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<ImportExport />}
-                  onClick={() => {
-                    setQuestionDialogOpen(true);
-                    fetchAvailableQuestions();
-                  }}
-                  disabled={actionLoading}
-                  sx={{ opacity: actionLoading ? 0.5 : 1 }}
-                >
-                  Import Questions
-                </Button>
-              </Stack>
             </Paper>
           ) : (
             <DataTable
@@ -1312,9 +1327,6 @@ const ExamManager = () => {
               loading={loading || actionLoading}
               onRefresh={() => fetchExamQuestions(selectedExam.id)}
               title="Exam Questions"
-              tableId="exam-questions-table"
-              searchable={true}
-              pagination={true}
               rowKey="id"
             />
           )}
@@ -1344,7 +1356,6 @@ const ExamManager = () => {
               }}
               size="small"
               disabled={actionLoading}
-              sx={{ opacity: actionLoading ? 0.5 : 1 }}
             >
               <Close />
             </IconButton>
@@ -1476,7 +1487,6 @@ const ExamManager = () => {
                   startIcon={<Add />}
                   onClick={addBatchQuestion}
                   disabled={actionLoading}
-                  sx={{ opacity: actionLoading ? 0.5 : 1 }}
                 >
                   Add Another
                 </Button>
@@ -1499,7 +1509,6 @@ const ExamManager = () => {
                           onClick={() => removeBatchQuestion(index)}
                           color="error"
                           disabled={actionLoading}
-                          sx={{ opacity: actionLoading ? 0.5 : 1 }}
                         >
                           <Delete fontSize="small" />
                         </IconButton>
@@ -1602,11 +1611,7 @@ const ExamManager = () => {
               resetBatchQuestions();
             }}
             disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.5 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -1620,11 +1625,7 @@ const ExamManager = () => {
                 : !questionForm.question_text.trim() || !questionForm.option_a.trim() || !questionForm.option_b.trim())
             }
             startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             {actionLoading ? 'Creating...' : `Create ${batchQuestions.length > 1 ? batchQuestions.length + ' Questions' : 'Question'}`}
           </Button>
@@ -1653,7 +1654,6 @@ const ExamManager = () => {
               }}
               size="small"
               disabled={actionLoading}
-              sx={{ opacity: actionLoading ? 0.5 : 1 }}
             >
               <Close />
             </IconButton>
@@ -1719,7 +1719,7 @@ const ExamManager = () => {
                     size="small"
                     onClick={applyQuestionFilters}
                     disabled={actionLoading}
-                    sx={{ flex: 1, opacity: actionLoading ? 0.7 : 1 }}
+                    sx={{ flex: 1 }}
                   >
                     {actionLoading ? <CircularProgress size={20} /> : 'Apply'}
                   </Button>
@@ -1728,7 +1728,6 @@ const ExamManager = () => {
                     size="small"
                     onClick={clearQuestionFilters}
                     disabled={actionLoading}
-                    sx={{ opacity: actionLoading ? 0.5 : 1 }}
                   >
                     Clear
                   </Button>
@@ -1746,7 +1745,6 @@ const ExamManager = () => {
                   indeterminate={selectedQuestions.length > 0 && selectedQuestions.length < availableQuestions.length}
                   onChange={handleSelectAllQuestions}
                   disabled={actionLoading || availableQuestions.length === 0}
-                  sx={{ opacity: actionLoading ? 0.5 : 1 }}
                 />
                 <Typography variant="body2">
                   {selectedQuestions.length} selected
@@ -1793,7 +1791,6 @@ const ExamManager = () => {
                       onChange={() => toggleQuestionSelection(question.id)}
                       onClick={(e) => e.stopPropagation()}
                       disabled={actionLoading}
-                      sx={{ opacity: actionLoading ? 0.5 : 1 }}
                     />
                     <Box sx={{ flex: 1 }}>
                       <Typography variant="body2" fontWeight="500">
@@ -1831,11 +1828,7 @@ const ExamManager = () => {
               setSelectedQuestions([]);
             }}
             disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.5 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -1844,11 +1837,7 @@ const ExamManager = () => {
             onClick={handleAddQuestions}
             disabled={actionLoading || selectedQuestions.length === 0}
             startIcon={actionLoading ? <CircularProgress size={20} /> : <Add />}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             {actionLoading ? 'Adding...' : `Add ${selectedQuestions.length} Question(s)`}
           </Button>
@@ -1861,7 +1850,7 @@ const ExamManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Exam"
-        message={`Are you sure you want to delete exam "${selectedExam?.title}"? This will also delete all associated exam questions.`}
+        message={`Are you sure you want to delete exam "${selectedExam?.title}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"

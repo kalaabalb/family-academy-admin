@@ -29,6 +29,9 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
+  LinearProgress,
+  InputAdornment,
+  CircularProgress
 } from '@mui/material';
 import {
   Add,
@@ -42,6 +45,8 @@ import {
   Save,
   Lock,
   Assignment,
+  Search,
+  Book,
 } from '@mui/icons-material';
 
 const CourseManager = () => {
@@ -52,7 +57,9 @@ const CourseManager = () => {
   const [categories, setCategories] = useState([]);
   const [teachers, setTeachers] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [assignFormOpen, setAssignFormOpen] = useState(false);
@@ -72,7 +79,6 @@ const CourseManager = () => {
   });
 
   // For teacher selection in assign form
-  const [availableTeachers, setAvailableTeachers] = useState([]);
   const [assignedTeacherIds, setAssignedTeacherIds] = useState([]);
 
   const fetchData = useCallback(async () => {
@@ -133,13 +139,19 @@ const CourseManager = () => {
 
   // Filter courses for teacher view
   const getFilteredCourses = useCallback(() => {
-    if (isAdmin()) return courses;
-    if (isTeacher()) {
-      const assignedIds = getAssignedCourseIds();
-      return courses.filter(course => assignedIds.includes(course.id));
+    let filtered = isAdmin() ? courses : courses.filter(course => getAssignedCourseIds().includes(course.id));
+    
+    if (searchQuery) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(course => 
+        course.name.toLowerCase().includes(query) ||
+        (course.description && course.description.toLowerCase().includes(query)) ||
+        (course.category_name && course.category_name.toLowerCase().includes(query))
+      );
     }
-    return [];
-  }, [isAdmin, isTeacher, courses, getAssignedCourseIds]);
+    
+    return filtered;
+  }, [isAdmin, courses, getAssignedCourseIds, searchQuery]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -155,8 +167,10 @@ const CourseManager = () => {
       const course = courses.find(c => c.id === parseInt(value));
       if (course && course.assigned_teacher_ids) {
         setAssignedTeacherIds(course.assigned_teacher_ids);
+        setAssignFormData(prev => ({ ...prev, teacher_ids: course.assigned_teacher_ids }));
       } else {
         setAssignedTeacherIds([]);
+        setAssignFormData(prev => ({ ...prev, teacher_ids: [] }));
       }
     }
   };
@@ -212,7 +226,7 @@ const CourseManager = () => {
         return;
       }
 
-      setLoading(true);
+      setActionLoading(true);
 
       const courseData = {
         name: formData.name.trim(),
@@ -236,7 +250,7 @@ const CourseManager = () => {
       console.error('Failed to save course:', err);
       showError(err.response?.data?.message || 'Failed to save course');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -252,7 +266,7 @@ const CourseManager = () => {
         return;
       }
 
-      setLoading(true);
+      setActionLoading(true);
 
       // For each teacher, assign to course
       for (const teacherId of assignFormData.teacher_ids) {
@@ -268,7 +282,7 @@ const CourseManager = () => {
       console.error('Failed to assign teachers:', err);
       showError(err.response?.data?.message || 'Failed to assign teachers');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
@@ -307,7 +321,7 @@ const CourseManager = () => {
     if (!selectedCourse) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await coursesApi.deleteCourse(selectedCourse.id);
       
       setCourses(prev => prev.filter(c => c.id !== selectedCourse.id));
@@ -320,15 +334,25 @@ const CourseManager = () => {
       console.error('Failed to delete course:', err);
       showError(err.response?.data?.message || 'Failed to delete course');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
   const columns = [
     {
+      field: 'id',
+      headerName: 'ID',
+      width: 70,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          #{value}
+        </Typography>
+      ),
+    },
+    {
       field: 'name',
       headerName: 'Course Name',
-      flex: 1.5,
+      flex: 1,
       render: (value, row) => (
         <Box>
           <Typography variant="body2" fontWeight="medium">
@@ -339,7 +363,7 @@ const CourseManager = () => {
               {row.description.substring(0, 60)}...
             </Typography>
           )}
-          {isTeacher() && (
+          {isTeacher() && getAssignedCourseIds().includes(row.id) && (
             <Chip
               label="Assigned to you"
               size="small"
@@ -355,6 +379,15 @@ const CourseManager = () => {
       field: 'category_name',
       headerName: 'Category',
       width: 150,
+      render: (value) => (
+        <Chip
+          label={value || 'N/A'}
+          size="small"
+          color="primary"
+          variant="outlined"
+          icon={<CategoryIcon fontSize="small" />}
+        />
+      ),
     },
     {
       field: 'chapter_count',
@@ -408,22 +441,36 @@ const CourseManager = () => {
             {canEdit ? (
               <>
                 <Tooltip title="Edit Course">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleEdit(row)}
-                    color="primary"
-                  >
-                    <Edit fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleEdit(row)}
+                      color="primary"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
                 <Tooltip title="Delete Course">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDelete(row)}
-                    color="error"
-                  >
-                    <Delete fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(row)}
+                      color="error"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </>
             ) : (
@@ -471,7 +518,7 @@ const CourseManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -484,7 +531,7 @@ const CourseManager = () => {
                 resetForm();
                 setFormOpen(true);
               }}
-              disabled={loading}
+              disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Add Course
@@ -498,7 +545,7 @@ const CourseManager = () => {
                 resetAssignForm();
                 setAssignFormOpen(true);
               }}
-              disabled={loading}
+              disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Assign Teachers
@@ -507,6 +554,10 @@ const CourseManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -516,23 +567,45 @@ const CourseManager = () => {
         </Alert>
       )}
 
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search courses by name or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+
       {/* Courses Table */}
       <DataTable
         columns={columns}
         data={filteredCourses}
         loading={loading}
         onRefresh={fetchData}
-        title={`Courses`}
-        tableId="courses-table"
-        searchable={true}
-        pagination={true}
+        title={`Courses (${filteredCourses.length})`}
         rowKey="id"
       />
 
       {/* Add/Edit Course Dialog */}
       <Dialog
         open={formOpen}
-        onClose={() => !loading && setFormOpen(false)}
+        onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -543,9 +616,9 @@ const CourseManager = () => {
               {isEditing ? 'Edit Course' : 'Add New Course'}
             </Typography>
             <IconButton
-              onClick={() => !loading && setFormOpen(false)}
+              onClick={() => !actionLoading && setFormOpen(false)}
               size="small"
-              disabled={loading}
+              disabled={actionLoading}
             >
               <Close />
             </IconButton>
@@ -563,7 +636,7 @@ const CourseManager = () => {
                 onChange={handleInputChange}
                 required
                 placeholder="Enter course name"
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
 
@@ -575,7 +648,7 @@ const CourseManager = () => {
                   value={formData.category_id}
                   onChange={handleInputChange}
                   label="Category *"
-                  disabled={loading}
+                  disabled={actionLoading}
                 >
                   <MenuItem value="">Select Category</MenuItem>
                   {categories.map(cat => (
@@ -597,7 +670,7 @@ const CourseManager = () => {
                 multiline
                 rows={3}
                 placeholder="Enter course description..."
-                disabled={loading}
+                disabled={actionLoading}
               />
             </Grid>
           </Grid>
@@ -610,7 +683,7 @@ const CourseManager = () => {
               setFormOpen(false);
               resetForm();
             }}
-            disabled={loading}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Cancel
@@ -618,11 +691,11 @@ const CourseManager = () => {
           <Button
             variant="contained"
             onClick={handleSubmit}
-            disabled={loading || !formData.name.trim() || !formData.category_id}
-            startIcon={<Save />}
+            disabled={actionLoading || !formData.name.trim() || !formData.category_id}
+            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {loading ? 'Saving...' : (isEditing ? 'Update Course' : 'Create Course')}
+            {actionLoading ? 'Saving...' : (isEditing ? 'Update Course' : 'Create Course')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -631,7 +704,7 @@ const CourseManager = () => {
       {isAdmin() && (
         <Dialog
           open={assignFormOpen}
-          onClose={() => !loading && setAssignFormOpen(false)}
+          onClose={() => !actionLoading && setAssignFormOpen(false)}
           maxWidth="md"
           fullWidth
           PaperProps={{ sx: { borderRadius: 2 } }}
@@ -642,9 +715,9 @@ const CourseManager = () => {
                 Assign Teachers to Course
               </Typography>
               <IconButton
-                onClick={() => !loading && setAssignFormOpen(false)}
+                onClick={() => !actionLoading && setAssignFormOpen(false)}
                 size="small"
-                disabled={loading}
+                disabled={actionLoading}
               >
                 <Close />
               </IconButton>
@@ -661,7 +734,7 @@ const CourseManager = () => {
                     value={assignFormData.course_id}
                     onChange={handleAssignInputChange}
                     label="Course *"
-                    disabled={loading}
+                    disabled={actionLoading}
                   >
                     <MenuItem value="">Select Course</MenuItem>
                     {courses.map(course => (
@@ -675,7 +748,7 @@ const CourseManager = () => {
 
               {assignFormData.course_id && (
                 <Grid item xs={12}>
-                  <Typography variant="subtitle2" gutterBottom>
+                  <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                     Select Teachers to Assign
                   </Typography>
                   <Paper variant="outlined" sx={{ p: 2, maxHeight: 300, overflow: 'auto' }}>
@@ -687,7 +760,7 @@ const CourseManager = () => {
                             <Checkbox
                               checked={assignFormData.teacher_ids.includes(teacher.id)}
                               onChange={() => handleTeacherToggle(teacher.id)}
-                              disabled={loading}
+                              disabled={actionLoading}
                             />
                           }
                           label={
@@ -715,7 +788,7 @@ const CourseManager = () => {
                 setAssignFormOpen(false);
                 resetAssignForm();
               }}
-              disabled={loading}
+              disabled={actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Cancel
@@ -723,11 +796,11 @@ const CourseManager = () => {
             <Button
               variant="contained"
               onClick={handleAssignTeachers}
-              disabled={loading || !assignFormData.course_id || assignFormData.teacher_ids.length === 0}
-              startIcon={<Assignment />}
+              disabled={actionLoading || !assignFormData.course_id || assignFormData.teacher_ids.length === 0}
+              startIcon={actionLoading ? <CircularProgress size={20} /> : <Assignment />}
               sx={{ borderRadius: 2 }}
             >
-              {loading ? 'Assigning...' : 'Assign Selected Teachers'}
+              {actionLoading ? 'Assigning...' : 'Assign Selected Teachers'}
             </Button>
           </DialogActions>
         </Dialog>
@@ -743,7 +816,7 @@ const CourseManager = () => {
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
-        loading={loading}
+        loading={actionLoading}
       />
     </Box>
   );

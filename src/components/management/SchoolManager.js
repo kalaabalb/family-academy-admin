@@ -6,7 +6,13 @@ import {
   Button,
   TextField,
   Alert,
-  CircularProgress,
+  IconButton,
+  Tooltip,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add,
@@ -25,15 +31,12 @@ const SchoolManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
   const [schools, setSchools] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedSchool, setSelectedSchool] = useState(null);
-
-  const [formData, setFormData] = useState({
-    name: '',
-  });
+  const [formData, setFormData] = useState({ name: '' });
 
   useEffect(() => {
     if (isAdmin()) {
@@ -56,16 +59,11 @@ const SchoolManager = () => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      [name]: value,
-    }));
+    setFormData(prev => ({ ...prev, [name]: value }));
   };
 
   const resetForm = () => {
-    setFormData({
-      name: '',
-    });
+    setFormData({ name: '' });
     setEditingId(null);
   };
 
@@ -75,6 +73,8 @@ const SchoolManager = () => {
         showError('School name is required');
         return;
       }
+
+      setLoading(true);
 
       if (editingId) {
         await schoolsApi.updateSchool(editingId, formData.name.trim());
@@ -86,18 +86,18 @@ const SchoolManager = () => {
 
       setFormOpen(false);
       resetForm();
-      fetchSchools();
+      await fetchSchools();
     } catch (error) {
       console.error('Failed to save school:', error);
       showError(error.response?.data?.message || 'Failed to save school');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleEdit = (school) => {
     setEditingId(school.id);
-    setFormData({
-      name: school.name,
-    });
+    setFormData({ name: school.name });
     setFormOpen(true);
   };
 
@@ -110,17 +110,18 @@ const SchoolManager = () => {
     if (!selectedSchool) return;
 
     try {
+      setLoading(true);
       await schoolsApi.deleteSchool(selectedSchool.id);
       
-      // Optimistic update
       setSchools(prev => prev.filter(s => s.id !== selectedSchool.id));
-      
       showSuccess(`School "${selectedSchool.name}" deleted successfully`);
       setDeleteConfirmOpen(false);
       setSelectedSchool(null);
     } catch (error) {
       console.error('Failed to delete school:', error);
       showError(error.response?.data?.message || 'Failed to delete school');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -128,6 +129,7 @@ const SchoolManager = () => {
     {
       field: 'name',
       headerName: 'School Name',
+      flex: 1,
       render: (value) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <SchoolIcon sx={{ color: 'primary.main', fontSize: 20 }} />
@@ -141,18 +143,20 @@ const SchoolManager = () => {
       field: 'created_at',
       headerName: 'Created',
       type: 'datetime',
+      width: 150,
     },
     {
       field: 'updated_at',
       headerName: 'Last Updated',
       type: 'datetime',
+      width: 150,
     },
   ];
 
   if (!isAdmin()) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error">
+        <Alert severity="error" sx={{ borderRadius: 2 }}>
           Access Denied - Only administrators can access school management.
         </Alert>
       </Box>
@@ -171,17 +175,34 @@ const SchoolManager = () => {
             Manage schools for student registration
           </Typography>
         </Box>
-        <Button
-          variant="contained"
-          startIcon={<Add />}
-          onClick={() => {
-            resetForm();
-            setFormOpen(true);
-          }}
-        >
-          Add School
-        </Button>
+        
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchSchools}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Refresh
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<Add />}
+            onClick={() => {
+              resetForm();
+              setFormOpen(true);
+            }}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Add School
+          </Button>
+        </Box>
       </Box>
+
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Schools Table */}
       <DataTable
@@ -191,80 +212,59 @@ const SchoolManager = () => {
         onRefresh={fetchSchools}
         onEdit={handleEdit}
         onDelete={handleDelete}
-        title={`Schools `}
+        title="Schools"
+        rowKey="id"
       />
 
-      {/* Add/Edit Form Dialog */}
-      {formOpen && (
-        <Paper
-          sx={{
-            position: 'fixed',
-            top: '50%',
-            left: '50%',
-            transform: 'translate(-50%, -50%)',
-            width: '90%',
-            maxWidth: 500,
-            p: 3,
-            zIndex: 1300,
-          }}
-          elevation={24}
-        >
-          <Typography variant="h6" fontWeight="bold" gutterBottom>
+      {/* Add/Edit School Dialog */}
+      <Dialog
+        open={formOpen}
+        onClose={() => !loading && setFormOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
+      >
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Typography variant="h6" fontWeight="bold">
             {editingId ? 'Edit School' : 'Add New School'}
           </Typography>
-
-          <Box sx={{ mt: 2 }}>
-            <TextField
-              fullWidth
-              label="School Name *"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              required
-              autoFocus
-              sx={{ mb: 3 }}
-            />
-
-            <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-              <Button
-                variant="outlined"
-                onClick={() => {
-                  setFormOpen(false);
-                  resetForm();
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="contained"
-                onClick={handleSubmit}
-                disabled={!formData.name.trim()}
-              >
-                {editingId ? 'Update School' : 'Create School'}
-              </Button>
-            </Box>
-          </Box>
-        </Paper>
-      )}
-
-      {/* Overlay for form */}
-      {formOpen && (
-        <Box
-          sx={{
-            position: 'fixed',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.5)',
-            zIndex: 1299,
-          }}
-          onClick={() => {
-            setFormOpen(false);
-            resetForm();
-          }}
-        />
-      )}
+        </DialogTitle>
+        
+        <DialogContent sx={{ p: 3 }}>
+          <TextField
+            fullWidth
+            label="School Name *"
+            name="name"
+            value={formData.name}
+            onChange={handleInputChange}
+            required
+            autoFocus
+            disabled={loading}
+          />
+        </DialogContent>
+        
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => {
+              setFormOpen(false);
+              resetForm();
+            }}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="contained"
+            onClick={handleSubmit}
+            disabled={loading || !formData.name.trim()}
+            sx={{ borderRadius: 2 }}
+          >
+            {loading ? 'Saving...' : (editingId ? 'Update School' : 'Create School')}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
@@ -272,11 +272,10 @@ const SchoolManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete School"
-        message={`Are you sure you want to delete school "${selectedSchool?.name}"? 
-        ${selectedSchool?.userCount > 0 ? 'This school has assigned users and cannot be deleted.' : ''}`}
+        message={`Are you sure you want to delete school "${selectedSchool?.name}"?`}
         confirmText="Delete"
         cancelText="Cancel"
-        severity={selectedSchool?.userCount > 0 ? "warning" : "error"}
+        severity="error"
         loading={loading}
       />
     </Box>

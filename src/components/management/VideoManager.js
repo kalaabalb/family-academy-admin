@@ -31,9 +31,8 @@ import {
   Avatar,
   Card,
   CardContent,
-  CardMedia,
-  Divider,
   CircularProgress,
+  InputAdornment,
 } from '@mui/material';
 import {
   Add,
@@ -43,16 +42,16 @@ import {
   PlayCircle,
   Visibility,
   CloudUpload,
-  Cancel,
   CheckCircle,
   AccessTime,
   Storage,
-  VideoLibrary,
   Category as CategoryIcon,
   Book,
   MenuBook,
   Close,
   Save,
+  Search,
+  Image,
 } from '@mui/icons-material';
 
 const VideoManager = () => {
@@ -64,7 +63,9 @@ const VideoManager = () => {
   const [courses, setCourses] = useState([]);
   const [chapters, setChapters] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -282,6 +283,7 @@ const VideoManager = () => {
       showError(err.response?.data?.message || 'Failed to save video');
     } finally {
       setUploading(false);
+      setActionLoading(false);
     }
   };
 
@@ -341,7 +343,7 @@ const VideoManager = () => {
     if (!selectedVideo) return;
 
     try {
-      setLoading(true);
+      setActionLoading(true);
       await videosApi.deleteVideo(selectedVideo.id);
       
       setVideos(prev => prev.filter(v => v.id !== selectedVideo.id));
@@ -354,18 +356,29 @@ const VideoManager = () => {
       console.error('Failed to delete video:', err);
       showError(err.response?.data?.message || 'Failed to delete video');
     } finally {
-      setLoading(false);
+      setActionLoading(false);
     }
   };
 
-  // Table columns
+  // Filter videos based on search
+  const filteredVideos = videos.filter(video => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      video.title.toLowerCase().includes(query) ||
+      (video.description && video.description.toLowerCase().includes(query)) ||
+      (video.chapter_name && video.chapter_name.toLowerCase().includes(query)) ||
+      (video.course_name && video.course_name.toLowerCase().includes(query))
+    );
+  });
+
   const columns = [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
       render: (value) => (
-        <Typography variant="body2" color="text.secondary" fontWeight="medium">
+        <Typography variant="body2" color="text.secondary">
           #{value}
         </Typography>
       ),
@@ -401,20 +414,6 @@ const VideoManager = () => {
             )}
           </Box>
         </Box>
-      ),
-    },
-    {
-      field: 'category_name',
-      headerName: 'Category',
-      width: 120,
-      render: (value) => (
-        <Chip
-          label={value || 'N/A'}
-          size="small"
-          color="primary"
-          variant="outlined"
-          icon={<CategoryIcon fontSize="small" />}
-        />
       ),
     },
     {
@@ -456,7 +455,7 @@ const VideoManager = () => {
       field: 'uploader_role',
       headerName: 'Uploader',
       width: 100,
-      render: (value) => (
+      render: (value, row) => (
         <Chip
           label={value === 'admin' ? 'Admin' : 'Teacher'}
           size="small"
@@ -485,33 +484,54 @@ const VideoManager = () => {
         return (
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Tooltip title="Preview Video">
-              <IconButton
-                size="small"
-                onClick={() => handlePreview(row)}
-                color="info"
-              >
-                <Visibility fontSize="small" />
-              </IconButton>
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => handlePreview(row)}
+                  color="info"
+                  disabled={actionLoading}
+                  sx={{
+                    opacity: actionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </span>
             </Tooltip>
             {canEdit && (
               <>
                 <Tooltip title="Edit Video">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleEdit(row)}
-                    color="primary"
-                  >
-                    <Edit fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleEdit(row)}
+                      color="primary"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Edit fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
                 <Tooltip title="Delete Video">
-                  <IconButton
-                    size="small"
-                    onClick={() => handleDelete(row)}
-                    color="error"
-                  >
-                    <Delete fontSize="small" />
-                  </IconButton>
+                  <span>
+                    <IconButton
+                      size="small"
+                      onClick={() => handleDelete(row)}
+                      color="error"
+                      disabled={actionLoading}
+                      sx={{
+                        opacity: actionLoading ? 0.5 : 1,
+                        transition: 'opacity 0.2s',
+                      }}
+                    >
+                      <Delete fontSize="small" />
+                    </IconButton>
+                  </span>
                 </Tooltip>
               </>
             )}
@@ -549,7 +569,7 @@ const VideoManager = () => {
             variant="outlined"
             startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -562,7 +582,7 @@ const VideoManager = () => {
                 resetForm();
                 setFormOpen(true);
               }}
-              disabled={loading}
+              disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
               Upload Video
@@ -571,6 +591,10 @@ const VideoManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -580,16 +604,38 @@ const VideoManager = () => {
         </Alert>
       )}
 
+      {/* Search Bar */}
+      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search videos by title, description, or course..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Close />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
+      </Paper>
+
       {/* Videos Table */}
       <DataTable
         columns={columns}
-        data={videos}
+        data={filteredVideos}
         loading={loading}
         onRefresh={fetchData}
-        title={`Videos`}
-        tableId="videos-table"
-        searchable={true}
-        pagination={true}
+        title={`Videos (${filteredVideos.length})`}
         rowKey="id"
       />
 
@@ -847,7 +893,7 @@ const VideoManager = () => {
         <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="h6" fontWeight="bold">
-              Video Preview: {previewVideo?.title}
+              {previewVideo?.title}
             </Typography>
             <IconButton onClick={() => setPreviewOpen(false)} size="small">
               <Close />
@@ -984,11 +1030,11 @@ const VideoManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Video"
-        message={`Are you sure you want to delete video "${selectedVideo?.title}"? This action cannot be undone.`}
+        message={`Are you sure you want to delete video "${selectedVideo?.title}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
-        loading={loading}
+        loading={actionLoading}
       />
     </Box>
   );

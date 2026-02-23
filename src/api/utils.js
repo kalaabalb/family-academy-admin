@@ -253,7 +253,8 @@ export const copyToClipboard = async (text) => {
   }
 };
 
-export default {
+// Export all functions as named exports AND as a default object
+const utils = {
   handleApiError,
   formatSuccessResponse,
   validateRequiredFields,
@@ -269,3 +270,5 @@ export default {
   downloadFile,
   copyToClipboard,
 };
+
+export default utils;

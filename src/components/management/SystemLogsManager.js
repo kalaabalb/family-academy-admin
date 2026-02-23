@@ -34,19 +34,13 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   LinearProgress,
-  Badge,
-  Avatar,
   alpha,
 } from '@mui/material';
 import {
   Refresh,
   Delete,
   Download,
-  Upload,
   FilterList,
   Clear,
   Search,
@@ -61,15 +55,10 @@ import {
   Visibility,
   CloudDownload,
   DateRange,
-  Timeline,
-  TrendingUp,
-  TrendingDown,
   AccessTime,
-  Computer,
   Storage,
-  Speed,
+  Close,
 } from '@mui/icons-material';
-import { formatDate, getRelativeTime } from '../../utils/validation';
 
 const SystemLogsManager = () => {
   const { isAdmin } = useAuth();
@@ -77,16 +66,12 @@ const SystemLogsManager = () => {
   
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
   const [stats, setStats] = useState({
     counts: { total: 0, info: 0, warn: 0, error: 0, debug: 0 },
-    recent_actions: [],
-    error_trends: [],
-    user_stats: { active_users: 0, active_today: 0 },
     summary: {
       days_with_logs: 0,
-      latest_log: null,
-      oldest_log: null,
       logs_per_day: 0,
       error_rate: 0,
       warning_rate: 0
@@ -102,6 +87,7 @@ const SystemLogsManager = () => {
     search: ''
   });
   
+  const [showFilters, setShowFilters] = useState(false);
   const [pagination, setPagination] = useState({
     page: 0,
     rowsPerPage: 25,
@@ -155,9 +141,6 @@ const SystemLogsManager = () => {
         } else if (response.data.data.logs) {
           logsData = response.data.data.logs || [];
           total = response.data.data.pagination?.total || logsData.length;
-        } else if (typeof response.data.data === 'object') {
-          logsData = response.data.data.logs || [];
-          total = response.data.data.pagination?.total || logsData.length;
         }
       } else if (Array.isArray(response.data)) {
         logsData = response.data;
@@ -180,18 +163,13 @@ const SystemLogsManager = () => {
     try {
       const response = await systemLogsApi.getLogStats();
       
-      // Handle different response structures
       if (response.data?.success && response.data?.data) {
         setStats(response.data.data);
       } else if (response.data?.data) {
         setStats(response.data.data);
-      } else {
-        // Keep default stats
-        console.log('Using default stats');
       }
     } catch (err) {
       console.error('Failed to fetch log stats:', err);
-      // Keep default stats on error
     }
   };
 
@@ -201,7 +179,6 @@ const SystemLogsManager = () => {
       ...prev,
       [name]: value
     }));
-    // Reset to first page when filters change
     setPagination(prev => ({ ...prev, page: 0 }));
   };
 
@@ -242,6 +219,7 @@ const SystemLogsManager = () => {
 
   const handleClearLogs = async () => {
     try {
+      setActionLoading(true);
       await systemLogsApi.clearOldLogs(clearDays);
       showSuccess(`Successfully cleared logs older than ${clearDays} days`);
       setClearDialogOpen(false);
@@ -249,11 +227,14 @@ const SystemLogsManager = () => {
       fetchLogStats();
     } catch (err) {
       showError(err.response?.data?.message || 'Failed to clear logs');
+    } finally {
+      setActionLoading(false);
     }
   };
 
   const handleExportLogs = async () => {
     try {
+      setActionLoading(true);
       const params = {};
       if (filters.level) params.level = filters.level;
       if (filters.start_date) params.start_date = filters.start_date;
@@ -261,7 +242,6 @@ const SystemLogsManager = () => {
       
       const response = await systemLogsApi.exportLogs(exportFormat, params);
       
-      // Create download link
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -273,6 +253,8 @@ const SystemLogsManager = () => {
       showSuccess(`Logs exported successfully as ${exportFormat.toUpperCase()}`);
     } catch (err) {
       showError(err.response?.data?.message || 'Failed to export logs');
+    } finally {
+      setActionLoading(false);
     }
   };
 
@@ -358,12 +340,20 @@ const SystemLogsManager = () => {
         <Stack direction="row" spacing={2}>
           <Button
             variant="outlined"
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            sx={{ borderRadius: 2 }}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
+          </Button>
+          <Button
+            variant="outlined"
             startIcon={<Refresh />}
             onClick={() => {
               fetchLogs();
               fetchLogStats();
             }}
-            disabled={loading}
+            disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Refresh
@@ -373,12 +363,16 @@ const SystemLogsManager = () => {
             color="warning"
             startIcon={<Delete />}
             onClick={() => setClearDialogOpen(true)}
+            disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >
             Clear Old Logs
           </Button>
         </Stack>
       </Box>
+
+      {/* Loading Indicator */}
+      {(loading || actionLoading) && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Error Alert */}
       {error && (
@@ -427,139 +421,131 @@ const SystemLogsManager = () => {
         </Grid>
         <Grid item xs={12} sm={6} md={3}>
           <StatCard
-            title="Active Users"
-            value={stats.user_stats?.active_today || 0}
-            icon={<Person />}
-            color="#4caf50"
-            subtitle={`${stats.user_stats?.active_users || 0} total users`}
+            title="Info"
+            value={stats.counts?.info || 0}
+            icon={<Info />}
+            color="#2196f3"
+            subtitle="Information logs"
           />
         </Grid>
       </Grid>
 
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-          Filters
-        </Typography>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Log Level</InputLabel>
-              <Select
-                name="level"
-                value={filters.level}
+      {/* Filters Section */}
+      {showFilters && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" fontWeight="medium" gutterBottom>
+            Filter Logs
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Search"
+                name="search"
+                value={filters.search}
                 onChange={handleFilterChange}
-                label="Log Level"
-              >
-                <MenuItem value="">All Levels</MenuItem>
-                <MenuItem value="error">Error</MenuItem>
-                <MenuItem value="warn">Warning</MenuItem>
-                <MenuItem value="info">Info</MenuItem>
-                <MenuItem value="debug">Debug</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              label="Action"
-              name="action"
-              value={filters.action}
-              onChange={handleFilterChange}
-              placeholder="e.g., user_login"
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              label="User ID"
-              name="user_id"
-              value={filters.user_id}
-              onChange={handleFilterChange}
-              placeholder="User ID"
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="Start Date"
-              name="start_date"
-              value={filters.start_date}
-              onChange={handleFilterChange}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              size="small"
-              type="date"
-              label="End Date"
-              name="end_date"
-              value={filters.end_date}
-              onChange={handleFilterChange}
-              InputLabelProps={{ shrink: true }}
-            />
-          </Grid>
-          
-          <Grid item xs={12} md={2}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
+                placeholder="Search in logs..."
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Log Level</InputLabel>
+                <Select
+                  name="level"
+                  value={filters.level}
+                  onChange={handleFilterChange}
+                  label="Log Level"
+                >
+                  <MenuItem value="">All Levels</MenuItem>
+                  <MenuItem value="error">Error</MenuItem>
+                  <MenuItem value="warn">Warning</MenuItem>
+                  <MenuItem value="info">Info</MenuItem>
+                  <MenuItem value="debug">Debug</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <TextField
                 fullWidth
-                variant="contained"
-                onClick={applyFilters}
-                disabled={loading}
-                sx={{ borderRadius: 2 }}
-              >
-                Apply
-              </Button>
-              <Button
+                size="small"
+                label="Action"
+                name="action"
+                value={filters.action}
+                onChange={handleFilterChange}
+                placeholder="e.g., user_login"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <TextField
                 fullWidth
-                variant="outlined"
-                onClick={clearFilters}
-                sx={{ borderRadius: 2 }}
-              >
-                Clear
-              </Button>
-            </Box>
+                size="small"
+                label="User ID"
+                name="user_id"
+                value={filters.user_id}
+                onChange={handleFilterChange}
+                placeholder="User ID"
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={1.5}>
+              <TextField
+                fullWidth
+                size="small"
+                type="date"
+                label="From"
+                name="start_date"
+                value={filters.start_date}
+                onChange={handleFilterChange}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={1.5}>
+              <TextField
+                fullWidth
+                size="small"
+                type="date"
+                label="To"
+                name="end_date"
+                value={filters.end_date}
+                onChange={handleFilterChange}
+                InputLabelProps={{ shrink: true }}
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="outlined"
+                  onClick={clearFilters}
+                  size="small"
+                >
+                  Clear Filters
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={applyFilters}
+                  size="small"
+                >
+                  Apply Filters
+                </Button>
+              </Box>
+            </Grid>
           </Grid>
-        </Grid>
-
-        {/* Search Bar */}
-        <Box sx={{ mt: 2 }}>
-          <TextField
-            fullWidth
-            size="small"
-            label="Search logs..."
-            name="search"
-            value={filters.search}
-            onChange={handleFilterChange}
-            onKeyPress={(e) => e.key === 'Enter' && applyFilters()}
-            InputProps={{
-              startAdornment: (
-                <InputAdornment position="start">
-                  <Search />
-                </InputAdornment>
-              ),
-              endAdornment: filters.search && (
-                <InputAdornment position="end">
-                  <IconButton size="small" onClick={() => setFilters(prev => ({ ...prev, search: '' }))}>
-                    <Clear />
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-        </Box>
-      </Paper>
+        </Paper>
+      )}
 
       {/* Logs Table */}
       <Paper sx={{ borderRadius: 2, overflow: 'hidden' }}>
@@ -574,6 +560,7 @@ const SystemLogsManager = () => {
                 value={exportFormat}
                 onChange={(e) => setExportFormat(e.target.value)}
                 displayEmpty
+                disabled={actionLoading}
               >
                 <MenuItem value="csv">CSV</MenuItem>
                 <MenuItem value="json">JSON</MenuItem>
@@ -583,7 +570,7 @@ const SystemLogsManager = () => {
               <span>
                 <IconButton 
                   onClick={handleExportLogs} 
-                  disabled={logs.length === 0}
+                  disabled={logs.length === 0 || actionLoading}
                   color="primary"
                 >
                   <Download />
@@ -630,7 +617,7 @@ const SystemLogsManager = () => {
                       <TableCell>
                         <Tooltip title={new Date(log.created_at).toLocaleString()}>
                           <Typography variant="body2">
-                            {getRelativeTime(log.created_at)}
+                            {new Date(log.created_at).toLocaleString()}
                           </Typography>
                         </Tooltip>
                       </TableCell>
@@ -677,12 +664,15 @@ const SystemLogsManager = () => {
                       </TableCell>
                       <TableCell align="right">
                         <Tooltip title="View Details">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewDetails(log)}
-                          >
-                            <Visibility fontSize="small" />
-                          </IconButton>
+                          <span>
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewDetails(log)}
+                              disabled={actionLoading}
+                            >
+                              <Visibility fontSize="small" />
+                            </IconButton>
+                          </span>
                         </Tooltip>
                       </TableCell>
                     </TableRow>
@@ -710,14 +700,20 @@ const SystemLogsManager = () => {
         onClose={() => setDetailsOpen(false)}
         maxWidth="md"
         fullWidth
+        PaperProps={{ sx: { borderRadius: 2 } }}
       >
-        <DialogTitle>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Code />
-            <Typography variant="h6">Log Details</Typography>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <Code />
+              <Typography variant="h6">Log Details</Typography>
+            </Box>
+            <IconButton onClick={() => setDetailsOpen(false)} size="small">
+              <Close />
+            </IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ p: 3 }}>
           {selectedLog && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -736,7 +732,7 @@ const SystemLogsManager = () => {
                   Time
                 </Typography>
                 <Typography variant="body1">
-                  {formatDate(selectedLog.created_at, true)}
+                  {new Date(selectedLog.created_at).toLocaleString()}
                 </Typography>
               </Grid>
 
@@ -823,6 +819,7 @@ const SystemLogsManager = () => {
             onChange={(e) => setClearDays(parseInt(e.target.value) || 30)}
             InputProps={{ inputProps: { min: 1, max: 365 } }}
             sx={{ mt: 2 }}
+            disabled={actionLoading}
           />
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
@@ -830,9 +827,9 @@ const SystemLogsManager = () => {
           </Typography>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setClearDialogOpen(false)}>Cancel</Button>
-          <Button onClick={handleClearLogs} color="error" variant="contained">
-            Clear Logs
+          <Button onClick={() => setClearDialogOpen(false)} disabled={actionLoading}>Cancel</Button>
+          <Button onClick={handleClearLogs} color="error" variant="contained" disabled={actionLoading}>
+            {actionLoading ? <CircularProgress size={20} /> : 'Clear Logs'}
           </Button>
         </DialogActions>
       </Dialog>

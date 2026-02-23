@@ -27,42 +27,28 @@ import {
   Card,
   CardContent,
   Stack,
-  CircularProgress,
   LinearProgress,
   alpha,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
+  InputAdornment
 } from '@mui/material';
 import {
   Refresh,
   Delete,
   Devices,
-  DevicesOther,
   Tv,
   Smartphone,
   Link,
   LinkOff,
-  Warning,
   Search,
   FilterList,
   Download,
   Visibility,
-  VisibilityOff,
   Person,
-  School,
   AccessTime,
   Info,
   CheckCircle,
   Cancel,
   Block,
-  Sync,
-  PhoneAndroid,
-  DesktopWindows,
-  TabletAndroid,
 } from '@mui/icons-material';
 
 const DeviceManager = () => {
@@ -84,6 +70,7 @@ const DeviceManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [unpairConfirmOpen, setUnpairConfirmOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
   
   const [filters, setFilters] = useState({
     device_type: '',
@@ -110,7 +97,6 @@ const DeviceManager = () => {
       setDevices(devicesData);
       setUsers(usersData);
       
-      
       setStats({
         total: statsData.counts?.total || 0,
         primary: statsData.counts?.primary_count || 0,
@@ -121,8 +107,7 @@ const DeviceManager = () => {
       
     } catch (err) {
       console.error('Failed to fetch devices:', err);
-      const errMsg = err.response?.data?.message || 'Failed to load devices';
-      setError(errMsg);
+      setError(err.response?.data?.message || 'Failed to load devices');
       showError('Failed to load devices');
     } finally {
       setLoading(false);
@@ -138,6 +123,10 @@ const DeviceManager = () => {
   const handleFilterChange = (e) => {
     const { name, value } = e.target;
     setFilters(prev => ({ ...prev, [name]: value }));
+  };
+
+  const applyFilters = () => {
+    fetchData();
   };
 
   const clearFilters = () => {
@@ -165,7 +154,6 @@ const DeviceManager = () => {
     try {
       setLoading(true);
       
-      
       await devicesApi.forceRemoveDevice(selectedDevice.source_id || selectedDevice.id, {
         reason: 'Removed by admin',
         source_table: selectedDevice.source_table || 'devices',
@@ -175,12 +163,11 @@ const DeviceManager = () => {
       showSuccess('Device removed successfully');
       setDeleteConfirmOpen(false);
       setSelectedDevice(null);
-      fetchData(); 
+      fetchData();
       
     } catch (err) {
       console.error('Failed to remove device:', err);
-      const errMsg = err.response?.data?.message || 'Failed to remove device';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to remove device');
     } finally {
       setLoading(false);
     }
@@ -195,7 +182,6 @@ const DeviceManager = () => {
       if (selectedDevice.device_type === 'tv') {
         await devicesApi.updateDevice(selectedDevice.id, { is_paired: false });
       } else {
-        
         showSuccess('Primary devices cannot be unpaired - they are always paired');
         setUnpairConfirmOpen(false);
         setSelectedDevice(null);
@@ -205,12 +191,11 @@ const DeviceManager = () => {
       showSuccess('TV device unpaired successfully');
       setUnpairConfirmOpen(false);
       setSelectedDevice(null);
-      fetchData(); 
+      fetchData();
       
     } catch (err) {
       console.error('Failed to unpair device:', err);
-      const errMsg = err.response?.data?.message || 'Failed to unpair device';
-      showError(errMsg);
+      showError(err.response?.data?.message || 'Failed to unpair device');
     } finally {
       setLoading(false);
     }
@@ -220,7 +205,6 @@ const DeviceManager = () => {
     if (device.device_category === 'secondary' || device.device_type === 'tv') {
       return <Tv />;
     }
-    
     return <Smartphone />;
   };
 
@@ -235,7 +219,7 @@ const DeviceManager = () => {
     if (device.device_category === 'secondary' || device.device_type === 'tv') {
       return 'TV (Secondary)';
     }
-    return 'Primary Device (Mobile/Tablet/Desktop)';
+    return 'Primary Device';
   };
 
   const StatCard = ({ title, value, icon, color, subtitle }) => (
@@ -280,11 +264,9 @@ const DeviceManager = () => {
       headerName: 'Device ID',
       width: 200,
       render: (value) => (
-        <Box>
-          <Typography variant="body2" fontWeight="medium" sx={{ fontFamily: 'monospace' }}>
-            {value ? value.substring(0, 20) + '...' : 'N/A'}
-          </Typography>
-        </Box>
+        <Typography variant="body2" fontWeight="medium" sx={{ fontFamily: 'monospace' }}>
+          {value ? value.substring(0, 20) + '...' : 'N/A'}
+        </Typography>
       ),
     },
     {
@@ -384,8 +366,12 @@ const DeviceManager = () => {
                 <IconButton
                   size="small"
                   onClick={() => row.is_paired && handleUnpairDevice(row)}
-                  disabled={!row.is_paired || row.removed_by_admin}
+                  disabled={!row.is_paired || row.removed_by_admin || loading}
                   color="warning"
+                  sx={{
+                    opacity: loading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
                 >
                   <LinkOff fontSize="small" />
                 </IconButton>
@@ -393,13 +379,20 @@ const DeviceManager = () => {
             </Tooltip>
           )}
           <Tooltip title="Remove Device">
-            <IconButton
-              size="small"
-              onClick={() => handleRemoveDevice(row)}
-              color="error"
-            >
-              <Delete fontSize="small" />
-            </IconButton>
+            <span>
+              <IconButton
+                size="small"
+                onClick={() => handleRemoveDevice(row)}
+                color="error"
+                disabled={loading}
+                sx={{
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </span>
           </Tooltip>
         </Stack>
       ),
@@ -427,20 +420,16 @@ const DeviceManager = () => {
           <Typography variant="body1" color="text.secondary">
             Monitor and manage user devices
           </Typography>
-          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
-            Primary Devices: Mobile/Tablet/Desktop | Secondary Devices: TV
-          </Typography>
         </Box>
         
         <Stack direction="row" spacing={2}>
           <Button
             variant="outlined"
-            startIcon={<Refresh />}
-            onClick={fetchData}
-            disabled={loading}
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
             sx={{ borderRadius: 2 }}
           >
-            Refresh
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
           <Button
             variant="outlined"
@@ -464,6 +453,15 @@ const DeviceManager = () => {
           >
             Export
           </Button>
+          <Button
+            variant="outlined"
+            startIcon={<Refresh />}
+            onClick={fetchData}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            Refresh
+          </Button>
         </Stack>
       </Box>
 
@@ -475,15 +473,13 @@ const DeviceManager = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button 
-            size="small" 
-            onClick={fetchData}
-            sx={{ ml: 2 }}
-          >
+          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
       )}
+
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Statistics Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
@@ -525,98 +521,106 @@ const DeviceManager = () => {
         </Grid>
       </Grid>
 
-      {/* Filters */}
-      <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-          Filters
-        </Typography>
-        <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={3}>
-            <TextField
-              fullWidth
-              label="Search"
-              name="search"
-              value={filters.search}
-              onChange={handleFilterChange}
-              size="small"
-              placeholder="Search devices or users..."
-              InputProps={{
-                startAdornment: <Search fontSize="small" />,
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Device Type</InputLabel>
-              <Select
-                name="device_type"
-                value={filters.device_type}
-                onChange={handleFilterChange}
-                label="Device Type"
-              >
-                <MenuItem value="">All Types</MenuItem>
-                <MenuItem value="primary">Primary (Mobile/Tablet/Desktop)</MenuItem>
-                <MenuItem value="tv">Secondary (TV)</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Status</InputLabel>
-              <Select
-                name="status"
-                value={filters.status}
-                onChange={handleFilterChange}
-                label="Status"
-              >
-                <MenuItem value="">All Status</MenuItem>
-                <MenuItem value="paired">Paired</MenuItem>
-                <MenuItem value="unpaired">Unpaired</MenuItem>
-                <MenuItem value="blocked">Blocked</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth size="small">
-              <InputLabel>User</InputLabel>
-              <Select
-                name="user_id"
-                value={filters.user_id}
-                onChange={handleFilterChange}
-                label="User"
-              >
-                <MenuItem value="">All Users</MenuItem>
-                {users.map(user => (
-                  <MenuItem key={user.id} value={user.id}>
-                    {user.username} ({user.name || 'No name'})
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              <Button
+      {/* Filters Section */}
+      {showFilters && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" fontWeight="medium" gutterBottom>
+            Filter Devices
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={4}>
+              <TextField
                 fullWidth
-                variant="contained"
-                onClick={fetchData}
-                disabled={loading}
-                sx={{ borderRadius: 2 }}
-              >
-                Apply
-              </Button>
-              <Button
-                fullWidth
-                variant="outlined"
-                onClick={clearFilters}
-                sx={{ borderRadius: 2 }}
-              >
-                Clear
-              </Button>
-            </Box>
+                label="Search"
+                name="search"
+                value={filters.search}
+                onChange={handleFilterChange}
+                size="small"
+                placeholder="Search by device ID or username..."
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search fontSize="small" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Device Type</InputLabel>
+                <Select
+                  name="device_type"
+                  value={filters.device_type}
+                  onChange={handleFilterChange}
+                  label="Device Type"
+                >
+                  <MenuItem value="">All Types</MenuItem>
+                  <MenuItem value="primary">Primary (Mobile/Tablet/Desktop)</MenuItem>
+                  <MenuItem value="tv">Secondary (TV)</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Status</InputLabel>
+                <Select
+                  name="status"
+                  value={filters.status}
+                  onChange={handleFilterChange}
+                  label="Status"
+                >
+                  <MenuItem value="">All Status</MenuItem>
+                  <MenuItem value="paired">Paired</MenuItem>
+                  <MenuItem value="unpaired">Unpaired</MenuItem>
+                  <MenuItem value="blocked">Blocked</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={2}>
+              <FormControl fullWidth size="small">
+                <InputLabel>User</InputLabel>
+                <Select
+                  name="user_id"
+                  value={filters.user_id}
+                  onChange={handleFilterChange}
+                  label="User"
+                >
+                  <MenuItem value="">All Users</MenuItem>
+                  {users.slice(0, 50).map(user => (
+                    <MenuItem key={user.id} value={user.id}>
+                      {user.username}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="outlined"
+                  onClick={clearFilters}
+                  sx={{ borderRadius: 2 }}
+                >
+                  Clear Filters
+                </Button>
+                <Button
+                  variant="contained"
+                  onClick={applyFilters}
+                  sx={{ borderRadius: 2 }}
+                >
+                  Apply Filters
+                </Button>
+              </Box>
+            </Grid>
           </Grid>
-        </Grid>
-      </Paper>
+        </Paper>
+      )}
 
       {/* Devices Table */}
       <DataTable
@@ -624,10 +628,7 @@ const DeviceManager = () => {
         data={devices}
         loading={loading}
         onRefresh={fetchData}
-        title={`Devices (${devices.length})`}
-        tableId="devices-table"
-        searchable={false}
-        pagination={true}
+        title="Devices"
         rowKey={(row) => `${row.source_table || 'devices'}_${row.source_id || row.id || row.user_id}`}
       />
 
@@ -658,9 +659,8 @@ const DeviceManager = () => {
         title="Remove Device"
         message={
           selectedDevice?.device_category === 'primary'
-            ? `Are you sure you want to remove the primary device "${selectedDevice?.device_id?.substring(0, 20)}..."? 
-               The user will need to set up a new device.`
-            : `Are you sure you want to remove the TV device "${selectedDevice?.device_id?.substring(0, 20)}..."?`
+            ? `Are you sure you want to remove the primary device? The user will need to set up a new device.`
+            : `Are you sure you want to remove this TV device?`
         }
         confirmText="Remove Device"
         cancelText="Cancel"
@@ -674,7 +674,7 @@ const DeviceManager = () => {
         onClose={() => setUnpairConfirmOpen(false)}
         onConfirm={confirmUnpairDevice}
         title="Unpair TV Device"
-        message={`Are you sure you want to unpair this TV device?`}
+        message="Are you sure you want to unpair this TV device?"
         confirmText="Unpair TV"
         cancelText="Cancel"
         severity="warning"

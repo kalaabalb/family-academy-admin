@@ -28,7 +28,6 @@ import {
   Grid,
   Stack,
   Radio,
-  RadioGroup,
   FormControlLabel,
   FormLabel,
   Card,
@@ -39,8 +38,7 @@ import {
   Accordion,
   AccordionSummary,
   AccordionDetails,
-  Fade,
-  alpha,
+  LinearProgress,
 } from '@mui/material';
 import {
   Add,
@@ -65,8 +63,6 @@ import {
   MenuBook,
   Upload,
   Download,
-  Warning,
-  Info,
 } from '@mui/icons-material';
 
 const QuestionManager = () => {
@@ -80,12 +76,14 @@ const QuestionManager = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   
   const [formOpen, setFormOpen] = useState(false);
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   
   // For cascading dropdowns
   const [filteredCourses, setFilteredCourses] = useState([]);
@@ -97,7 +95,6 @@ const QuestionManager = () => {
     course_id: '',
     chapter_id: '',
     difficulty: '',
-    search: '',
   });
   
   // Filtered lists for filters
@@ -175,13 +172,28 @@ const QuestionManager = () => {
       });
       
       const response = await questionsApi.getAllQuestions(params);
-      setQuestions(response.data.data || []);
+      const questionsData = response.data.data || [];
+      
+      // Enrich questions with chapter, course, and category names
+      const enrichedQuestions = questionsData.map(question => {
+        const chapter = chapters.find(ch => ch.id === question.chapter_id);
+        const course = chapter ? courses.find(c => c.id === chapter.course_id) : null;
+        const category = course ? categories.find(c => c.id === course.category_id) : null;
+        return {
+          ...question,
+          chapter_name: chapter?.name || 'Unknown Chapter',
+          course_name: course?.name || 'Unknown Course',
+          category_name: category?.name || 'Unknown Category',
+        };
+      });
+      
+      setQuestions(enrichedQuestions);
       
     } catch (err) {
       console.error('Failed to fetch questions:', err);
       showError('Failed to fetch questions');
     }
-  }, [filters, showError]);
+  }, [filters, chapters, courses, categories, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -240,7 +252,6 @@ const QuestionManager = () => {
       course_id: '',
       chapter_id: '',
       difficulty: '',
-      search: '',
     });
   };
 
@@ -387,6 +398,7 @@ const QuestionManager = () => {
       if (isEditing && selectedQuestion) {
         if (isTeacher() && selectedQuestion.created_by !== user.id) {
           showError('You can only edit questions you created');
+          setActionLoading(false);
           return;
         }
         
@@ -502,11 +514,27 @@ const QuestionManager = () => {
     }
   };
 
+  // Filter questions based on search
+  const filteredQuestions = questions.filter(question => {
+    if (!searchQuery) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      question.question_text.toLowerCase().includes(query) ||
+      (question.chapter_name && question.chapter_name.toLowerCase().includes(query)) ||
+      (question.course_name && question.course_name.toLowerCase().includes(query))
+    );
+  });
+
   const columns = [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          #{value}
+        </Typography>
+      ),
     },
     {
       field: 'question_text',
@@ -639,22 +667,26 @@ const QuestionManager = () => {
           <Typography variant="body1" color="text.secondary">
             Create and manage practice questions for chapters
           </Typography>
-          
         </Box>
         
         <Stack direction="row" spacing={2}>
           <Button
             variant="outlined"
-            startIcon={actionLoading ? <CircularProgress size={20} /> : <Refresh />}
+            startIcon={<Refresh />}
             onClick={fetchData}
-            disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            disabled={loading || actionLoading}
+            sx={{ borderRadius: 2 }}
           >
-            {actionLoading ? 'Loading...' : 'Refresh'}
+            Refresh
+          </Button>
+          <Button
+            variant="outlined"
+            startIcon={<FilterList />}
+            onClick={() => setShowFilters(!showFilters)}
+            disabled={loading}
+            sx={{ borderRadius: 2 }}
+          >
+            {showFilters ? 'Hide Filters' : 'Show Filters'}
           </Button>
           {(isAdmin() || isTeacher()) && (
             <>
@@ -666,11 +698,7 @@ const QuestionManager = () => {
                   setBatchDialogOpen(true);
                 }}
                 disabled={actionLoading}
-                sx={{
-                  borderRadius: 2,
-                  opacity: actionLoading ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
-                }}
+                sx={{ borderRadius: 2 }}
               >
                 Batch Upload
               </Button>
@@ -682,11 +710,7 @@ const QuestionManager = () => {
                   setFormOpen(true);
                 }}
                 disabled={actionLoading}
-                sx={{
-                  borderRadius: 2,
-                  opacity: actionLoading ? 0.7 : 1,
-                  transition: 'opacity 0.2s',
-                }}
+                sx={{ borderRadius: 2 }}
               >
                 Add Question
               </Button>
@@ -695,6 +719,10 @@ const QuestionManager = () => {
         </Stack>
       </Box>
 
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -704,145 +732,145 @@ const QuestionManager = () => {
         </Alert>
       )}
 
-      {/* Filters */}
+      {/* Search Bar */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-          Filters
-        </Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={3}>
-            <TextField
-              fullWidth
-              size="small"
-              placeholder="Search questions..."
-              value={filters.search}
-              onChange={(e) => setFilters(prev => ({ ...prev, search: e.target.value }))}
-              disabled={actionLoading}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-              }}
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Category</InputLabel>
-              <Select
-                name="category_id"
-                value={filters.category_id}
-                onChange={handleFilterChange}
-                label="Category"
-                disabled={actionLoading}
-              >
-                <MenuItem value="">All</MenuItem>
-                {categories.map(cat => (
-                  <MenuItem key={cat.id} value={cat.id}>
-                    {cat.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Course</InputLabel>
-              <Select
-                name="course_id"
-                value={filters.course_id}
-                onChange={handleFilterChange}
-                label="Course"
-                disabled={!filters.category_id || actionLoading}
-              >
-                <MenuItem value="">All</MenuItem>
-                {filterCoursesForFilter.map(course => (
-                  <MenuItem key={course.id} value={course.id}>
-                    {course.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Chapter</InputLabel>
-              <Select
-                name="chapter_id"
-                value={filters.chapter_id}
-                onChange={handleFilterChange}
-                label="Chapter"
-                disabled={!filters.course_id || actionLoading}
-              >
-                <MenuItem value="">All</MenuItem>
-                {filterChaptersForFilter.map(chapter => (
-                  <MenuItem key={chapter.id} value={chapter.id}>
-                    {chapter.name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Difficulty</InputLabel>
-              <Select
-                name="difficulty"
-                value={filters.difficulty}
-                onChange={handleFilterChange}
-                label="Difficulty"
-                disabled={actionLoading}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="easy">Easy</MenuItem>
-                <MenuItem value="medium">Medium</MenuItem>
-                <MenuItem value="hard">Hard</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={1}>
-            <Button
-              fullWidth
-              variant="contained"
-              size="small"
-              onClick={applyFilters}
-              disabled={actionLoading}
-              sx={{
-                height: '40px',
-                opacity: actionLoading ? 0.7 : 1,
-                transition: 'opacity 0.2s',
-              }}
-            >
-              {actionLoading ? <CircularProgress size={20} /> : 'Apply'}
-            </Button>
-          </Grid>
-        </Grid>
-        {(filters.category_id || filters.course_id || filters.chapter_id || filters.difficulty || filters.search) && (
-          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'flex-end' }}>
-            <Button
-              size="small"
-              onClick={clearFilters}
-              disabled={actionLoading}
-              startIcon={<Clear />}
-              sx={{ opacity: actionLoading ? 0.5 : 1 }}
-            >
-              Clear Filters
-            </Button>
-          </Box>
-        )}
+        <TextField
+          fullWidth
+          size="small"
+          placeholder="Search questions by text..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search fontSize="small" />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Clear />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+        />
       </Paper>
+
+      {/* Filters Section */}
+      {showFilters && (
+        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+          <Typography variant="h6" fontWeight="medium" gutterBottom>
+            Filter Questions
+          </Typography>
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Category</InputLabel>
+                <Select
+                  name="category_id"
+                  value={filters.category_id}
+                  onChange={handleFilterChange}
+                  label="Category"
+                >
+                  <MenuItem value="">All Categories</MenuItem>
+                  {categories.map(cat => (
+                    <MenuItem key={cat.id} value={cat.id}>
+                      {cat.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Course</InputLabel>
+                <Select
+                  name="course_id"
+                  value={filters.course_id}
+                  onChange={handleFilterChange}
+                  label="Course"
+                  disabled={!filters.category_id}
+                >
+                  <MenuItem value="">All Courses</MenuItem>
+                  {filterCoursesForFilter.map(course => (
+                    <MenuItem key={course.id} value={course.id}>
+                      {course.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Chapter</InputLabel>
+                <Select
+                  name="chapter_id"
+                  value={filters.chapter_id}
+                  onChange={handleFilterChange}
+                  label="Chapter"
+                  disabled={!filters.course_id}
+                >
+                  <MenuItem value="">All Chapters</MenuItem>
+                  {filterChaptersForFilter.map(chapter => (
+                    <MenuItem key={chapter.id} value={chapter.id}>
+                      {chapter.name}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Difficulty</InputLabel>
+                <Select
+                  name="difficulty"
+                  value={filters.difficulty}
+                  onChange={handleFilterChange}
+                  label="Difficulty"
+                >
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="easy">Easy</MenuItem>
+                  <MenuItem value="medium">Medium</MenuItem>
+                  <MenuItem value="hard">Hard</MenuItem>
+                </Select>
+              </FormControl>
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={applyFilters}
+                  disabled={actionLoading}
+                >
+                  {actionLoading ? <CircularProgress size={20} /> : 'Apply'}
+                </Button>
+                <Button
+                  variant="outlined"
+                  size="small"
+                  onClick={clearFilters}
+                >
+                  Clear
+                </Button>
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+      )}
 
       {/* Questions Table */}
       <DataTable
         columns={columns}
-        data={questions}
+        data={filteredQuestions}
         loading={loading}
         onRefresh={fetchQuestions}
-        title={`Practice Questions`}
-        tableId="practice-questions-table"
-        searchable={false}
-        pagination={true}
+        title={`Practice Questions (${filteredQuestions.length})`}
         rowKey="id"
       />
 
@@ -868,7 +896,6 @@ const QuestionManager = () => {
               }}
               size="small"
               disabled={actionLoading}
-              sx={{ opacity: actionLoading ? 0.5 : 1 }}
             >
               <Close />
             </IconButton>
@@ -935,13 +962,8 @@ const QuestionManager = () => {
                           checked={formData.correct_option === letter.toLowerCase()}
                           onChange={() => setFormData(prev => ({ ...prev, correct_option: letter.toLowerCase() }))}
                           value={letter.toLowerCase()}
-                          name="correct_option_radio"
                           color="success"
                           disabled={actionLoading}
-                          sx={{
-                            opacity: actionLoading ? 0.5 : 1,
-                            transition: 'opacity 0.2s',
-                          }}
                         />
                       </Box>
                     </Grid>
@@ -993,11 +1015,7 @@ const QuestionManager = () => {
               resetForm();
             }}
             disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.5 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -1012,11 +1030,7 @@ const QuestionManager = () => {
               !formData.option_b.trim()
             }
             startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             {actionLoading ? 'Saving...' : (isEditing ? 'Update Question' : 'Create Question')}
           </Button>
@@ -1045,7 +1059,6 @@ const QuestionManager = () => {
               }}
               size="small"
               disabled={actionLoading}
-              sx={{ opacity: actionLoading ? 0.5 : 1 }}
             >
               <Close />
             </IconButton>
@@ -1089,10 +1102,6 @@ const QuestionManager = () => {
                   startIcon={<Add />}
                   onClick={addBatchQuestion}
                   disabled={actionLoading}
-                  sx={{
-                    opacity: actionLoading ? 0.5 : 1,
-                    transition: 'opacity 0.2s',
-                  }}
                 >
                   Add Another Question
                 </Button>
@@ -1115,7 +1124,6 @@ const QuestionManager = () => {
                           onClick={() => removeBatchQuestion(index)}
                           color="error"
                           disabled={actionLoading}
-                          sx={{ opacity: actionLoading ? 0.5 : 1 }}
                         >
                           <Delete fontSize="small" />
                         </IconButton>
@@ -1204,11 +1212,7 @@ const QuestionManager = () => {
               resetBatchForm();
             }}
             disabled={actionLoading}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.5 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             Cancel
           </Button>
@@ -1217,11 +1221,7 @@ const QuestionManager = () => {
             onClick={handleBatchSubmit}
             disabled={actionLoading || !batchForm.chapter_id || batchForm.questions.some(q => !q.question_text.trim() || !q.option_a.trim() || !q.option_b.trim())}
             startIcon={actionLoading ? <CircularProgress size={20} /> : <Upload />}
-            sx={{
-              borderRadius: 2,
-              opacity: actionLoading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}
+            sx={{ borderRadius: 2 }}
           >
             {actionLoading ? 'Uploading...' : `Upload ${batchForm.questions.length} Questions`}
           </Button>
@@ -1234,7 +1234,7 @@ const QuestionManager = () => {
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Practice Question"
-        message="Are you sure you want to delete this practice question? This action cannot be undone."
+        message="Are you sure you want to delete this practice question?"
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"

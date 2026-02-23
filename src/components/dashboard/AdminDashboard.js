@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import usersApi from '../../api/users';
@@ -8,6 +7,7 @@ import teachersApi from '../../api/teachers';
 import coursesApi from '../../api/courses';
 import examsApi from '../../api/exams';
 import subscriptionsApi from '../../api/subscriptions';
+import systemLogsApi from '../../api/systemLogs';
 import {
   Box,
   Grid,
@@ -42,12 +42,9 @@ import {
   Warning,
   Info,
   BarChart,
-  CloudUpload,
-  Devices,
-  NotificationsActive,
-  Settings as SettingsIcon,
 } from '@mui/icons-material';
 import { useTheme } from '@mui/material/styles';
+import { getRelativeTime } from '../../api/utils';
 
 const StatCard = ({ title, value, icon, color, change, loading }) => {
   const theme = useTheme();
@@ -74,7 +71,7 @@ const StatCard = ({ title, value, icon, color, change, loading }) => {
             {loading ? (
               <CircularProgress size={24} />
             ) : (
-              <Typography variant="h4" fontWeight="bold" sx={{ color: color }}>
+              <Typography variant="h4" fontWeight="bold" sx={{ color }}>
                 {value}
               </Typography>
             )}
@@ -95,7 +92,7 @@ const StatCard = ({ title, value, icon, color, change, loading }) => {
           </Box>
         </Box>
         
-        {change !== undefined && (
+        {change !== undefined && change !== 0 && (
           <Box sx={{ display: 'flex', alignItems: 'center', mt: 2 }}>
             {change > 0 ? (
               <>
@@ -111,14 +108,7 @@ const StatCard = ({ title, value, icon, color, change, loading }) => {
                   {change}% from last month
                 </Typography>
               </>
-            ) : (
-              <>
-                <AccessTime sx={{ color: 'warning.main', mr: 0.5, fontSize: 16 }} />
-                <Typography variant="caption" color="text.secondary">
-                  No change
-                </Typography>
-              </>
-            )}
+            ) : null}
           </Box>
         )}
       </CardContent>
@@ -126,7 +116,7 @@ const StatCard = ({ title, value, icon, color, change, loading }) => {
   );
 };
 
-const QuickActionCard = ({ title, description, icon, color, action, onClick }) => {
+const QuickActionCard = ({ title, description, icon, color, onClick }) => {
   return (
     <Card
       sx={{
@@ -172,56 +162,12 @@ const QuickActionCard = ({ title, description, icon, color, action, onClick }) =
         
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="caption" color={color} fontWeight="medium">
-            {action}
+            Go to page
           </Typography>
           <ArrowForward sx={{ fontSize: 16, color: color }} />
         </Box>
       </CardContent>
     </Card>
-  );
-};
-
-const AlertCard = ({ title, message, severity, icon, action }) => {
-  const getSeverityColor = (severity) => {
-    switch (severity) {
-      case 'error': return '#d32f2f';
-      case 'warning': return '#ed6c02';
-      case 'info': return '#0288d1';
-      case 'success': return '#2e7d32';
-      default: return '#757575';
-    }
-  };
-  
-  const color = getSeverityColor(severity);
-  
-  return (
-    <Paper
-      sx={{
-        p: 2.5,
-        borderRadius: 2,
-        border: `1px solid ${color}30`,
-        bgcolor: `${color}08`,
-        display: 'flex',
-        alignItems: 'flex-start',
-        gap: 2,
-        mb: 2,
-      }}
-    >
-      <Box sx={{ color, mt: 0.5 }}>{icon}</Box>
-      <Box sx={{ flex: 1 }}>
-        <Typography variant="subtitle2" fontWeight="bold" sx={{ color, mb: 0.5 }}>
-          {title}
-        </Typography>
-        <Typography variant="body2" color="text.secondary">
-          {message}
-        </Typography>
-        {action && (
-          <Button size="small" sx={{ mt: 1, color }} onClick={action.onClick}>
-            {action.label}
-          </Button>
-        )}
-      </Box>
-    </Paper>
   );
 };
 
@@ -261,14 +207,16 @@ const AdminDashboard = () => {
         coursesRes,
         examsRes,
         subscriptionsRes,
+        logsRes,
       ] = await Promise.allSettled([
-        usersApi.getAllUsers(),
+        usersApi.getAllUsers({ limit: 1000 }),
         categoriesApi.getAllCategories(),
-        paymentsApi.getPendingPayments(),
+        paymentsApi.getAllPayments(),
         teachersApi.getAllTeachers(),
         coursesApi.getAllCourses(),
         examsApi.getAllExams(),
         subscriptionsApi.getAllSubscriptions(),
+        systemLogsApi.getSystemLogs({ limit: 5 }),
       ]);
       
       // Process users data
@@ -287,19 +235,19 @@ const AdminDashboard = () => {
       
       // Process other data
       const pendingPayments = paymentsRes.status === 'fulfilled' 
-        ? paymentsRes.value.data.data?.length || 0 
+        ? (paymentsRes.value.data.data || []).filter(p => p.status === 'pending').length 
         : 0;
       const totalTeachers = teachersRes.status === 'fulfilled' 
-        ? teachersRes.value.data.data?.length || 0 
+        ? (teachersRes.value.data.data || []).length 
         : 0;
       const totalCategories = categoriesRes.status === 'fulfilled' 
-        ? categoriesRes.value.data.data?.length || 0 
+        ? (categoriesRes.value.data.data || []).length 
         : 0;
       const totalCourses = coursesRes.status === 'fulfilled' 
-        ? coursesRes.value.data.data?.length || 0 
+        ? (coursesRes.value.data.data || []).length 
         : 0;
       const totalExams = examsRes.status === 'fulfilled' 
-        ? examsRes.value.data.data?.length || 0 
+        ? (examsRes.value.data.data || []).length 
         : 0;
       
       // Process subscriptions
@@ -329,14 +277,30 @@ const AdminDashboard = () => {
         revenue,
       });
       
-      // Generate recent activity (mock data for now)
-      setRecentActivity([
-        { id: 1, action: 'New user registration', user: 'Student 1', time: '10 minutes ago', status: 'success' },
-        { id: 2, action: 'Payment verified', user: 'Parent 2', time: '1 hour ago', status: 'success' },
-        { id: 3, action: 'New teacher added', user: 'Teacher 1', time: '2 hours ago', status: 'success' },
-        { id: 4, action: 'System backup completed', user: 'System', time: '3 hours ago', status: 'info' },
-        { id: 5, action: 'Failed login attempt', user: 'Unknown', time: '5 hours ago', status: 'warning' },
-      ]);
+      // Process recent activity from system logs
+      if (logsRes.status === 'fulfilled') {
+        let logs = [];
+        const logsData = logsRes.value.data;
+        
+        if (logsData.data && logsData.data.logs) {
+          logs = logsData.data.logs;
+        } else if (logsData.data && Array.isArray(logsData.data)) {
+          logs = logsData.data;
+        } else if (Array.isArray(logsData)) {
+          logs = logsData;
+        }
+        
+        const formatted = logs.slice(0, 5).map(log => ({
+          id: log.id,
+          action: log.action || 'System Event',
+          user: log.user_id ? `User ${log.user_id}` : 'System',
+          time: getRelativeTime(log.created_at),
+          status: log.level === 'error' ? 'error' : 
+                  log.level === 'warn' ? 'warning' : 'info',
+        }));
+        
+        setRecentActivity(formatted);
+      }
       
     } catch (error) {
       console.error('Failed to fetch dashboard data:', error);
@@ -360,7 +324,6 @@ const AdminDashboard = () => {
       description: 'Review and verify pending payment submissions from users.',
       icon: <Payment />,
       color: theme.palette.success.main,
-      action: 'Review Now',
       onClick: () => navigate('/payments'),
     },
     {
@@ -368,7 +331,6 @@ const AdminDashboard = () => {
       description: 'Add or update courses, chapters, videos, and study materials.',
       icon: <Book />,
       color: theme.palette.primary.main,
-      action: 'Manage Content',
       onClick: () => navigate('/courses'),
     },
     {
@@ -376,41 +338,14 @@ const AdminDashboard = () => {
       description: 'View and manage all user accounts, subscriptions, and activity.',
       icon: <People />,
       color: theme.palette.info.main,
-      action: 'View Users',
       onClick: () => navigate('/users'),
     },
     {
       title: 'System Settings',
       description: 'Configure system settings, notifications, and integrations.',
-      icon: <SettingsIcon />,
+      icon: <BarChart />,
       color: theme.palette.warning.main,
-      action: 'Configure',
       onClick: () => navigate('/settings'),
-    },
-  ];
-
-  const alerts = [
-    {
-      title: 'Pending Payments',
-      message: `${stats.pendingPayments} payment(s) require verification.`,
-      severity: 'warning',
-      icon: <Warning />,
-      action: stats.pendingPayments > 0 ? {
-        label: 'Verify Now',
-        onClick: () => navigate('/payments'),
-      } : null,
-    },
-    {
-      title: 'System Health',
-      message: 'All systems operational. Last backup: 3 hours ago.',
-      severity: 'success',
-      icon: <CheckCircle />,
-    },
-    {
-      title: 'User Activity',
-      message: `${stats.activeUsers} active users in the last 24 hours.`,
-      severity: 'info',
-      icon: <Info />,
     },
   ];
 
@@ -420,44 +355,63 @@ const AdminDashboard = () => {
       value: stats.totalUsers,
       icon: <People />,
       color: theme.palette.primary.main,
-      change: 12,
     },
     {
       title: 'Active Users',
       value: stats.activeUsers,
       icon: <CheckCircle />,
       color: theme.palette.success.main,
-      change: 8,
     },
     {
       title: 'Pending Payments',
       value: stats.pendingPayments,
       icon: <Payment />,
       color: theme.palette.warning.main,
-      change: -3,
     },
     {
       title: 'Active Subscriptions',
       value: stats.activeSubscriptions,
       icon: <TrendingUp />,
       color: theme.palette.info.main,
-      change: 15,
     },
     {
       title: 'Total Courses',
       value: stats.totalCourses,
       icon: <Book />,
       color: theme.palette.secondary.main,
-      change: 5,
     },
     {
       title: 'Total Teachers',
       value: stats.totalTeachers,
       icon: <School />,
       color: theme.palette.error.main,
-      change: 2,
     },
   ];
+
+  const alerts = [
+    stats.pendingPayments > 0 && {
+      title: 'Pending Payments',
+      message: `${stats.pendingPayments} payment(s) require verification.`,
+      severity: 'warning',
+      icon: <Warning />,
+      action: {
+        label: 'Verify Now',
+        onClick: () => navigate('/payments'),
+      },
+    },
+    {
+      title: 'System Health',
+      message: 'All systems operational.',
+      severity: 'success',
+      icon: <CheckCircle />,
+    },
+    {
+      title: 'User Activity',
+      message: `${stats.activeUsers} active users currently.`,
+      severity: 'info',
+      icon: <Info />,
+    },
+  ].filter(Boolean);
 
   return (
     <Box>
@@ -482,7 +436,6 @@ const AdminDashboard = () => {
           >
             Refresh
           </Button>
-          
         </Stack>
       </Box>
 
@@ -526,9 +479,67 @@ const AdminDashboard = () => {
             <Typography variant="h6" fontWeight="bold" gutterBottom>
               System Alerts
             </Typography>
-            {alerts.map((alert, index) => (
-              <AlertCard key={index} {...alert} />
-            ))}
+            {alerts.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 2, textAlign: 'center' }}>
+                No active alerts
+              </Typography>
+            ) : (
+              alerts.map((alert, index) => (
+                <Paper
+                  key={index}
+                  sx={{
+                    p: 2.5,
+                    borderRadius: 2,
+                    border: `1px solid ${alert.severity === 'error' ? '#d32f2f30' : 
+                                     alert.severity === 'warning' ? '#ed6c0230' : 
+                                     alert.severity === 'success' ? '#2e7d3230' : '#0288d130'}`,
+                    bgcolor: `${alert.severity === 'error' ? '#d32f2f08' : 
+                               alert.severity === 'warning' ? '#ed6c0208' : 
+                               alert.severity === 'success' ? '#2e7d3208' : '#0288d108'}`,
+                    display: 'flex',
+                    alignItems: 'flex-start',
+                    gap: 2,
+                    mb: 2,
+                  }}
+                >
+                  <Box sx={{ 
+                    color: alert.severity === 'error' ? '#d32f2f' :
+                           alert.severity === 'warning' ? '#ed6c02' :
+                           alert.severity === 'success' ? '#2e7d32' : '#0288d1',
+                    mt: 0.5 
+                  }}>
+                    {alert.icon}
+                  </Box>
+                  <Box sx={{ flex: 1 }}>
+                    <Typography variant="subtitle2" fontWeight="bold" sx={{ 
+                      color: alert.severity === 'error' ? '#d32f2f' :
+                             alert.severity === 'warning' ? '#ed6c02' :
+                             alert.severity === 'success' ? '#2e7d32' : '#0288d1',
+                      mb: 0.5 
+                    }}>
+                      {alert.title}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {alert.message}
+                    </Typography>
+                    {alert.action && (
+                      <Button 
+                        size="small" 
+                        sx={{ 
+                          mt: 1,
+                          color: alert.severity === 'error' ? '#d32f2f' :
+                                 alert.severity === 'warning' ? '#ed6c02' :
+                                 alert.severity === 'success' ? '#2e7d32' : '#0288d1',
+                        }} 
+                        onClick={alert.action.onClick}
+                      >
+                        {alert.action.label}
+                      </Button>
+                    )}
+                  </Box>
+                </Paper>
+              ))
+            )}
           </Paper>
         </Grid>
         
@@ -548,129 +559,82 @@ const AdminDashboard = () => {
         </Grid>
       </Grid>
 
-      {/* Recent Activity & System Overview */}
+      {/* Recent Activity */}
       <Grid container spacing={3}>
-        <Grid item xs={12} lg={8}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 3, borderRadius: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
               <Typography variant="h6" fontWeight="bold">
                 Recent Activity
               </Typography>
-              <Button size="small" variant="text" sx={{ textTransform: 'none' }}>
-                View All Activity
-              </Button>
             </Box>
             
-            <Box>
-              {recentActivity.map((activity) => (
-                <Box
-                  key={activity.id}
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    p: 2,
-                    borderRadius: 2,
-                    mb: 1,
-                    bgcolor: 'action.hover',
-                    transition: 'all 0.2s',
-                    '&:hover': {
-                      bgcolor: 'action.selected',
-                      transform: 'translateX(4px)',
-                    },
-                  }}
-                >
+            {recentActivity.length === 0 ? (
+              <Typography variant="body2" color="text.secondary" sx={{ py: 4, textAlign: 'center' }}>
+                No recent activity
+              </Typography>
+            ) : (
+              <Box>
+                {recentActivity.map((activity) => (
                   <Box
+                    key={activity.id}
                     sx={{
-                      width: 40,
-                      height: 40,
-                      borderRadius: '50%',
-                      bgcolor: 
-                        activity.status === 'success' ? 'success.light' :
-                        activity.status === 'warning' ? 'warning.light' :
-                        'info.light',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      mr: 2,
-                      color: 
-                        activity.status === 'success' ? 'success.main' :
-                        activity.status === 'warning' ? 'warning.main' :
-                        'info.main',
+                      p: 2,
+                      borderRadius: 2,
+                      mb: 1,
+                      bgcolor: 'action.hover',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        bgcolor: 'action.selected',
+                        transform: 'translateX(4px)',
+                      },
                     }}
                   >
-                    {activity.status === 'success' ? <CheckCircle /> :
-                     activity.status === 'warning' ? <Warning /> : <Info />}
+                    <Box
+                      sx={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: '50%',
+                        bgcolor: 
+                          activity.status === 'success' ? 'success.light' :
+                          activity.status === 'warning' ? 'warning.light' :
+                          'info.light',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        mr: 2,
+                        color: 
+                          activity.status === 'success' ? 'success.main' :
+                          activity.status === 'warning' ? 'warning.main' :
+                          'info.main',
+                      }}
+                    >
+                      {activity.status === 'success' ? <CheckCircle /> :
+                       activity.status === 'warning' ? <Warning /> : <Info />}
+                    </Box>
+                    
+                    <Box sx={{ flex: 1 }}>
+                      <Typography variant="body2" fontWeight="medium">
+                        {activity.action}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        By {activity.user} • {activity.time}
+                      </Typography>
+                    </Box>
+                    
+                    <Chip
+                      label={activity.status}
+                      size="small"
+                      color={activity.status === 'success' ? 'success' : 
+                             activity.status === 'warning' ? 'warning' : 'info'}
+                      variant="outlined"
+                    />
                   </Box>
-                  
-                  <Box sx={{ flex: 1 }}>
-                    <Typography variant="body2" fontWeight="medium">
-                      {activity.action}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      By {activity.user} • {activity.time}
-                    </Typography>
-                  </Box>
-                  
-                  <Chip
-                    label={activity.status}
-                    size="small"
-                    color={activity.status === 'success' ? 'success' : 
-                           activity.status === 'warning' ? 'warning' : 'info'}
-                    variant="outlined"
-                  />
-                </Box>
-              ))}
-            </Box>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12} lg={4}>
-          <Paper sx={{ p: 3, borderRadius: 2, height: '100%' }}>
-            <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mb: 3 }}>
-              System Overview
-            </Typography>
-            
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Storage Usage
-              </Typography>
-              <LinearProgress 
-                variant="determinate" 
-                value={65} 
-                sx={{ 
-                  height: 8, 
-                  borderRadius: 4,
-                  mb: 1,
-                }} 
-              />
-              <Typography variant="caption" color="text.secondary">
-                65% used • 15.2GB / 25GB
-              </Typography>
-            </Box>
-            
-            <Box sx={{ mb: 3 }}>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                Active Sessions
-              </Typography>
-              <Typography variant="h4" fontWeight="bold" color="primary">
-                {stats.activeUsers}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Currently active users
-              </Typography>
-            </Box>
-            
-            <Box>
-              <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                System Uptime
-              </Typography>
-              <Typography variant="h4" fontWeight="bold" color="success">
-                99.9%
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Last 30 days
-              </Typography>
-            </Box>
+                ))}
+              </Box>
+            )}
           </Paper>
         </Grid>
       </Grid>

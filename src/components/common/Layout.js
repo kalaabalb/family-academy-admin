@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -22,7 +22,6 @@ import {
   Badge,
   Collapse,
   ListItemButton,
-  Button,
   Chip,
   alpha,
 } from '@mui/material';
@@ -36,26 +35,18 @@ import {
   People,
   Person,
   Settings as SettingsIcon,
-  Notifications,
   Devices,
-  Assessment,
+  History,
   VideoLibrary,
   Notes,
   Quiz,
-  History,
+  Assessment,
   Logout,
   ExpandLess,
   ExpandMore,
-  Home,
   Message,
-  CloudUpload,
-  BarChart,
   MenuBook,
-  Assignment,
-  QuestionAnswer,
   PlayCircle,
-  CheckCircle,
-  Lock,
 } from '@mui/icons-material';
 
 const drawerWidth = 300;
@@ -69,9 +60,13 @@ const Layout = ({ children }) => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
   
-  // Collapsible sections
-  const [contentOpen, setContentOpen] = useState(true);
-  const [coursesOpen, setCoursesOpen] = useState({});
+  // FIXED: Separate states for each collapsible section
+  const [openSections, setOpenSections] = useState({
+    userManagement: true,
+    contentManagement: true,
+    system: true,
+    myCourses: true,
+  });
 
   const handleDrawerToggle = () => {
     setMobileOpen(!mobileOpen);
@@ -91,43 +86,17 @@ const Layout = ({ children }) => {
     handleUserMenuClose();
   };
 
-  const toggleCourse = (courseId) => {
-    setCoursesOpen(prev => ({
+  const toggleSection = (section) => {
+    setOpenSections(prev => ({
       ...prev,
-      [courseId]: !prev[courseId]
+      [section]: !prev[section]
     }));
   };
 
-  // Get user's assigned courses from localStorage or context
+  // Get user's assigned courses
   const assignedCourses = user?.assigned_courses || [];
 
-  // Teacher Menu Items (only what they can access)
-  const teacherMenuItems = [
-    {
-      text: 'Dashboard',
-      icon: <Dashboard />,
-      path: '/dashboard',
-    },
-    {
-      text: 'My Courses',
-      icon: <MenuBook />,
-      type: 'courses',
-      courses: assignedCourses,
-    },
-    {
-      text: 'Content Management',
-      icon: <VideoLibrary />,
-      subItems: [
-        { text: 'Chapters', path: '/chapters', icon: <Book />, courseFilter: true },
-        { text: 'Videos', path: '/videos', icon: <PlayCircle />, courseFilter: true },
-        { text: 'Notes', path: '/notes', icon: <Notes />, courseFilter: true },
-        { text: 'Practice Questions', path: '/questions', icon: <Quiz />, courseFilter: true },
-        { text: 'Exams', path: '/exams', icon: <Assessment />, courseFilter: true },
-      ],
-    },
-  ];
-
-  // Admin Menu Items (full access)
+  // Admin Menu Items
   const adminMenuItems = [
     {
       text: 'Dashboard',
@@ -150,6 +119,7 @@ const Layout = ({ children }) => {
       path: '/courses',
     },
     {
+      section: 'contentManagement',
       text: 'Content Management',
       icon: <VideoLibrary />,
       subItems: [
@@ -161,6 +131,7 @@ const Layout = ({ children }) => {
       ],
     },
     {
+      section: 'userManagement',
       text: 'User Management',
       icon: <People />,
       subItems: [
@@ -179,6 +150,7 @@ const Layout = ({ children }) => {
       path: '/notifications',
     },
     {
+      section: 'system',
       text: 'System',
       icon: <SettingsIcon />,
       subItems: [
@@ -189,103 +161,78 @@ const Layout = ({ children }) => {
     },
   ];
 
+  // Teacher Menu Items
+  const teacherMenuItems = [
+    {
+      text: 'Dashboard',
+      icon: <Dashboard />,
+      path: '/dashboard',
+    },
+    {
+      section: 'myCourses',
+      text: 'My Courses',
+      icon: <MenuBook />,
+      subItems: assignedCourses.map(course => ({
+        text: course.name,
+        path: `/courses/${course.id}`,
+        icon: <MenuBook />,
+        chip: course.category_name,
+      })),
+    },
+    {
+      section: 'contentManagement',
+      text: 'Content Management',
+      icon: <VideoLibrary />,
+      subItems: [
+        { text: 'Chapters', path: '/chapters', icon: <Book /> },
+        { text: 'Videos', path: '/videos', icon: <PlayCircle /> },
+        { text: 'Notes', path: '/notes', icon: <Notes /> },
+        { text: 'Practice Questions', path: '/questions', icon: <Quiz /> },
+        { text: 'Exams', path: '/exams', icon: <Assessment /> },
+      ],
+    },
+  ];
+
   const menuItems = isAdmin() ? adminMenuItems : teacherMenuItems;
 
   const renderMenuItem = (item) => {
-    // For teachers, check if they have access to this item based on assigned courses
-    if (isTeacher() && item.courseFilter && assignedCourses.length === 0) {
+    // Regular menu item with path
+    if (item.path) {
       return (
-        <ListItemButton disabled sx={{ opacity: 0.5 }}>
-          <ListItemIcon sx={{ minWidth: 40, color: 'text.disabled' }}>
+        <ListItemButton
+          key={item.text}
+          component={Link}
+          to={item.path}
+          selected={location.pathname === item.path}
+          onClick={isMobile ? handleDrawerToggle : undefined}
+          sx={{
+            borderRadius: 1,
+            mb: 0.5,
+            '&.Mui-selected': {
+              bgcolor: alpha(theme.palette.primary.main, 0.1),
+              color: 'primary.main',
+              '& .MuiListItemIcon-root': { color: 'primary.main' },
+            },
+            '&:hover': { bgcolor: 'action.hover' },
+          }}
+        >
+          <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
             {item.icon}
           </ListItemIcon>
-          <ListItemText 
-            primary={item.text}
-            secondary="No courses assigned"
-            secondaryTypographyProps={{ variant: 'caption' }}
-          />
-          <Lock fontSize="small" color="disabled" />
+          <ListItemText primary={item.text} />
         </ListItemButton>
       );
     }
 
-    if (item.type === 'courses' && isTeacher()) {
-      return (
-        <>
-          <ListItemButton
-            onClick={() => setContentOpen(!contentOpen)}
-            sx={{
-              borderRadius: 1,
-              mb: 0.5,
-              '&:hover': { bgcolor: 'action.hover' },
-            }}
-          >
-            <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
-              {item.icon}
-            </ListItemIcon>
-            <ListItemText
-              primary={item.text}
-              secondary={`${assignedCourses.length} course(s)`}
-              secondaryTypographyProps={{ variant: 'caption' }}
-            />
-            {contentOpen ? <ExpandLess /> : <ExpandMore />}
-          </ListItemButton>
-          
-          <Collapse in={contentOpen} timeout="auto">
-            <List component="div" disablePadding>
-              {assignedCourses.map((course) => (
-                <ListItemButton
-                  key={course.id}
-                  component={Link}
-                  to={`/courses/${course.id}`}
-                  selected={location.pathname === `/courses/${course.id}`}
-                  onClick={isMobile ? handleDrawerToggle : undefined}
-                  sx={{
-                    pl: 4,
-                    borderRadius: 1,
-                    mb: 0.5,
-                    '&.Mui-selected': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.1),
-                      color: 'primary.main',
-                      '& .MuiListItemIcon-root': { color: 'primary.main' },
-                    },
-                  }}
-                >
-                  <ListItemIcon sx={{ minWidth: 40 }}>
-                    <MenuBook fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={course.name}
-                    secondary={course.category_name}
-                    secondaryTypographyProps={{ variant: 'caption' }}
-                  />
-                  <Chip 
-                    label={course.status || 'Active'} 
-                    size="small"
-                    color="success"
-                    variant="outlined"
-                    sx={{ height: 20, fontSize: '0.6rem' }}
-                  />
-                </ListItemButton>
-              ))}
-            </List>
-          </Collapse>
-        </>
-      );
-    }
-
+    // Section with subitems
     if (item.subItems) {
-      // Filter subitems for teachers based on assigned courses
-      const filteredSubItems = isTeacher() && item.courseFilter
-        ? assignedCourses.length > 0 ? item.subItems : []
-        : item.subItems;
-
-      if (filteredSubItems.length === 0) return null;
+      // Don't render empty sections
+      if (item.subItems.length === 0) return null;
 
       return (
-        <>
+        <React.Fragment key={item.text}>
           <ListItemButton
-            onClick={() => setContentOpen(!contentOpen)}
+            onClick={() => toggleSection(item.section)}
             sx={{
               borderRadius: 1,
               mb: 0.5,
@@ -296,12 +243,12 @@ const Layout = ({ children }) => {
               {item.icon}
             </ListItemIcon>
             <ListItemText primary={item.text} />
-            {contentOpen ? <ExpandLess /> : <ExpandMore />}
+            {openSections[item.section] ? <ExpandLess /> : <ExpandMore />}
           </ListItemButton>
           
-          <Collapse in={contentOpen} timeout="auto">
+          <Collapse in={openSections[item.section]} timeout="auto">
             <List component="div" disablePadding>
-              {filteredSubItems.map((subItem) => (
+              {item.subItems.map((subItem) => (
                 <ListItemButton
                   key={subItem.text}
                   component={Link}
@@ -321,37 +268,23 @@ const Layout = ({ children }) => {
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{subItem.icon}</ListItemIcon>
                   <ListItemText primary={subItem.text} />
+                  {subItem.chip && (
+                    <Chip 
+                      label={subItem.chip}
+                      size="small"
+                      variant="outlined"
+                      sx={{ height: 20, fontSize: '0.6rem' }}
+                    />
+                  )}
                 </ListItemButton>
               ))}
             </List>
           </Collapse>
-        </>
+        </React.Fragment>
       );
     }
 
-    return (
-      <ListItemButton
-        component={Link}
-        to={item.path}
-        selected={location.pathname === item.path}
-        onClick={isMobile ? handleDrawerToggle : undefined}
-        sx={{
-          borderRadius: 1,
-          mb: 0.5,
-          '&.Mui-selected': {
-            bgcolor: alpha(theme.palette.primary.main, 0.1),
-            color: 'primary.main',
-            '& .MuiListItemIcon-root': { color: 'primary.main' },
-          },
-          '&:hover': { bgcolor: 'action.hover' },
-        }}
-      >
-        <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
-          {item.icon}
-        </ListItemIcon>
-        <ListItemText primary={item.text} />
-      </ListItemButton>
-    );
+    return null;
   };
 
   const drawer = (
@@ -416,11 +349,7 @@ const Layout = ({ children }) => {
 
       {/* Menu Items */}
       <List sx={{ flex: 1, px: 2, pt: 2, overflow: 'auto' }}>
-        {menuItems.map((item) => (
-          <React.Fragment key={item.text}>
-            {renderMenuItem(item)}
-          </React.Fragment>
-        ))}
+        {menuItems.map((item) => renderMenuItem(item))}
       </List>
 
       {/* Footer */}

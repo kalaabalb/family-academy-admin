@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Paper,
   Table,
@@ -17,84 +16,22 @@ import {
   Chip,
   CircularProgress,
   Typography,
-  Menu,
-  MenuItem,
-  Checkbox,
   Tooltip,
-  Fade,
-  Alert,
-  Button,
+  Checkbox,
   LinearProgress,
+  Button,
 } from '@mui/material';
 import {
   Search,
-  MoreVert,
   Edit,
   Delete,
   Visibility,
   Refresh,
-  FilterList,
-  ArrowUpward,
-  ArrowDownward,
   Clear,
   Download,
-  Upload,
-  SelectAll,
-  DeselectAll,
-  KeyboardArrowDown,
-  KeyboardArrowUp,
+  ArrowUpward,
+  ArrowDownward,
 } from '@mui/icons-material';
-
-// Virtual scrolling implementation for large datasets
-const VirtualTableRow = ({ row, columns, onRowClick, actions, renderCell, rowKey, selected, onSelect }) => {
-  return (
-    <TableRow
-      hover
-      selected={selected}
-      onClick={(e) => {
-        if (onSelect) {
-          e.stopPropagation();
-          onSelect(row[rowKey]);
-        } else if (onRowClick) {
-          onRowClick(row);
-        }
-      }}
-      sx={{
-        cursor: onRowClick || onSelect ? 'pointer' : 'default',
-        '&:hover': { bgcolor: (onRowClick || onSelect) ? 'action.hover' : 'transparent' },
-        transition: 'all 0.2s',
-      }}
-    >
-      {onSelect && (
-        <TableCell padding="checkbox">
-          <Checkbox
-            checked={selected}
-            onChange={(e) => {
-              e.stopPropagation();
-              onSelect(row[rowKey]);
-            }}
-          />
-        </TableCell>
-      )}
-      
-      {columns.map((column) => (
-        <TableCell
-          key={column.field}
-          align={column.align || 'left'}
-          sx={{
-            maxWidth: column.maxWidth || 'auto',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            whiteSpace: 'nowrap',
-            py: 1.5,
-          }}
-        >
-          {renderCell(row, column)}
-        </TableCell>
-      ))}
-    </TableRow>
-  );
-};
 
 const DataTable = ({
   columns,
@@ -106,85 +43,22 @@ const DataTable = ({
   onView,
   onSelect,
   selectedRows = [],
-  actions = true, // Default to true but can be overridden
   searchable = true,
   pagination = true,
   title,
   onRefresh,
   rowKey = 'id',
-  tableId,
   selectable = false,
   bulkActions = false,
   sx,
   onBulkAction,
   ...props
 }) => {
-  // Load saved state from localStorage if tableId provided
-  const loadSavedState = (key, defaultValue) => {
-    if (!tableId) return defaultValue;
-    try {
-      const saved = localStorage.getItem(`datatable_${tableId}_${key}`);
-      return saved ? JSON.parse(saved) : defaultValue;
-    } catch (error) {
-      return defaultValue;
-    }
-  };
-
-  const saveState = (key, value) => {
-    if (!tableId) return;
-    try {
-      localStorage.setItem(`datatable_${tableId}_${key}`, JSON.stringify(value));
-    } catch (error) {
-      console.error('Error saving table state:', error);
-    }
-  };
-
-  const [page, setPage] = useState(() => loadSavedState('page', 0));
-  const [rowsPerPage, setRowsPerPage] = useState(() => loadSavedState('rowsPerPage', 10));
-  const [search, setSearch] = useState(() => loadSavedState('search', ''));
-  const [order, setOrder] = useState(() => loadSavedState('order', 'asc'));
-  const [orderBy, setOrderBy] = useState(() => loadSavedState('orderBy', columns[0]?.field || ''));
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [selectedRow, setSelectedRow] = useState(null);
-  const [bulkMenuAnchor, setBulkMenuAnchor] = useState(null);
-  const [expandedRows, setExpandedRows] = useState({});
-
-  // Save state changes
-  useEffect(() => {
-    if (tableId) {
-      saveState('page', page);
-    }
-  }, [page, tableId]);
-
-  useEffect(() => {
-    if (tableId) {
-      saveState('rowsPerPage', rowsPerPage);
-    }
-  }, [rowsPerPage, tableId]);
-
-  useEffect(() => {
-    if (tableId) {
-      saveState('search', search);
-    }
-  }, [search, tableId]);
-
-  useEffect(() => {
-    if (tableId) {
-      saveState('order', order);
-    }
-  }, [order, tableId]);
-
-  useEffect(() => {
-    if (tableId && orderBy) {
-      saveState('orderBy', orderBy);
-    }
-  }, [orderBy, tableId]);
-
-  useEffect(() => {
-    if (columns.length > 0 && !orderBy) {
-      setOrderBy(columns[0].field);
-    }
-  }, [columns, orderBy]);
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [search, setSearch] = useState('');
+  const [order, setOrder] = useState('asc');
+  const [orderBy, setOrderBy] = useState(columns[0]?.field || '');
 
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -201,61 +75,25 @@ const DataTable = ({
     setPage(0);
   };
 
-  const handleMenuOpen = (event, row) => {
-    setAnchorEl(event.currentTarget);
-    setSelectedRow(row);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-    setSelectedRow(null);
-  };
-
-  const handleBulkMenuOpen = (event) => {
-    setBulkMenuAnchor(event.currentTarget);
-  };
-
-  const handleBulkMenuClose = () => {
-    setBulkMenuAnchor(null);
-  };
-
-  const handleAction = (action) => {
-    if (!selectedRow) return;
-    
-    switch (action) {
-      case 'view':
-        onView?.(selectedRow);
-        break;
-      case 'edit':
-        onEdit?.(selectedRow);
-        break;
-      case 'delete':
-        onDelete?.(selectedRow);
-        break;
-      default:
-        break;
-    }
-    handleMenuClose();
-  };
-
-  const handleBulkAction = (action) => {
-    if (onBulkAction) {
-      onBulkAction(action, selectedRows);
-    }
-    handleBulkMenuClose();
-  };
-
   const handleSelectAll = () => {
     if (onSelect) {
       const allIds = filteredData().slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
         .map(row => row[rowKey]);
-      onSelect(allIds);
+      
+      if (selectedRows.length === allIds.length) {
+        onSelect([]);
+      } else {
+        onSelect(allIds);
+      }
     }
   };
 
-  const handleDeselectAll = () => {
+  const handleSelect = (id) => {
     if (onSelect) {
-      onSelect([]);
+      const newSelected = selectedRows.includes(id)
+        ? selectedRows.filter(rowId => rowId !== id)
+        : [...selectedRows, id];
+      onSelect(newSelected);
     }
   };
 
@@ -270,9 +108,7 @@ const DataTable = ({
         const value = row[col.field];
         if (value == null) return false;
         
-        // Check if value is an object with toString method
-        const stringValue = typeof value === 'object' ? JSON.stringify(value) : String(value);
-        return stringValue.toLowerCase().includes(searchLower);
+        return String(value).toLowerCase().includes(searchLower);
       })
     );
   }, [data, search, columns]);
@@ -296,25 +132,11 @@ const DataTable = ({
     ? sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
     : sortedData;
 
-  const totalSelected = selectedRows.length;
-  const pageSelected = paginatedData.filter(row => 
-    selectedRows.includes(row[rowKey])
-  ).length;
-  const allSelected = pageSelected > 0 && pageSelected === paginatedData.length;
-
   const renderCell = (row, column) => {
     const value = row[column.field];
     
     if (column.render) {
-      return column.render(value, row, {
-        expanded: expandedRows[row[rowKey]],
-        toggleExpand: () => {
-          setExpandedRows(prev => ({
-            ...prev,
-            [row[rowKey]]: !prev[row[rowKey]]
-          }));
-        }
-      });
+      return column.render(value, row);
     }
     
     if (column.type === 'date' && value) {
@@ -346,164 +168,168 @@ const DataTable = ({
     return value || '-';
   };
 
-  const handleSearchChange = (e) => {
-    setSearch(e.target.value);
-    setPage(0);
-  };
-
-  const clearSearch = () => {
-    setSearch('');
-    setPage(0);
-  };
-
-  const handleRefresh = () => {
-    if (onRefresh) {
-      onRefresh();
-    }
-  };
-
-  const handleExport = () => {
-    // Implement export functionality
-    console.log('Export data:', sortedData);
-    // This could trigger a CSV download or open an export dialog
-  };
-
-  const handleRowExpand = (rowId) => {
-    setExpandedRows(prev => ({
-      ...prev,
-      [rowId]: !prev[rowId]
-    }));
+  const renderActions = (row) => {
+    return (
+      <Box sx={{ display: 'flex', gap: 1 }}>
+        {onView && (
+          <Tooltip title="View">
+            <span>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onView(row);
+                }}
+                color="info"
+                disabled={loading}
+                sx={{
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Visibility fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        {onEdit && (
+          <Tooltip title="Edit">
+            <span>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEdit(row);
+                }}
+                color="primary"
+                disabled={loading}
+                sx={{
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Edit fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+        {onDelete && (
+          <Tooltip title="Delete">
+            <span>
+              <IconButton
+                size="small"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete(row);
+                }}
+                color="error"
+                disabled={loading}
+                sx={{
+                  opacity: loading ? 0.5 : 1,
+                  transition: 'opacity 0.2s',
+                }}
+              >
+                <Delete fontSize="small" />
+              </IconButton>
+            </span>
+          </Tooltip>
+        )}
+      </Box>
+    );
   };
 
   return (
-    <Paper sx={{ 
-      width: '100%', 
-      overflow: 'hidden', 
-      borderRadius: 2,
-      ...sx 
-    }}>
+    <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 2, ...sx }}>
       {/* Header */}
-      <Box sx={{ p: 3, pb: 2 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Box sx={{ flex: 1 }}>
-            {title && (
-              <Typography variant="h6" fontWeight="bold">
-                {title} ({filteredData.length})
-              </Typography>
-            )}
-            {search && (
-              <Typography variant="caption" color="text.secondary">
-                Showing {filteredData.length} of {data.length} records for "{search}"
-              </Typography>
-            )}
-          </Box>
-          
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            {searchable && (
-              <TextField
-                size="small"
-                placeholder="Search..."
-                value={search}
-                onChange={handleSearchChange}
-                sx={{ width: 250 }}
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search />
-                    </InputAdornment>
-                  ),
-                  endAdornment: search && (
-                    <InputAdornment position="end">
-                      <IconButton
-                        size="small"
-                        onClick={clearSearch}
-                        sx={{ p: 0 }}
-                      >
-                        <Clear />
-                      </IconButton>
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            )}
-            
-            <Box sx={{ display: 'flex', gap: 1 }}>
-              {onRefresh && (
-                <Tooltip title="Refresh">
-                  <span> {/* Add span wrapper for disabled IconButton */}
-                    <IconButton 
-                      onClick={handleRefresh} 
-                      size="small"
-                      disabled={loading}
-                    >
-                      <Refresh />
-                    </IconButton>
-                  </span>
-                </Tooltip>
-              )}
-              
-              <Tooltip title="Export">
-                <span> {/* Add span wrapper for disabled IconButton */}
-                  <IconButton 
-                    onClick={handleExport} 
-                    size="small"
-                    disabled={loading || sortedData.length === 0}
-                  >
-                    <Download />
-                  </IconButton>
-                </span>
-              </Tooltip>
-            </Box>
-          </Box>
+      <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Box>
+          {title && (
+            <Typography variant="h6" fontWeight="bold">
+              {title} ({filteredData.length})
+            </Typography>
+          )}
         </Box>
         
-        {/* Bulk Actions Bar */}
-        {selectable && totalSelected > 0 && (
-          <Fade in={totalSelected > 0}>
-            <Box sx={{ 
-              p: 2, 
-              bgcolor: 'primary.light', 
-              borderRadius: 1,
-              display: 'flex', 
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              mt: 2
-            }}>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Typography variant="body2" color="white">
-                  {totalSelected} item{totalSelected !== 1 ? 's' : ''} selected
-                </Typography>
-                <Button
+        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          {searchable && (
+            <TextField
+              size="small"
+              placeholder="Search..."
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPage(0);
+              }}
+              sx={{ width: 250 }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    <Search />
+                  </InputAdornment>
+                ),
+                endAdornment: search && (
+                  <InputAdornment position="end">
+                    <IconButton size="small" onClick={() => setSearch('')}>
+                      <Clear />
+                    </IconButton>
+                  </InputAdornment>
+                ),
+              }}
+            />
+          )}
+          
+          {onRefresh && (
+            <Tooltip title="Refresh">
+              <span>
+                <IconButton 
+                  onClick={onRefresh} 
                   size="small"
-                  onClick={handleDeselectAll}
-                  sx={{ color: 'white' }}
+                  disabled={loading}
                 >
-                  Clear Selection
-                </Button>
-              </Box>
-              
-              {bulkActions && (
-                <Box sx={{ display: 'flex', gap: 1 }}>
-                  <Button
-                    size="small"
-                    variant="contained"
-                    color="secondary"
-                    onClick={handleBulkMenuOpen}
-                    endIcon={<KeyboardArrowDown />}
-                  >
-                    Bulk Actions
-                  </Button>
-                </Box>
-              )}
-            </Box>
-          </Fade>
-        )}
+                  <Refresh />
+                </IconButton>
+              </span>
+            </Tooltip>
+          )}
+        </Box>
       </Box>
 
-      {/* Loading Indicator */}
-      {loading && (
-        <LinearProgress sx={{ width: '100%' }} />
+      {/* Bulk Actions Bar */}
+      {selectable && selectedRows.length > 0 && (
+        <Box sx={{ 
+          p: 1.5, 
+          bgcolor: 'primary.light', 
+          display: 'flex', 
+          alignItems: 'center',
+          justifyContent: 'space-between',
+        }}>
+          <Typography variant="body2" color="white">
+            {selectedRows.length} item(s) selected
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <Button
+              size="small"
+              variant="contained"
+              color="secondary"
+              onClick={() => onSelect([])}
+            >
+              Clear
+            </Button>
+            {bulkActions && onBulkAction && (
+              <Button
+                size="small"
+                variant="contained"
+                onClick={() => onBulkAction('export', selectedRows)}
+              >
+                Export
+              </Button>
+            )}
+          </Box>
+        </Box>
       )}
+
+      {/* Loading Indicator */}
+      {loading && <LinearProgress sx={{ width: '100%' }} />}
 
       {/* Table */}
       <TableContainer sx={{ maxHeight: 600 }}>
@@ -513,9 +339,10 @@ const DataTable = ({
               {selectable && (
                 <TableCell padding="checkbox" sx={{ width: 60 }}>
                   <Checkbox
-                    indeterminate={pageSelected > 0 && !allSelected}
-                    checked={allSelected}
-                    onChange={allSelected ? handleDeselectAll : handleSelectAll}
+                    indeterminate={selectedRows.length > 0 && selectedRows.length < paginatedData.length}
+                    checked={selectedRows.length === paginatedData.length && paginatedData.length > 0}
+                    onChange={handleSelectAll}
+                    disabled={loading || paginatedData.length === 0}
                   />
                 </TableCell>
               )}
@@ -547,6 +374,16 @@ const DataTable = ({
                   )}
                 </TableCell>
               ))}
+              
+              {/* Actions Column Header */}
+              {(onView || onEdit || onDelete) && (
+                <TableCell 
+                  align="center"
+                  sx={{ fontWeight: 'bold', bgcolor: 'grey.50' }}
+                >
+                  Actions
+                </TableCell>
+              )}
             </TableRow>
           </TableHead>
           
@@ -554,7 +391,7 @@ const DataTable = ({
             {loading && data.length === 0 ? (
               <TableRow>
                 <TableCell 
-                  colSpan={columns.length + (selectable ? 1 : 0)} 
+                  colSpan={columns.length + (selectable ? 1 : 0) + ((onView || onEdit || onDelete) ? 1 : 0)} 
                   align="center" 
                   sx={{ py: 8 }}
                 >
@@ -567,7 +404,7 @@ const DataTable = ({
             ) : paginatedData.length === 0 ? (
               <TableRow>
                 <TableCell 
-                  colSpan={columns.length + (selectable ? 1 : 0)} 
+                  colSpan={columns.length + (selectable ? 1 : 0) + ((onView || onEdit || onDelete) ? 1 : 0)} 
                   align="center" 
                   sx={{ py: 8 }}
                 >
@@ -581,28 +418,67 @@ const DataTable = ({
                         Try adjusting your search criteria
                       </Typography>
                     )}
-                    {!loading && data.length === 0 && (
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        No data available. Create your first record.
-                      </Typography>
-                    )}
                   </Box>
                 </TableCell>
               </TableRow>
             ) : (
-              paginatedData.map((row) => (
-                <VirtualTableRow
-                  key={row[rowKey]}
-                  row={row}
-                  columns={columns}
-                  onRowClick={onRowClick}
-                  actions={actions}
-                  renderCell={renderCell}
-                  rowKey={rowKey}
-                  selected={selectedRows.includes(row[rowKey])}
-                  onSelect={onSelect}
-                />
-              ))
+              paginatedData.map((row) => {
+                const isSelected = selectedRows.includes(row[rowKey]);
+                
+                return (
+                  <TableRow
+                    key={row[rowKey]}
+                    hover
+                    selected={isSelected}
+                    onClick={(e) => {
+                      if (selectable) {
+                        handleSelect(row[rowKey]);
+                      } else if (onRowClick) {
+                        onRowClick(row);
+                      }
+                    }}
+                    sx={{
+                      cursor: onRowClick || selectable ? 'pointer' : 'default',
+                      opacity: loading ? 0.7 : 1,
+                      transition: 'opacity 0.2s',
+                    }}
+                  >
+                    {selectable && (
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={isSelected}
+                          onChange={() => handleSelect(row[rowKey])}
+                          onClick={(e) => e.stopPropagation()}
+                          disabled={loading}
+                        />
+                      </TableCell>
+                    )}
+                    
+                    {columns.map((column) => (
+                      <TableCell
+                        key={column.field}
+                        align={column.align || 'left'}
+                        sx={{
+                          maxWidth: column.maxWidth || 'auto',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          py: 1.5,
+                        }}
+                      >
+                        {renderCell(row, column)}
+                      </TableCell>
+                    ))}
+                    
+                    {/* Actions Column */}
+                    {(onView || onEdit || onDelete) && (
+                      <TableCell align="center">
+                        {renderActions(row)}
+                      </TableCell>
+                    )}
+                  </TableRow>
+                );
+              })
             )}
           </TableBody>
         </Table>
@@ -619,64 +495,7 @@ const DataTable = ({
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
           sx={{ borderTop: 1, borderColor: 'divider' }}
-          labelRowsPerPage="Rows per page:"
-          labelDisplayedRows={({ from, to, count }) => 
-            `${from}-${to} of ${count !== -1 ? count : `more than ${to}`}`
-          }
         />
-      )}
-
-      {/* Action Menu */}
-      {actions && (onView || onEdit || onDelete) && (
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleMenuClose}
-          onClick={(e) => e.stopPropagation()}
-          transformOrigin={{ horizontal: 'right', vertical: 'top' }}
-          anchorOrigin={{ horizontal: 'right', vertical: 'bottom' }}
-        >
-          {onView && (
-            <MenuItem onClick={() => handleAction('view')}>
-              <Visibility fontSize="small" sx={{ mr: 1 }} />
-              View Details
-            </MenuItem>
-          )}
-          {onEdit && (
-            <MenuItem onClick={() => handleAction('edit')}>
-              <Edit fontSize="small" sx={{ mr: 1 }} />
-              Edit
-            </MenuItem>
-          )}
-          {onDelete && (
-            <MenuItem onClick={() => handleAction('delete')} sx={{ color: 'error.main' }}>
-              <Delete fontSize="small" sx={{ mr: 1 }} />
-              Delete
-            </MenuItem>
-          )}
-        </Menu>
-      )}
-
-      {/* Bulk Actions Menu */}
-      {bulkActions && (
-        <Menu
-          anchorEl={bulkMenuAnchor}
-          open={Boolean(bulkMenuAnchor)}
-          onClose={handleBulkMenuClose}
-        >
-          <MenuItem onClick={() => handleBulkAction('export')}>
-            <Download fontSize="small" sx={{ mr: 1 }} />
-            Export Selected
-          </MenuItem>
-          <MenuItem onClick={() => handleBulkAction('delete')} sx={{ color: 'error.main' }}>
-            <Delete fontSize="small" sx={{ mr: 1 }} />
-            Delete Selected
-          </MenuItem>
-          <MenuItem onClick={() => handleBulkAction('update')}>
-            <Edit fontSize="small" sx={{ mr: 1 }} />
-            Update Selected
-          </MenuItem>
-        </Menu>
       )}
     </Paper>
   );

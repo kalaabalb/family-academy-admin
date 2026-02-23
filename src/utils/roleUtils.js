@@ -49,3 +49,5 @@ export const roleUtils = {
     return permissions.includes(permission);
   }
 };
+
+export default roleUtils;
