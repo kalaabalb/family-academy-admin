@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import notesApi from '../../api/notes';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -55,6 +56,7 @@ import {
 const NoteManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [notes, setNotes] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -98,7 +100,13 @@ const NoteManager = () => {
     release_date: '',
   });
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const notesCacheKey = 'notes';
+  const categoriesCacheKey = 'categories';
+  const coursesCacheKey = 'courses';
+  const chaptersCacheKey = 'chapters';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
@@ -109,27 +117,39 @@ const NoteManager = () => {
         params.created_by = user.id;
       }
       
-      const notesRes = await notesApi.getAllNotes(params);
-      const notesData = notesRes.data.data || [];
+      const notesData = await getCachedData(
+        getCacheKey('notes', params),
+        () => notesApi.getAllNotes(params),
+        { forceRefresh }
+      );
       
-      // Fetch categories
-      const categoriesRes = await categoriesApi.getAllCategories();
-      setCategories(categoriesRes.data.data || []);
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
       
-      // Fetch courses
-      const coursesRes = await coursesApi.getAllCourses();
-      setCourses(coursesRes.data.data || []);
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
       
-      // Fetch chapters
-      const chaptersRes = await chaptersApi.getAllChapters();
-      const chaptersData = chaptersRes.data.data || [];
-      setChapters(chaptersData);
+      const chaptersData = await getCachedData(
+        chaptersCacheKey,
+        () => chaptersApi.getAllChapters(),
+        { forceRefresh }
+      );
+      
+      setCategories(categoriesData || []);
+      setCourses(coursesData || []);
+      setChapters(chaptersData || []);
       
       // Enrich notes with course and category names
-      const enrichedNotes = notesData.map(note => {
-        const chapter = chaptersData.find(ch => ch.id === note.chapter_id);
-        const course = chapter ? coursesRes.data.data?.find(c => c.id === chapter.course_id) : null;
-        const category = course ? categoriesRes.data.data?.find(c => c.id === course.category_id) : null;
+      const enrichedNotes = (notesData || []).map(note => {
+        const chapter = (chaptersData || []).find(ch => ch.id === note.chapter_id);
+        const course = chapter ? (coursesData || []).find(c => c.id === chapter.course_id) : null;
+        const category = course ? (categoriesData || []).find(c => c.id === course.category_id) : null;
         return {
           ...note,
           chapter_name: chapter?.name || 'Unknown Chapter',
@@ -147,7 +167,7 @@ const NoteManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [isTeacher, user, showError]);
+  }, [isTeacher, user, getCachedData, getCacheKey, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -296,14 +316,22 @@ const NoteManager = () => {
         
         await notesApi.updateNote(selectedNote.id, noteData);
         showSuccess('Note updated successfully!');
+        
+        // Invalidate caches
+        invalidateCache(/^notes/);
+        invalidateCache(chaptersCacheKey);
       } else {
         await notesApi.createNote(noteData);
         showSuccess('Note created successfully!');
+        
+        // Invalidate caches
+        invalidateCache(/^notes/);
+        invalidateCache(chaptersCacheKey);
       }
       
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save note:', err);
@@ -373,6 +401,10 @@ const NoteManager = () => {
       setActionLoading(true);
       await notesApi.deleteNote(selectedNote.id);
       
+      // Invalidate caches
+      invalidateCache(/^notes/);
+      invalidateCache(chaptersCacheKey);
+      
       setNotes(prev => prev.filter(n => n.id !== selectedNote.id));
       
       showSuccess(`Note "${selectedNote.title}" deleted successfully`);
@@ -385,6 +417,10 @@ const NoteManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   // Filter notes based on filters and search
@@ -565,7 +601,7 @@ const NoteManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -604,7 +640,7 @@ const NoteManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -722,7 +758,7 @@ const NoteManager = () => {
         columns={columns}
         data={filteredNotes}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Notes (${filteredNotes.length})`}
         rowKey="id"
       />
