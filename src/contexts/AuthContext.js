@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import authApi from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
@@ -13,14 +13,14 @@ export const useAuth = () => {
   return context;
 };
 
-// Session timeout in milliseconds (30 minutes)
+
 const SESSION_TIMEOUT = 30 * 60 * 1000;
 
-// Cookie options - FIXED for production
+
 const COOKIE_OPTIONS = {
-  expires: 7, // 7 days
+  expires: 7, 
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
+  sameSite: 'lax', 
   path: '/'
 };
 
@@ -30,8 +30,11 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [sessionTimeout, setSessionTimeout] = useState(null);
   const navigate = useNavigate();
+  
+  
+  const logoutRef = useRef();
 
-  // Load user from cookies ONLY (simplified)
+  
   const loadUserFromCookies = useCallback(() => {
     try {
       const token = Cookies.get('token');
@@ -50,45 +53,71 @@ export const AuthProvider = ({ children }) => {
     return null;
   }, []);
 
-  // Save auth data to cookies only
+  
   const saveAuthData = useCallback((token, user, rememberMe = true) => {
-    // Always set cookies
+    
     Cookies.set('token', token, { 
       ...COOKIE_OPTIONS,
-      expires: rememberMe ? 7 : undefined // Session cookie if not remember me
+      expires: rememberMe ? 7 : undefined 
     });
     Cookies.set('user', JSON.stringify(user), { 
       ...COOKIE_OPTIONS,
       expires: rememberMe ? 7 : undefined
     });
     
-    // Don't use localStorage/sessionStorage to avoid conflicts
+    
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
   }, []);
 
-  // Clear all auth data
+  
   const clearAuthData = useCallback(() => {
     Cookies.remove('token', { path: '/' });
     Cookies.remove('user', { path: '/' });
     Cookies.remove('refreshToken', { path: '/' });
   }, []);
 
-  // Session management
+  
+  const logout = useCallback(() => {
+    
+    clearAuthData();
+    
+    
+    setUser(null);
+    setIsAuthenticated(false);
+    
+    
+    if (sessionTimeout) {
+      clearTimeout(sessionTimeout);
+    }
+    
+    
+    authApi.logout().catch(() => {});
+    
+    
+    navigate('/login');
+  }, [navigate, sessionTimeout, clearAuthData]);
+  
+  
+  logoutRef.current = logout;
+
+  
   const resetSessionTimeout = useCallback(() => {
     if (sessionTimeout) {
       clearTimeout(sessionTimeout);
     }
     const timeout = setTimeout(() => {
       console.log('Session expired due to inactivity');
-      logout();
+      if (logoutRef.current) {
+        logoutRef.current();
+      }
     }, SESSION_TIMEOUT);
     setSessionTimeout(timeout);
-  }, [logout, sessionTimeout]);
+  }, [sessionTimeout]);
 
-  // Load user from cookies on mount
+  
   useEffect(() => {
     const initializeAuth = async () => {
       try {
@@ -99,12 +128,14 @@ export const AuthProvider = ({ children }) => {
           setIsAuthenticated(true);
           resetSessionTimeout();
           
-          // Validate token silently
+          
           try {
             await authApi.validateToken();
           } catch (error) {
-            // Token expired
-            logout();
+            
+            if (logoutRef.current) {
+              logoutRef.current();
+            }
           }
         }
       } catch (error) {
@@ -117,7 +148,7 @@ export const AuthProvider = ({ children }) => {
 
     initializeAuth();
 
-    // Set up activity listeners for session reset
+    
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
     const resetActivity = () => resetSessionTimeout();
     events.forEach(event => document.addEventListener(event, resetActivity));
@@ -128,32 +159,32 @@ export const AuthProvider = ({ children }) => {
         clearTimeout(sessionTimeout);
       }
     };
-  }, []);
+  }, [loadUserFromCookies, resetSessionTimeout, clearAuthData]);
 
   const login = useCallback(async (username, password, rememberMe = true) => {
     try {
       setLoading(true);
       const response = await authApi.adminLogin(username, password);
       
-      // Check response structure
+      
       let token, userData;
       
       if (response.data && response.data.data) {
-        // Standard API response
+        
         token = response.data.data.token;
         userData = response.data.data.user;
       } else if (response.data && response.data.token) {
-        // Direct response
+        
         token = response.data.token;
         userData = response.data.user;
       } else {
         throw new Error('Invalid response format');
       }
       
-      // Save auth data
+      
       saveAuthData(token, userData, rememberMe);
       
-      // Update state
+      
       setUser(userData);
       setIsAuthenticated(true);
       resetSessionTimeout();
@@ -170,27 +201,7 @@ export const AuthProvider = ({ children }) => {
     }
   }, [resetSessionTimeout, saveAuthData]);
 
-  const logout = useCallback(() => {
-    // Clear cookies
-    clearAuthData();
-    
-    // Clear state
-    setUser(null);
-    setIsAuthenticated(false);
-    
-    // Clear session timeout
-    if (sessionTimeout) {
-      clearTimeout(sessionTimeout);
-    }
-    
-    // Call logout API silently
-    authApi.logout().catch(() => {});
-    
-    // Navigate to login
-    navigate('/login');
-  }, [navigate, sessionTimeout, clearAuthData]);
-
-  // Permission checks
+  
   const isAdmin = useCallback(() => {
     return user?.role === 'admin' || user?.role === 'superadmin';
   }, [user]);
@@ -208,7 +219,7 @@ export const AuthProvider = ({ children }) => {
     loading,
     isAuthenticated,
     login,
-    logout,
+    logout: logoutRef.current || logout, 
     isAdmin,
     isTeacher,
     isSuperAdmin,
