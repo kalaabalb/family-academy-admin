@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import coursesApi from '../../api/courses';
 import categoriesApi from '../../api/categories';
 import teachersApi from '../../api/teachers';
@@ -52,6 +53,7 @@ import {
 const CourseManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [courses, setCourses] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -81,27 +83,38 @@ const CourseManager = () => {
   // For teacher selection in assign form
   const [assignedTeacherIds, setAssignedTeacherIds] = useState([]);
 
-  const fetchData = useCallback(async () => {
+  // Cache keys
+  const coursesCacheKey = 'courses';
+  const categoriesCacheKey = 'categories';
+  const teachersCacheKey = 'teachers';
+
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const promises = [
-        coursesApi.getAllCourses(),
-        categoriesApi.getAllCategories(),
-      ];
-
+      const coursesData = await getCachedData(
+        coursesCacheKey,
+        () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+      
+      const categoriesData = await getCachedData(
+        categoriesCacheKey,
+        () => categoriesApi.getAllCategories(),
+        { forceRefresh }
+      );
+      
+      setCourses(coursesData || []);
+      setCategories(categoriesData || []);
+      
       if (isAdmin()) {
-        promises.push(teachersApi.getAllTeachers());
-      }
-
-      const [coursesRes, categoriesRes, teachersRes] = await Promise.all(promises);
-      
-      setCourses(coursesRes.data.data || []);
-      setCategories(categoriesRes.data.data || []);
-      
-      if (teachersRes) {
-        setTeachers(teachersRes.data.data || []);
+        const teachersData = await getCachedData(
+          teachersCacheKey,
+          () => teachersApi.getAllTeachers(),
+          { forceRefresh }
+        );
+        setTeachers(teachersData || []);
       }
       
     } catch (err) {
@@ -111,7 +124,7 @@ const CourseManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError, isAdmin]);
+  }, [getCachedData, isAdmin, showError]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -237,14 +250,21 @@ const CourseManager = () => {
       if (isEditing && selectedCourse) {
         await coursesApi.updateCourse(selectedCourse.id, courseData);
         showSuccess('Course updated successfully');
+        
+        // Invalidate caches
+        invalidateCache(coursesCacheKey);
+        invalidateCache(/^teachers/);
       } else {
         await coursesApi.createCourse(courseData);
         showSuccess('Course created successfully');
+        
+        // Invalidate caches
+        invalidateCache(coursesCacheKey);
       }
 
       setFormOpen(false);
       resetForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save course:', err);
@@ -274,9 +294,14 @@ const CourseManager = () => {
       }
       
       showSuccess('Teachers assigned successfully');
+      
+      // Invalidate caches
+      invalidateCache(coursesCacheKey);
+      invalidateCache(/^teachers/);
+      
       setAssignFormOpen(false);
       resetAssignForm();
-      await fetchData();
+      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to assign teachers:', err);
@@ -324,6 +349,11 @@ const CourseManager = () => {
       setActionLoading(true);
       await coursesApi.deleteCourse(selectedCourse.id);
       
+      // Invalidate caches
+      invalidateCache(coursesCacheKey);
+      invalidateCache(/^chapters/);
+      invalidateCache(/^exams/);
+      
       setCourses(prev => prev.filter(c => c.id !== selectedCourse.id));
       
       showSuccess(`Course "${selectedCourse.name}" deleted successfully`);
@@ -336,6 +366,10 @@ const CourseManager = () => {
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchData(true);
   };
 
   const columns = [
@@ -517,7 +551,7 @@ const CourseManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchData}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -561,7 +595,7 @@ const CourseManager = () => {
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
-          <Button size="small" onClick={fetchData} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -597,7 +631,7 @@ const CourseManager = () => {
         columns={columns}
         data={filteredCourses}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title={`Courses (${filteredCourses.length})`}
         rowKey="id"
       />
