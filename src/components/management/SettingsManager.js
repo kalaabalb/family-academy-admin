@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import settingsApi from '../../api/settings';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -65,6 +66,7 @@ import {
 const SettingsManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -113,13 +115,21 @@ const SettingsManager = () => {
     { value: 'upload', label: 'Upload', icon: <CloudUpload />, color: 'success' },
   ];
 
-  const fetchSettings = useCallback(async () => {
+  // Cache key
+  const settingsCacheKey = 'settings';
+
+  const fetchSettings = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const settingsRes = await settingsApi.getAllSettings();
-      setSettings(settingsRes.data.data || []);
+      const settingsData = await getCachedData(
+        settingsCacheKey,
+        () => settingsApi.getAllSettings(),
+        { forceRefresh }
+      );
+      
+      setSettings(settingsData || []);
       
     } catch (err) {
       console.error('Failed to fetch settings:', err);
@@ -128,7 +138,7 @@ const SettingsManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -229,9 +239,12 @@ const SettingsManager = () => {
       await settingsApi.upsertSetting(settingData);
       showSuccess(isEditing ? 'Setting updated successfully' : 'Setting created successfully');
 
+      // Invalidate cache
+      invalidateCache(settingsCacheKey);
+
       setFormOpen(false);
       resetForm();
-      await fetchSettings();
+      await fetchSettings(true);
       
     } catch (err) {
       console.error('Failed to save setting:', err);
@@ -271,6 +284,9 @@ const SettingsManager = () => {
       setActionLoading(true);
       await settingsApi.deleteSetting(selectedSetting.setting_key);
       
+      // Invalidate cache
+      invalidateCache(settingsCacheKey);
+      
       setSettings(prev => prev.filter(s => s.setting_key !== selectedSetting.setting_key));
       
       showSuccess(`Setting "${selectedSetting.display_name}" deleted successfully`);
@@ -292,13 +308,21 @@ const SettingsManager = () => {
       setActionLoading(true);
       await settingsApi.initializeDefaultSettings();
       showSuccess('Default settings initialized successfully');
-      await fetchSettings();
+      
+      // Invalidate cache
+      invalidateCache(settingsCacheKey);
+      
+      await fetchSettings(true);
     } catch (err) {
       console.error('Failed to initialize defaults:', err);
       showError(err.response?.data?.message || 'Failed to initialize default settings');
     } finally {
       setActionLoading(false);
     }
+  };
+
+  const handleRefresh = () => {
+    fetchSettings(true);
   };
 
   // Filter settings based on tab and search
@@ -494,7 +518,7 @@ const SettingsManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchSettings}
+            onClick={handleRefresh}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -535,7 +559,7 @@ const SettingsManager = () => {
           onClose={() => setError('')}
         >
           {error}
-          <Button size="small" onClick={fetchSettings} sx={{ ml: 2 }}>
+          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
             Retry
           </Button>
         </Alert>
@@ -598,7 +622,7 @@ const SettingsManager = () => {
         columns={columns}
         data={filteredSettings}
         loading={loading}
-        onRefresh={fetchSettings}
+        onRefresh={handleRefresh}
         title={`Settings (${filteredSettings.length})`}
         rowKey="setting_key"
       />
