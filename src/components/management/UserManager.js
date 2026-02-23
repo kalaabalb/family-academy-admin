@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useUsers } from '../../contexts/UserContext';
 import usersApi from '../../api/users';
 import schoolsApi from '../../api/schools';
 import categoriesApi from '../../api/categories';
@@ -56,8 +55,6 @@ import {
   ListItemIcon,
   Collapse,
   Stack,
-  Backdrop,
-  Fade,
 } from '@mui/material';
 import {
   Refresh,
@@ -103,7 +100,6 @@ import { getRelativeTime } from '../../api/utils';
 const UserManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
-  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   const theme = useTheme();
   
   // States
@@ -164,60 +160,44 @@ const UserManager = () => {
     totalStudyHours: 0,
   });
 
-  // Cache keys
-  const usersCacheKey = getCacheKey('users', filters);
-  const schoolsCacheKey = 'schools';
-  const categoriesCacheKey = 'categories';
-
-  const fetchData = useCallback(async (forceRefresh = false) => {
+  const fetchData = useCallback(async () => {
     try {
       setLoading(true);
       
-      const usersData = await getCachedData(
-        usersCacheKey,
-        () => usersApi.getAllUsers({ limit: 1000 }),
-        { forceRefresh }
-      );
+      const [usersRes, schoolsRes, categoriesRes] = await Promise.all([
+        usersApi.getAllUsers({ limit: 1000 }),
+        schoolsApi.getAllSchools(),
+        categoriesApi.getAllCategories(),
+      ]);
       
-      const schoolsData = await getCachedData(
-        schoolsCacheKey,
-        () => schoolsApi.getAllSchools(),
-        { forceRefresh }
-      );
-      
-      const categoriesData = await getCachedData(
-        categoriesCacheKey,
-        () => categoriesApi.getAllCategories(),
-        { forceRefresh }
-      );
-      
-      setUsers(usersData || []);
-      setSchools(schoolsData || []);
-      setCategories(categoriesData || []);
+      const usersData = usersRes.data.data || [];
+      setUsers(usersData);
+      setSchools(schoolsRes.data.data || []);
+      setCategories(categoriesRes.data.data || []);
       
       // Calculate stats
       const today = new Date().toDateString();
-      const newToday = (usersData || []).filter(u => 
+      const newToday = usersData.filter(u => 
         new Date(u.created_at).toDateString() === today
       ).length;
 
-      const activeUsers = (usersData || []).filter(u => u.account_status === 'active');
+      const activeUsers = usersData.filter(u => u.account_status === 'active');
       const avgStreak = activeUsers.length 
         ? activeUsers.reduce((sum, u) => sum + (u.streak_count || 0), 0) / activeUsers.length
         : 0;
 
-      const parentLinkedPercent = (usersData || []).length
-        ? Math.round(((usersData || []).filter(u => u.parent_linked).length / (usersData || []).length) * 100)
+      const parentLinkedPercent = usersData.length
+        ? Math.round((usersData.filter(u => u.parent_linked).length / usersData.length) * 100)
         : 0;
 
-      const totalStudyHours = (usersData || []).reduce((sum, u) => sum + (u.total_study_time || 0), 0) / 60;
+      const totalStudyHours = usersData.reduce((sum, u) => sum + (u.total_study_time || 0), 0) / 60;
 
       setStats({
-        total: (usersData || []).length,
+        total: usersData.length,
         active: activeUsers.length,
-        unpaid: (usersData || []).filter(u => u.account_status === 'unpaid').length,
-        expired: (usersData || []).filter(u => u.account_status === 'expired').length,
-        withParents: (usersData || []).filter(u => u.parent_linked).length,
+        unpaid: usersData.filter(u => u.account_status === 'unpaid').length,
+        expired: usersData.filter(u => u.account_status === 'expired').length,
+        withParents: usersData.filter(u => u.parent_linked).length,
         newToday,
         avgStreak: Math.round(avgStreak * 10) / 10,
         parentLinkedPercent,
@@ -230,7 +210,7 @@ const UserManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [usersCacheKey, schoolsCacheKey, categoriesCacheKey, getCachedData, showError]);
+  }, [showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -241,148 +221,155 @@ const UserManager = () => {
   const loadUserDetails = async (userId) => {
     try {
       setLoadingDetails(true);
-      setViewModalOpen(true); // Show modal immediately with loading state
+      setViewModalOpen(true);
       
-      const userDetailsKey = `user:${userId}`;
+      console.log('Loading details for user:', userId);
       
-      // Try to get from cache first
-      const cachedDetails = await getCachedData(
-        userDetailsKey,
-        async () => {
-          const [
-            userRes,
-            userProgressRes,
-            userStreakRes,
-            userAchievementsRes,
-          ] = await Promise.allSettled([
-            usersApi.getUserDetails(userId),
-            usersApi.getUserProgress(userId).catch(err => {
-              console.log('Progress API error:', err);
-              return { data: { data: {} } };
-            }),
-            usersApi.getUserStreak(userId).catch(err => {
-              console.log('Streak API error:', err);
-              return { data: { data: { history: [] } } };
-            }),
-            usersApi.getUserAchievements(userId).catch(err => {
-              console.log('Achievements API error:', err);
-              return { data: { data: [] } };
-            }),
-          ]);
-          
-          // Process user data
-          let userData = {};
-          let subscriptionsData = [];
-          let paymentsData = [];
-          let examsData = [];
-          
-          if (userRes.status === 'fulfilled') {
-            const responseData = userRes.value.data;
-            
-            // Handle different possible response structures
-            if (responseData?.data?.user) {
-              // Structure: { data: { user: {...} } }
-              userData = responseData.data.user;
-              subscriptionsData = responseData.data.subscriptions || [];
-              paymentsData = responseData.data.payments || [];
-              examsData = responseData.data.exams || [];
-            } else if (responseData?.data) {
-              // Structure: { data: {...} } where data is the user object
-              userData = responseData.data;
-            } else if (responseData?.user) {
-              // Structure: { user: {...} }
-              userData = responseData.user;
-            } else {
-              // Assume responseData itself is the user object
-              userData = responseData || {};
-            }
-          }
-          
-          // Process progress data
-          let progressData = {
-            chapters: [],
-            stats: {
-              total_chapters_started: 0,
-              chapters_completed: 0,
-              total_questions_attempted: 0,
-              study_time_hours: 0
-            }
-          };
-          
-          if (userProgressRes.status === 'fulfilled') {
-            const progressResponse = userProgressRes.value.data?.data || {};
-            
-            if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
-              progressData = progressResponse;
-            } else if (progressResponse.overall || progressResponse.recent_activity) {
-              progressData.stats = {
-                total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
-                chapters_completed: progressResponse.overall?.chapters_completed || 0,
-                total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
-                study_time_hours: progressResponse.overall?.study_time_hours || 0
-              };
-              
-              if (progressResponse.recent_activity && Array.isArray(progressResponse.recent_activity)) {
-                progressData.chapters = progressResponse.recent_activity;
-              }
-            }
-          }
-          
-          // Process streak data
-          let streakData = { history: [] };
-          if (userStreakRes.status === 'fulfilled') {
-            streakData = userStreakRes.value.data?.data || streakData;
-          }
-          
-          // Process achievements data
-          let achievementsData = [];
-          if (userAchievementsRes.status === 'fulfilled') {
-            achievementsData = userAchievementsRes.value.data?.data || [];
-          }
-          
-          // Fetch payments if not in user details
-          if (paymentsData.length === 0) {
-            try {
-              const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
-              if (paymentsRes.data && paymentsRes.data.data) {
-                paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
-              }
-            } catch (err) {
-              console.log('Payments fetch failed:', err);
-            }
-          }
-          
-          // Fetch exams
-          if (examsData.length === 0) {
-            try {
-              const examsRes = await examResultsApi.getExamResultsByUser(userId);
-              if (examsRes.data && examsRes.data.data) {
-                examsData = examsRes.data.data;
-              }
-            } catch (err) {
-              console.log('Exam fetch failed:', err);
-            }
-          }
-          
-          return {
-            user: userData,
-            subscriptions: subscriptionsData,
-            payments: paymentsData,
-            exams: examsData,
-            progress: progressData,
-            streaks: streakData,
-            achievements: achievementsData,
-          };
-        },
-        { ttl: 2 * 60 * 1000 } // 2 minutes TTL for user details
-      );
+      const [
+        userRes,
+        userProgressRes,
+        userStreakRes,
+        userAchievementsRes,
+      ] = await Promise.allSettled([
+        usersApi.getUserDetails(userId),
+        usersApi.getUserProgress(userId).catch(err => {
+          console.log('Progress API error:', err);
+          return { data: { data: {} } };
+        }),
+        usersApi.getUserStreak(userId).catch(err => {
+          console.log('Streak API error:', err);
+          return { data: { data: { history: [] } } };
+        }),
+        usersApi.getUserAchievements(userId).catch(err => {
+          console.log('Achievements API error:', err);
+          return { data: { data: [] } };
+        }),
+      ]);
       
-      // Check if we got valid data
-      if (!cachedDetails || !cachedDetails.user || Object.keys(cachedDetails.user).length === 0) {
-        throw new Error('User details not found');
+      let userData = {};
+      let subscriptionsData = [];
+      let paymentsData = [];
+      let examsData = [];
+      
+      if (userRes.status === 'fulfilled') {
+        console.log('User details response:', userRes.value.data);
+        
+        const responseData = userRes.value.data.data || {};
+        
+        userData = responseData.user || responseData || {};
+        
+        if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
+          subscriptionsData = responseData.subscriptions;
+          console.log('Found subscriptions in user details:', subscriptionsData);
+        }
+        
+        if (responseData.payments && Array.isArray(responseData.payments)) {
+          paymentsData = responseData.payments;
+          console.log('Found payments in user details:', paymentsData);
+        }
+        
+        if (responseData.exams && Array.isArray(responseData.exams)) {
+          examsData = responseData.exams;
+          console.log('Found exams in user details:', examsData);
+        }
       }
       
-      setUserDetails(cachedDetails);
+      let progressData = {
+        chapters: [],
+        stats: {
+          total_chapters_started: 0,
+          chapters_completed: 0,
+          total_questions_attempted: 0,
+          study_time_hours: 0
+        }
+      };
+      
+      if (userProgressRes.status === 'fulfilled') {
+        console.log('Progress response raw:', userProgressRes.value.data);
+        
+        const progressResponse = userProgressRes.value.data.data || {};
+        
+        if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
+          progressData = progressResponse;
+        } else if (progressResponse.data && progressResponse.data.chapters) {
+          progressData = progressResponse.data;
+        } else if (Array.isArray(progressResponse)) {
+          progressData.chapters = progressResponse;
+          progressData.stats = {
+            total_chapters_started: progressResponse.length,
+            chapters_completed: progressResponse.filter(c => c.completed).length,
+            total_questions_attempted: progressResponse.reduce((sum, c) => sum + (c.questions_attempted || 0), 0),
+            study_time_hours: Math.round((userData.total_study_time || 0) / 60)
+          };
+        } else if (progressResponse.overall || progressResponse.recent_activity) {
+          progressData.stats = {
+            total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
+            chapters_completed: progressResponse.overall?.chapters_completed || 0,
+            total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
+            study_time_hours: progressResponse.overall?.study_time_hours || 0
+          };
+          
+          if (progressResponse.recent_activity && Array.isArray(progressResponse.recent_activity)) {
+            progressData.chapters = progressResponse.recent_activity;
+          }
+        }
+        
+        console.log('Processed progress data:', progressData);
+      }
+      
+      let streakData = { history: [] };
+      if (userStreakRes.status === 'fulfilled') {
+        console.log('Streak response:', userStreakRes.value.data);
+        streakData = userStreakRes.value.data.data || streakData;
+      }
+      
+      let achievementsData = [];
+      if (userAchievementsRes.status === 'fulfilled') {
+        console.log('Achievements response:', userAchievementsRes.value.data);
+        achievementsData = userAchievementsRes.value.data.data || [];
+      }
+      
+      if (paymentsData.length === 0) {
+        try {
+          const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
+          if (paymentsRes.data && paymentsRes.data.data) {
+            paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
+            console.log('Fetched and filtered payments for user:', paymentsData);
+          }
+        } catch (err) {
+          console.log('Payments fetch failed:', err);
+        }
+      }
+      
+      if (examsData.length === 0) {
+        try {
+          const examsRes = await examResultsApi.getExamResultsByUser(userId);
+          if (examsRes.data && examsRes.data.data) {
+            examsData = examsRes.data.data;
+            console.log('✅ Fetched exam results via new endpoint:', examsData);
+          }
+        } catch (err) {
+          console.log('Exam fetch failed:', err);
+          
+          if (userData.exam_results) {
+            examsData = userData.exam_results;
+            console.log('Got exams from user details:', examsData);
+          }
+        }
+      }
+      
+      const details = {
+        user: userData,
+        subscriptions: subscriptionsData,
+        payments: paymentsData,
+        exams: examsData,
+        progress: progressData,
+        streaks: streakData,
+        achievements: achievementsData,
+      };
+      
+      console.log('Final user details:', details);
+      setUserDetails(details);
       setSelectedUser(userId);
       setTabValue(0);
       setSubscriptionsPage(0);
@@ -393,7 +380,7 @@ const UserManager = () => {
     } catch (err) {
       console.error('Failed to load user details:', err);
       showError('Failed to load user details');
-      setViewModalOpen(false); // Close modal on error
+      setViewModalOpen(false);
     } finally {
       setLoadingDetails(false);
     }
@@ -426,7 +413,6 @@ const UserManager = () => {
     try {
       await usersApi.updateUser(selectedUser, editForm);
       
-      // Update local state
       setUsers(prev => prev.map(u => 
         u.id === selectedUser 
           ? { 
@@ -436,10 +422,6 @@ const UserManager = () => {
             }
           : u
       ));
-      
-      // Invalidate caches
-      invalidateCache(/^users\?/);
-      invalidateCache(`user:${selectedUser}`);
       
       if (userDetails?.user?.id === selectedUser) {
         setUserDetails(prev => ({
@@ -473,13 +455,7 @@ const UserManager = () => {
     try {
       await usersApi.deleteUser(selectedUser.id);
       
-      // Update local state
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-      
-      // Invalidate caches
-      invalidateCache(/^users\?/);
-      invalidateCache(`user:${selectedUser.id}`);
-      
       setDeleteConfirmOpen(false);
       setViewModalOpen(false);
       setSelectedUser(null);
@@ -508,10 +484,6 @@ const UserManager = () => {
     });
   };
 
-  const handleRefresh = () => {
-    fetchData(true);
-  };
-
   const filteredUsers = useMemo(() => {
     return users.filter(user => {
       if (filters.school_id && user.school_id !== parseInt(filters.school_id)) return false;
@@ -531,7 +503,6 @@ const UserManager = () => {
     });
   }, [users, filters]);
 
-  // Generate streak calendar from user data
   const getStreakDays = (user, streakHistory) => {
     const streakDays = [];
     const today = new Date();
@@ -691,7 +662,6 @@ const UserManager = () => {
                 sx={{
                   opacity: loadingDetails || actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
-                  cursor: loadingDetails || actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Visibility fontSize="small" />
@@ -711,7 +681,6 @@ const UserManager = () => {
                 sx={{
                   opacity: actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
-                  cursor: actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Edit fontSize="small" />
@@ -731,7 +700,6 @@ const UserManager = () => {
                 sx={{
                   opacity: actionLoading ? 0.5 : 1,
                   transition: 'opacity 0.2s',
-                  cursor: actionLoading ? 'not-allowed' : 'pointer',
                 }}
               >
                 <Delete fontSize="small" />
@@ -778,7 +746,7 @@ const UserManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={handleRefresh}
+            onClick={fetchData}
             disabled={loading}
             sx={{ borderRadius: 2 }}
           >
@@ -914,27 +882,21 @@ const UserManager = () => {
                 <Button
                   variant="contained"
                   onClick={() => {
-                    // Apply filters by refreshing with new cache key
-                    fetchData(true);
+                    setFilters(prev => ({ ...prev }));
+                    setShowFilters(false);
                   }}
                   size="small"
                   fullWidth
                   sx={{ borderRadius: 2 }}
-                  disabled={loading}
                 >
                   Apply
                 </Button>
                 <Button
                   variant="outlined"
-                  onClick={() => {
-                    clearFilters();
-                    // Refresh after clearing filters
-                    setTimeout(() => fetchData(true), 100);
-                  }}
+                  onClick={clearFilters}
                   size="small"
                   fullWidth
                   sx={{ borderRadius: 2 }}
-                  disabled={loading}
                 >
                   Clear
                 </Button>
@@ -949,7 +911,7 @@ const UserManager = () => {
         columns={columns}
         data={filteredUsers}
         loading={loading}
-        onRefresh={handleRefresh}
+        onRefresh={fetchData}
         onRowClick={(row) => loadUserDetails(row.id)}
         title="Users"
         rowKey="id"
@@ -970,23 +932,23 @@ const UserManager = () => {
               Loading user details...
             </Typography>
           </Box>
-        ) : userDetails && userDetails.user ? (
+        ) : userDetails && (
           <>
             <DialogTitle sx={{ m: 0, p: 3, pb: 2, bgcolor: 'primary.main', color: 'white' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Avatar
-                    src={userDetails.user.profile_image || undefined}
+                    src={userDetails.user.profile_image}
                     sx={{ width: 56, height: 56, border: '2px solid white' }}
                   >
-                    {userDetails.user.username?.[0]?.toUpperCase() || 'U'}
+                    {userDetails.user.username?.[0]?.toUpperCase()}
                   </Avatar>
                   <Box>
                     <Typography variant="h5" fontWeight="bold">
-                      {userDetails.user.username || 'Unknown User'}
+                      {userDetails.user.username}
                     </Typography>
                     <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                      ID: {userDetails.user.id || selectedUser} • Joined: {userDetails.user.created_at ? new Date(userDetails.user.created_at).toLocaleDateString() : 'Unknown'}
+                      ID: {userDetails.user.id} • Joined: {new Date(userDetails.user.created_at).toLocaleDateString()}
                     </Typography>
                   </Box>
                 </Box>
@@ -994,15 +956,10 @@ const UserManager = () => {
                   <IconButton
                     onClick={() => openEditModal(userDetails.user)}
                     sx={{ color: 'white', mr: 1 }}
-                    disabled={actionLoading}
                   >
                     <Edit />
                   </IconButton>
-                  <IconButton 
-                    onClick={() => setViewModalOpen(false)} 
-                    sx={{ color: 'white' }}
-                    disabled={actionLoading}
-                  >
+                  <IconButton onClick={() => setViewModalOpen(false)} sx={{ color: 'white' }}>
                     <Close />
                   </IconButton>
                 </Box>
@@ -1032,16 +989,16 @@ const UserManager = () => {
                     <Grid item xs={12} md={4}>
                       <Card sx={{ p: 3, textAlign: 'center' }}>
                         <Avatar
-                          src={userDetails.user.profile_image || undefined}
+                          src={userDetails.user.profile_image}
                           sx={{ width: 120, height: 120, mx: 'auto', mb: 2, fontSize: 48 }}
                         >
-                          {userDetails.user.username?.[0]?.toUpperCase() || 'U'}
+                          {userDetails.user.username?.[0]?.toUpperCase()}
                         </Avatar>
                         <Typography variant="h5" fontWeight="bold" gutterBottom>
-                          {userDetails.user.username || 'Unknown'}
+                          {userDetails.user.username}
                         </Typography>
                         <Chip
-                          label={userDetails.user.account_status || 'unknown'}
+                          label={userDetails.user.account_status}
                           color={
                             userDetails.user.account_status === 'active' ? 'success' :
                             userDetails.user.account_status === 'expired' ? 'warning' : 'default'
@@ -1053,7 +1010,7 @@ const UserManager = () => {
                         
                         <Grid container spacing={2}>
                           <Grid item xs={4}>
-                            <LocalFireDepartment sx={{ color: (userDetails.user.streak_count || 0) > 0 ? 'warning.main' : 'text.disabled' }} />
+                            <LocalFireDepartment sx={{ color: userDetails.user.streak_count > 0 ? 'warning.main' : 'text.disabled' }} />
                             <Typography variant="h6">{userDetails.user.streak_count || 0}</Typography>
                             <Typography variant="caption">Streak</Typography>
                           </Grid>
@@ -1728,13 +1685,6 @@ const UserManager = () => {
               </Box>
             </DialogContent>
           </>
-        ) : (
-          <DialogContent>
-            <Alert severity="error">Failed to load user details</Alert>
-            <Box sx={{ mt: 2, display: 'flex', justifyContent: 'center' }}>
-              <Button onClick={() => setViewModalOpen(false)}>Close</Button>
-            </Box>
-          </DialogContent>
         )}
       </Dialog>
 
