@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useUsers } from '../../contexts/UserContext';
 import settingsApi from '../../api/settings';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -48,7 +47,6 @@ import {
   Payment,
   ContactMail,
   CloudUpload,
-  Notifications,
   School,
   DeviceHub,
   Code,
@@ -66,7 +64,6 @@ import {
 const SettingsManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
-  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -103,33 +100,24 @@ const SettingsManager = () => {
     { value: 'json', label: 'JSON Data', icon: '📊', description: 'Structured data (for developers)' },
   ];
 
-  // Category options with icons
+  // Category options with icons (NOTIFICATIONS REMOVED)
   const categoryOptions = [
     { value: 'general', label: 'General', icon: <Settings />, color: 'primary' },
     { value: 'payment', label: 'Payment', icon: <Payment />, color: 'success' },
     { value: 'security', label: 'Security', icon: <Security />, color: 'error' },
-    { value: 'notification', label: 'Notifications', icon: <Notifications />, color: 'warning' },
     { value: 'academic', label: 'Academic', icon: <School />, color: 'info' },
     { value: 'system', label: 'System', icon: <DeviceHub />, color: 'secondary' },
     { value: 'contact', label: 'Contact', icon: <ContactMail />, color: 'primary' },
     { value: 'upload', label: 'Upload', icon: <CloudUpload />, color: 'success' },
   ];
 
-  // Cache key
-  const settingsCacheKey = 'settings';
-
   const fetchSettings = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
-      const settingsData = await getCachedData(
-        settingsCacheKey,
-        () => settingsApi.getAllSettings(),
-        { forceRefresh }
-      );
-      
-      setSettings(settingsData || []);
+      const response = await settingsApi.getAllSettings();
+      setSettings(response.data?.data || []);
       
     } catch (err) {
       console.error('Failed to fetch settings:', err);
@@ -138,7 +126,7 @@ const SettingsManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [getCachedData, showError]);
+  }, [showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -239,9 +227,6 @@ const SettingsManager = () => {
       await settingsApi.upsertSetting(settingData);
       showSuccess(isEditing ? 'Setting updated successfully' : 'Setting created successfully');
 
-      // Invalidate cache
-      invalidateCache(settingsCacheKey);
-
       setFormOpen(false);
       resetForm();
       await fetchSettings(true);
@@ -284,9 +269,6 @@ const SettingsManager = () => {
       setActionLoading(true);
       await settingsApi.deleteSetting(selectedSetting.setting_key);
       
-      // Invalidate cache
-      invalidateCache(settingsCacheKey);
-      
       setSettings(prev => prev.filter(s => s.setting_key !== selectedSetting.setting_key));
       
       showSuccess(`Setting "${selectedSetting.display_name}" deleted successfully`);
@@ -308,9 +290,6 @@ const SettingsManager = () => {
       setActionLoading(true);
       await settingsApi.initializeDefaultSettings();
       showSuccess('Default settings initialized successfully');
-      
-      // Invalidate cache
-      invalidateCache(settingsCacheKey);
       
       await fetchSettings(true);
     } catch (err) {
@@ -590,7 +569,7 @@ const SettingsManager = () => {
         />
       </Paper>
 
-      {/* Tabs for Categories */}
+      {/* Tabs for Categories - NOTIFICATIONS TAB REMOVED */}
       <Paper sx={{ mb: 3, borderRadius: 2 }}>
         <Tabs
           value={activeTab}
@@ -623,7 +602,7 @@ const SettingsManager = () => {
         data={filteredSettings}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Settings `}
+        title={`Settings (${filteredSettings.length})`}
         rowKey="setting_key"
       />
 
