@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useUsers } from '../../contexts/UserContext';
 import notificationsApi from '../../api/notifications';
 import telegramApi from '../../api/telegram';
 import usersApi from '../../api/users';
@@ -27,23 +26,20 @@ import {
   Divider,
   Switch,
   FormControlLabel,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   InputAdornment,
   CircularProgress,
-  LinearProgress,
   Tab,
   Tabs,
+  LinearProgress,
   Avatar,
-  Stack,
   Badge,
-  alpha,
-  List,
-  ListItem,
-  ListItemIcon,
-  ListItemText
+  Stack,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from '@mui/material';
+import { alpha } from '@mui/material/styles';
 import {
   Send,
   Schedule,
@@ -55,7 +51,6 @@ import {
   Edit,
   Delete,
   Refresh,
-  Visibility,
   CheckCircle,
   Error,
   Warning,
@@ -64,509 +59,414 @@ import {
   People,
   Group,
   School,
-  Category as CategoryIcon,
-  Book,
-  Chat,
-  SmartToy,
   Bolt,
-  AutoAwesome,
   Timer,
-  CalendarToday,
-  FilterList,
   Search,
-  ExpandMore,
   Close,
   Save,
   Download,
-  Upload,
-  MoreVert,
   TrendingUp,
   Assessment,
-  BarChart,
-  Insights,
-  Campaign,
-  Announcement,
-  Sms,
-  Email,
-  Language,
-  DeviceHub,
-  Security,
-  Code,
-  DataUsage,
-  Psychology,
-  SettingsApplications,
-  IntegrationInstructions,
-  Api,
-  Webhook,
-  CloudUpload,
-  CloudDone,
-  CloudOff,
-  Wifi,
-  WifiOff,
-  ConnectedTv,
-  TvOff,
-  Verified,
-  Pending,
-  Block,
   LocalFireDepartment,
   EmojiEvents,
-  OpenInNew,
+  AutoAwesome,
+  FormatQuote,
 } from '@mui/icons-material';
 
-// Notification Type Configuration
+// ==================== CONSTANTS ====================
+
 const NOTIFICATION_TYPES = [
   { value: 'info', label: 'Information', icon: <Info />, color: '#2196F3' },
   { value: 'success', label: 'Success', icon: <CheckCircle />, color: '#4CAF50' },
   { value: 'warning', label: 'Warning', icon: <Warning />, color: '#FF9800' },
   { value: 'error', label: 'Error', icon: <Error />, color: '#F44336' },
-  { value: 'promotion', label: 'Promotion', icon: <TrendingUp />, color: '#9C27B0' },
   { value: 'academic', label: 'Academic', icon: <School />, color: '#3F51B5' },
   { value: 'payment', label: 'Payment', icon: <Bolt />, color: '#FF5722' },
 ];
 
-// Target Types
 const TARGET_TYPES = [
-  { value: 'all', label: 'All Users', icon: <People />, description: 'Send to all registered users' },
-  { value: 'paid_users', label: 'Paid Users', icon: <Verified />, description: 'Send to active subscribers only' },
-  { value: 'unpaid_users', label: 'Unpaid Users', icon: <Pending />, description: 'Send to users with unpaid status' },
-  { value: 'specific_user', label: 'Specific User', icon: <Person />, description: 'Send to individual user' },
-  { value: 'teachers', label: 'Teachers Only', icon: <Group />, description: 'Send to all teachers' },
-  { value: 'parents', label: 'Parents Only', icon: <People />, description: 'Send to linked parents via Telegram' },
+  { value: 'all', label: 'All Users', icon: <People /> },
+  { value: 'paid_users', label: 'Paid Users', icon: <CheckCircle /> },
+  { value: 'unpaid_users', label: 'Unpaid Users', icon: <Timer /> },
+  { value: 'specific_user', label: 'Specific User', icon: <Person /> },
+  { value: 'teachers', label: 'Teachers Only', icon: <Group /> },
+  { value: 'parents', label: 'Parents Only', icon: <People /> },
 ];
 
-// Scheduled Notification Templates
-const SCHEDULED_TEMPLATES = [
-  {
-    id: 'payment_verification',
-    name: 'Payment Verification',
-    description: 'Send when payment is verified',
-    trigger: 'payment_verified',
-    defaultMessage: '🎉 Your payment has been verified! You now have full access to all content.',
-    targets: ['paid_users'],
-    enabled: true,
-  },
-  {
-    id: 'payment_expiring',
-    name: 'Subscription Expiring',
-    description: 'Send 3 days before subscription expires',
-    trigger: 'subscription_expiring',
-    defaultMessage: '⚠️ Your subscription expires in 3 days. Renew now to continue access.',
-    targets: ['paid_users'],
-    enabled: true,
-  },
-  {
-    id: 'subscription_expired',
-    name: 'Subscription Expired',
-    description: 'Send when subscription expires',
-    trigger: 'subscription_expired',
-    defaultMessage: '❌ Your subscription has expired. Renew to regain access.',
-    targets: ['paid_users'],
-    enabled: true,
-  },
-  {
-    id: 'welcome_message',
-    name: 'Welcome Message',
-    description: 'Send to new users after registration',
-    trigger: 'user_registered',
-    defaultMessage: '👋 Welcome to Family Academy! Start your learning journey today.',
-    targets: ['all'],
-    enabled: true,
-  },
-  {
-    id: 'achievement_unlocked',
-    name: 'Achievement Unlocked',
-    description: 'Send when user achieves milestone',
-    trigger: 'achievement_unlocked',
-    defaultMessage: '🏆 Congratulations! You have unlocked a new achievement.',
-    targets: ['all'],
-    enabled: true,
-  },
+const TRIGGER_EVENTS = [
+  { value: 'payment_verified', label: 'Payment Verified', category: 'payment' },
+  { value: 'payment_rejected', label: 'Payment Rejected', category: 'payment' },
+  { value: 'payment_pending', label: 'Payment Pending', category: 'payment' },
+  { value: 'subscription_expiring', label: 'Subscription Expiring', category: 'payment' },
+  { value: 'subscription_expired', label: 'Subscription Expired', category: 'payment' },
+  { value: 'chapter_released', label: 'Chapter Released', category: 'academic' },
+  { value: 'video_released', label: 'Video Released', category: 'academic' },
+  { value: 'note_released', label: 'Note Released', category: 'academic' },
+  { value: 'exam_scheduled', label: 'Exam Scheduled', category: 'academic' },
+  { value: 'exam_available', label: 'Exam Available', category: 'academic' },
+  { value: 'exam_result', label: 'Exam Result', category: 'academic' },
+  { value: 'exam_reminder', label: 'Exam Reminder', category: 'academic' },
+  { value: 'streak_milestone', label: 'Streak Milestone', category: 'academic' },
+  { value: 'achievement_unlocked', label: 'Achievement Unlocked', category: 'academic' },
+  { value: 'parent_weekly_report', label: 'Parent Weekly Report', category: 'parent' },
+  { value: 'parent_streak', label: 'Parent Streak', category: 'parent' },
+  { value: 'parent_chapter_completed', label: 'Parent Chapter Completed', category: 'parent' },
 ];
+
+const VARIABLE_TYPES = {
+  'payment_verified': ['amount', 'category_name', 'expiry_date'],
+  'payment_rejected': ['amount', 'category_name', 'rejection_reason'],
+  'payment_pending': ['amount', 'category_name', 'submitted_date'],
+  'subscription_expiring': ['category_name', 'days_remaining'],
+  'chapter_released': ['chapter_name', 'course_name', 'category_name'],
+  'video_released': ['video_title', 'chapter_name', 'course_name'],
+  'exam_result': ['exam_title', 'course_name', 'score', 'passed'],
+  'streak_milestone': ['streak_count'],
+  'achievement_unlocked': ['achievement_title'],
+  'parent_weekly_report': ['student_name', 'study_days', 'chapters_completed'],
+};
+
+// ==================== MAIN COMPONENT ====================
 
 const NotificationTelegramManager = () => {
-  const { isAdmin, user } = useAuth();
+  const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
-  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
-  // Tab state
-  const [tabValue, setTabValue] = useState(0);
-  
-  // Main States
+  // ==================== STATES ====================
+  const [activeTab, setActiveTab] = useState(0);
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
-  const [telegramStatus, setTelegramStatus] = useState(null);
-  const [notifications, setNotifications] = useState([]);
-  const [scheduledNotifications, setScheduledNotifications] = useState([]);
-  const [users, setUsers] = useState([]);
   
-  // Parent Stats
-  const [parentStats, setParentStats] = useState({
+  // Data states
+  const [templates, setTemplates] = useState([]);
+  const [schedules, setSchedules] = useState([]);
+  const [notifications, setNotifications] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [telegramStatus, setTelegramStatus] = useState(null);
+  const [stats, setStats] = useState({
     total: 0,
-    active: 0,
-    notificationsSent: 0,
-    openRate: 0,
+    sent: 0,
+    scheduled: 0,
+    failed: 0
   });
   
-  // Form States
+  // UI states
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [selectedItem, setSelectedItem] = useState(null);
+  const [deleteType, setDeleteType] = useState('notification');
+  
+  // Form states
+  const [templateFormOpen, setTemplateFormOpen] = useState(false);
+  const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
   const [notificationForm, setNotificationForm] = useState({
     title: '',
     message: '',
-    notification_type: 'info',
+    type: 'info',
     target_type: 'all',
     target_id: '',
     scheduled_time: '',
-    send_immediately: true,
-    priority: 'medium',
-    include_telegram: true,
-    include_app: true,
+    send_now: true,
   });
   
-  const [telegramSettings, setTelegramSettings] = useState({
-    bot_token: '',
-    bot_username: '',
-    auto_approve: true,
-    welcome_message: 'Welcome to Family Academy! Use /help for commands.',
-    max_parents_per_user: 2,
-    notification_enabled: true,
-    daily_stats_enabled: true,
+  const [templateForm, setTemplateForm] = useState({
+    name: '',
+    description: '',
+    title_template: '',
+    message_template: '',
+    telegram_template: '',
+    type: 'info',
+    trigger_event: '',
+    category: 'general',
+    variables: [],
+    is_active: true,
   });
-  
-  // UI States
-  const [selectedNotification, setSelectedNotification] = useState(null);
-  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
 
-  // Cache keys
-  const notificationsCacheKey = 'notifications';
-  const telegramStatusCacheKey = 'telegram-status';
-  const usersCacheKey = 'users';
-  const parentStatsCacheKey = 'parent-stats';
+  // ==================== API CALLS ====================
   
-  // Fetch all data
-  const fetchAllData = useCallback(async (forceRefresh = false) => {
+  const fetchAllData = useCallback(async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      
-      // Fetch notifications history
-      const notificationsData = await getCachedData(
-        notificationsCacheKey,
-        () => notificationsApi.getNotificationHistory(),
-        { forceRefresh }
-      );
-      setNotifications(notificationsData || []);
-      
-      // Fetch telegram status
-      try {
-        const telegramData = await getCachedData(
-          telegramStatusCacheKey,
-          () => telegramApi.getBotStatus(),
-          { forceRefresh, ttl: 2 * 60 * 1000 } // 2 minutes TTL
-        );
-        setTelegramStatus(telegramData || {});
-      } catch (telegramError) {
-        console.warn('Could not fetch telegram status:', telegramError);
-        setTelegramStatus({
-          initialized: true,
-          pollingEnabled: true,
-          canReceiveMessages: true,
-          canSendMessages: true,
-          botUsername: 'FamilyAcademy_notify_Bot',
-          lastActive: new Date().toISOString(),
-          connectedUsers: 0,
-          totalMessages: 0,
-        });
-      }
-      
-      // Fetch users for targeting
-      const usersData = await getCachedData(
-        usersCacheKey,
-        () => usersApi.getAllUsers({ limit: 100 }),
-        { forceRefresh }
-      );
-      setUsers(usersData || []);
-      
-      // Fetch scheduled notifications (static data)
-      setScheduledNotifications(SCHEDULED_TEMPLATES);
-      
+      const [templatesRes, schedulesRes, notificationsRes, usersRes, telegramRes, statsRes] = await Promise.all([
+        notificationsApi.getTemplates().catch(() => ({ data: { data: [] } })),
+        notificationsApi.getSchedules().catch(() => ({ data: { data: [] } })),
+        notificationsApi.getNotificationHistory().catch(() => ({ data: { data: [] } })),
+        usersApi.getAllUsers({ limit: 100 }).catch(() => ({ data: { data: [] } })),
+        telegramApi.getBotStatus().catch(() => ({ data: { data: null } })),
+        notificationsApi.getStats().catch(() => ({ data: { data: { summary: {} } } })),
+      ]);
+
+      setTemplates(templatesRes.data?.data || []);
+      setSchedules(schedulesRes.data?.data || []);
+      setNotifications(notificationsRes.data?.data || []);
+      setUsers(usersRes.data?.data || []);
+      setTelegramStatus(telegramRes.data?.data || null);
+      setStats(statsRes.data?.data?.summary || { total: 0, sent: 0, scheduled: 0, failed: 0 });
     } catch (error) {
-      console.error('Failed to fetch data:', error);
-      showError('Failed to load notification data');
+      showError('Failed to load data');
     } finally {
       setLoading(false);
     }
-  }, [getCachedData, showError]);
+  }, [showError]);
 
-// In the fetchAllData function, update the parent stats section:
+  useEffect(() => {
+    if (isAdmin()) fetchAllData();
+  }, [isAdmin, fetchAllData]);
 
-// Fetch parent stats - handle 500 error gracefully
-const fetchParentStats = useCallback(async (forceRefresh = false) => {
-  try {
-    const statsData = await getCachedData(
-      parentStatsCacheKey,
-      async () => {
-        try {
-          const response = await telegramApi.getParentStats();
-          return response.data?.data || {
-            total: 0,
-            active: 0,
-            notificationsSent: 0,
-            openRate: 0,
-          };
-        } catch (err) {
-          console.warn('Parent stats API returned 500, using defaults');
-          return {
-            total: 0,
-            active: 0,
-            notificationsSent: 0,
-            openRate: 0,
-          };
-        }
-      },
-      { forceRefresh, ttl: 5 * 60 * 1000 } // 5 minutes TTL
-    );
-    setParentStats(statsData || {
-      total: 0,
-      active: 0,
-      notificationsSent: 0,
-      openRate: 0,
-    });
-  } catch (err) {
-    console.error('Failed to fetch parent stats:', err);
-    setParentStats({
-      total: 0,
-      active: 0,
-      notificationsSent: 0,
-      openRate: 0,
-    });
-  }
-}, [getCachedData]);
+  // ==================== TEMPLATE HANDLERS ====================
+  
+  const handleCreateTemplate = async () => {
+    if (!templateForm.name || !templateForm.title_template || !templateForm.message_template) {
+      showError('Name and templates are required');
+      return;
+    }
 
-  // Handle form changes
-  const handleNotificationFormChange = (e) => {
-    const { name, value, checked } = e.target;
-    setNotificationForm(prev => ({
-      ...prev,
-      [name]: e.target.type === 'checkbox' ? checked : value,
-    }));
+    setActionLoading(true);
+    try {
+      await notificationsApi.createTemplate(templateForm);
+      showSuccess('Template created');
+      setTemplateFormOpen(false);
+      resetTemplateForm();
+      fetchAllData();
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to create template');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  const handleTelegramSettingsChange = (e) => {
-    const { name, value, checked } = e.target;
-    setTelegramSettings(prev => ({
-      ...prev,
-      [name]: e.target.type === 'checkbox' ? checked : value,
-    }));
+  const handleUpdateTemplate = async () => {
+    if (!selectedItem) return;
+    setActionLoading(true);
+    try {
+      await notificationsApi.updateTemplate(selectedItem.id, templateForm);
+      showSuccess('Template updated');
+      setTemplateFormOpen(false);
+      resetTemplateForm();
+      fetchAllData();
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to update template');
+    } finally {
+      setActionLoading(false);
+    }
   };
 
-  // Send Notification
+  const handleDeleteTemplate = async () => {
+    if (!selectedItem) return;
+    setActionLoading(true);
+    try {
+      await notificationsApi.deleteTemplate(selectedItem.id);
+      showSuccess('Template deleted');
+      fetchAllData();
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to delete template');
+    } finally {
+      setActionLoading(false);
+      setDeleteConfirmOpen(false);
+      setSelectedItem(null);
+    }
+  };
+
+  // ==================== SCHEDULE HANDLERS ====================
+  
+  const handleToggleSchedule = async (id, isActive) => {
+    try {
+      await notificationsApi.toggleSchedule(id, isActive);
+      showSuccess(`Schedule ${isActive ? 'enabled' : 'disabled'}`);
+      fetchAllData();
+    } catch (error) {
+      showError('Failed to toggle schedule');
+    }
+  };
+
+  const handleDeleteSchedule = async () => {
+    if (!selectedItem) return;
+    setActionLoading(true);
+    try {
+      await notificationsApi.deleteSchedule(selectedItem.id);
+      showSuccess('Schedule deleted');
+      fetchAllData();
+    } catch (error) {
+      showError('Failed to delete schedule');
+    } finally {
+      setActionLoading(false);
+      setDeleteConfirmOpen(false);
+      setSelectedItem(null);
+    }
+  };
+
+  // ==================== NOTIFICATION HANDLERS ====================
+  
   const handleSendNotification = async () => {
-    if (!notificationForm.title.trim() || !notificationForm.message.trim()) {
+    if (!notificationForm.title || !notificationForm.message) {
       showError('Title and message are required');
       return;
     }
 
+    setActionLoading(true);
     try {
-      setActionLoading(true);
-      
-      const payload = {
-        title: notificationForm.title.trim(),
-        message: notificationForm.message.trim(),
-        notification_type: notificationForm.notification_type,
+      await notificationsApi.sendNotification({
+        title: notificationForm.title,
+        message: notificationForm.message,
+        notification_type: notificationForm.type,
         target_type: notificationForm.target_type,
         target_id: notificationForm.target_id || null,
-        scheduled_time: notificationForm.send_immediately ? null : notificationForm.scheduled_time,
-        priority: notificationForm.priority,
-        channels: {
-          telegram: notificationForm.include_telegram,
-          app: notificationForm.include_app,
-        },
-      };
-
-      await notificationsApi.sendNotification(payload);
-      showSuccess('Notification sent successfully!');
-      
-      // Invalidate cache
-      invalidateCache(notificationsCacheKey);
-      
-      // Reset form
-      setNotificationForm({
-        title: '',
-        message: '',
-        notification_type: 'info',
-        target_type: 'all',
-        target_id: '',
-        scheduled_time: '',
-        send_immediately: true,
-        priority: 'medium',
-        include_telegram: true,
-        include_app: true,
+        scheduled_time: notificationForm.send_now ? null : notificationForm.scheduled_time,
       });
-      
-      // Refresh data
-      await fetchAllData(true);
-      setTabValue(0);
-      
+      showSuccess('Notification sent');
+      resetNotificationForm();
+      fetchAllData();
+      setActiveTab(3); // Switch to history tab
     } catch (error) {
-      console.error('Send notification error:', error);
-      showError(error.response?.data?.message || 'Failed to send notification');
+      showError(error.response?.data?.message || 'Failed to send');
     } finally {
       setActionLoading(false);
     }
   };
 
-  // Use Template
+  const handleDeleteNotification = async () => {
+    if (!selectedItem) return;
+    setActionLoading(true);
+    try {
+      await notificationsApi.deleteNotification(selectedItem.id);
+      showSuccess('Notification deleted');
+      fetchAllData();
+    } catch (error) {
+      showError('Failed to delete');
+    } finally {
+      setActionLoading(false);
+      setDeleteConfirmOpen(false);
+      setSelectedItem(null);
+    }
+  };
+
+  const handleResendNotification = async (notification) => {
+    setActionLoading(true);
+    try {
+      await notificationsApi.sendNotification({
+        title: notification.title,
+        message: notification.message,
+        notification_type: notification.notification_type,
+        target_type: notification.target_type,
+      });
+      showSuccess('Notification resent');
+    } catch (error) {
+      showError('Failed to resend');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ==================== TELEGRAM HANDLERS ====================
+  
+  const handleTestTelegram = async () => {
+    setActionLoading(true);
+    try {
+      const res = await telegramApi.testBotConnection();
+      showSuccess(res.data.message || 'Telegram connection OK');
+    } catch (error) {
+      showError('Telegram test failed');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  // ==================== FORM RESETS ====================
+  
+  const resetTemplateForm = () => {
+    setTemplateForm({
+      name: '',
+      description: '',
+      title_template: '',
+      message_template: '',
+      telegram_template: '',
+      type: 'info',
+      trigger_event: '',
+      category: 'general',
+      variables: [],
+      is_active: true,
+    });
+    setSelectedItem(null);
+  };
+
+  const resetNotificationForm = () => {
+    setNotificationForm({
+      title: '',
+      message: '',
+      type: 'info',
+      target_type: 'all',
+      target_id: '',
+      scheduled_time: '',
+      send_now: true,
+    });
+  };
+
+  // ==================== UTILITIES ====================
+  
+  const handleEditTemplate = (template) => {
+    setSelectedItem(template);
+    setTemplateForm({
+      name: template.name,
+      description: template.description || '',
+      title_template: template.title_template,
+      message_template: template.message_template,
+      telegram_template: template.telegram_template || '',
+      type: template.notification_type || 'info',
+      trigger_event: template.trigger_event,
+      category: template.category || 'general',
+      variables: template.variables || [],
+      is_active: template.is_active,
+    });
+    setTemplateFormOpen(true);
+  };
+
   const handleUseTemplate = (template) => {
     setNotificationForm({
       ...notificationForm,
       title: template.name,
-      message: template.defaultMessage,
-      target_type: template.targets[0] || 'all',
-      notification_type: template.trigger.includes('payment') ? 'payment' : 'info',
+      message: template.message_template.replace(/{{(.*?)}}/g, '[var]'),
+      type: template.notification_type || 'info',
     });
-    setTabValue(1);
+    setActiveTab(0);
   };
 
-  // Schedule Template
-  const handleScheduleTemplate = (template) => {
-    setNotificationForm({
-      ...notificationForm,
-      title: template.name,
-      message: template.defaultMessage,
-      target_type: template.targets[0] || 'all',
-      send_immediately: false,
-      scheduled_time: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 16),
-      notification_type: 'info',
+  const handleTriggerEventChange = (event) => {
+    const variables = VARIABLE_TYPES[event.target.value] || [];
+    setTemplateForm({
+      ...templateForm,
+      trigger_event: event.target.value,
+      variables,
     });
-    setTabValue(1);
   };
 
-  // Test Telegram Connection
-  const handleTestTelegram = async () => {
-    try {
-      setActionLoading(true);
-      const response = await telegramApi.testBotConnection();
-      showSuccess(response.data.message || 'Telegram bot connection successful!');
-      
-      // Invalidate cache to refresh status
-      invalidateCache(telegramStatusCacheKey);
-      await fetchAllData(true);
-    } catch (error) {
-      showError('Telegram test failed: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setActionLoading(false);
-    }
+  const handleRefresh = () => fetchAllData();
+
+  const handleDeleteClick = (item, type) => {
+    setSelectedItem(item);
+    setDeleteType(type);
+    setDeleteConfirmOpen(true);
   };
 
-  // Update Telegram Settings
-  const handleUpdateTelegramSettings = async () => {
-    try {
-      setActionLoading(true);
-      await telegramApi.updateBotSettings(telegramSettings);
-      showSuccess('Telegram settings updated successfully');
-      
-      // Invalidate cache
-      invalidateCache(telegramStatusCacheKey);
-      await fetchAllData(true);
-    } catch (error) {
-      showError('Failed to update settings: ' + (error.response?.data?.message || error.message));
-    } finally {
-      setActionLoading(false);
-    }
+  const handleConfirmDelete = () => {
+    if (deleteType === 'template') handleDeleteTemplate();
+    else if (deleteType === 'schedule') handleDeleteSchedule();
+    else handleDeleteNotification();
   };
 
-  // Delete Notification
-  const handleDeleteNotification = async (notification) => {
-    try {
-      setActionLoading(true);
-      await notificationsApi.deleteNotification(notification.id);
-      showSuccess('Notification deleted successfully');
-      
-      // Invalidate cache
-      invalidateCache(notificationsCacheKey);
-      await fetchAllData(true);
-    } catch (error) {
-      showError('Failed to delete notification');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Resend Notification
-  const handleResendNotification = async (notification) => {
-    try {
-      setActionLoading(true);
-      const payload = {
-        title: notification.title,
-        message: notification.message,
-        target_type: notification.target_type,
-        target_id: notification.target_id,
-        notification_type: notification.notification_type || 'info',
-      };
-      
-      await notificationsApi.sendNotification(payload);
-      showSuccess('Notification resent successfully');
-      
-      // Invalidate cache
-      invalidateCache(notificationsCacheKey);
-      await fetchAllData(true);
-    } catch (error) {
-      showError('Failed to resend notification');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  // Toggle Scheduled Template
-  const handleToggleTemplate = async (templateId, enabled) => {
-    setScheduledNotifications(prev =>
-      prev.map(t =>
-        t.id === templateId ? { ...t, enabled } : t
-      )
-    );
-    showSuccess(`Template ${enabled ? 'enabled' : 'disabled'}`);
-  };
-
-  const handleRefresh = () => {
-    fetchAllData(true);
-    fetchParentStats(true);
-  };
-
-  // Filter notifications
-  const filteredNotifications = notifications.filter(notification => {
-    if (statusFilter !== 'all' && notification.status !== statusFilter) return false;
+  // ==================== FILTERS ====================
+  
+  const filteredNotifications = notifications.filter(n => {
+    if (statusFilter !== 'all' && n.status !== statusFilter) return false;
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      return (
-        notification.title?.toLowerCase().includes(query) ||
-        notification.message?.toLowerCase().includes(query) ||
-        notification.target_type?.toLowerCase().includes(query)
-      );
+      const q = searchQuery.toLowerCase();
+      return n.title?.toLowerCase().includes(q) || n.message?.toLowerCase().includes(q);
     }
     return true;
   });
 
-  // Get notification type color
-  const getNotificationTypeColor = (type) => {
-    const notificationType = NOTIFICATION_TYPES.find(nt => nt.value === type);
-    return notificationType?.color || '#757575';
-  };
-
-  // Get status chip
-  const getStatusChip = (status) => {
-    switch (status) {
-      case 'sent':
-        return <Chip label="Sent" size="small" color="success" />;
-      case 'scheduled':
-        return <Chip label="Scheduled" size="small" color="warning" />;
-      case 'failed':
-        return <Chip label="Failed" size="small" color="error" />;
-      default:
-        return <Chip label={status} size="small" color="default" />;
-    }
-  };
-
-  // Notification History Columns
+  // ==================== COLUMNS ====================
+  
   const notificationColumns = [
     {
       field: 'title',
@@ -574,17 +474,15 @@ const fetchParentStats = useCallback(async (forceRefresh = false) => {
       flex: 1,
       render: (value, row) => (
         <Box>
-          <Typography variant="body2" fontWeight="500">
-            {value}
-          </Typography>
+          <Typography variant="body2" fontWeight="500">{value}</Typography>
           <Typography variant="caption" color="text.secondary">
-            {row.message && row.message.length > 50 ? row.message.substring(0, 50) + '...' : row.message}
+            {row.message?.substring(0, 50)}...
           </Typography>
         </Box>
       ),
     },
     {
-      field: 'notification_type',
+      field: 'type',
       headerName: 'Type',
       width: 100,
       render: (value) => {
@@ -595,8 +493,7 @@ const fetchParentStats = useCallback(async (forceRefresh = false) => {
             size="small"
             sx={{
               bgcolor: alpha(type?.color || '#757575', 0.1),
-              color: type?.color || '#757575',
-              border: `1px solid ${alpha(type?.color || '#757575', 0.3)}`,
+              color: type?.color,
             }}
           />
         );
@@ -620,26 +517,14 @@ const fetchParentStats = useCallback(async (forceRefresh = false) => {
       field: 'status',
       headerName: 'Status',
       width: 100,
-      render: (value) => getStatusChip(value),
-    },
-    {
-      field: 'sent_count',
-      headerName: 'Sent',
-      width: 80,
-      render: (value, row) => (
-        <Tooltip title={`${value || 0} delivered, ${row.failed_count || 0} failed`}>
-          <Box>
-            <Typography variant="body2">{value || 0}</Typography>
-            {row.failed_count > 0 && (
-              <Typography variant="caption" color="error">({row.failed_count} failed)</Typography>
-            )}
-          </Box>
-        </Tooltip>
-      ),
+      render: (value) => {
+        const colors = { sent: 'success', scheduled: 'warning', failed: 'error' };
+        return <Chip label={value} size="small" color={colors[value] || 'default'} />;
+      },
     },
     {
       field: 'created_at',
-      headerName: 'Created',
+      headerName: 'Sent',
       width: 120,
       render: (value) => (
         <Typography variant="caption">
@@ -650,54 +535,109 @@ const fetchParentStats = useCallback(async (forceRefresh = false) => {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 120,
+      width: 100,
       render: (value, row) => (
-        <Box sx={{ display: 'flex', gap: 0.5 }}>
-          <Tooltip title="Resend">
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => handleResendNotification(row)}
-                disabled={actionLoading}
-                sx={{
-                  opacity: actionLoading ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                <Send fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
-          <Tooltip title="Delete">
-            <span>
-              <IconButton
-                size="small"
-                onClick={() => {
-                  setSelectedNotification(row);
-                  setDeleteConfirmOpen(true);
-                }}
-                color="error"
-                disabled={actionLoading}
-                sx={{
-                  opacity: actionLoading ? 0.5 : 1,
-                  transition: 'opacity 0.2s',
-                }}
-              >
-                <Delete fontSize="small" />
-              </IconButton>
-            </span>
-          </Tooltip>
+        <Box>
+          <IconButton size="small" onClick={() => handleResendNotification(row)}>
+            <Send fontSize="small" />
+          </IconButton>
+          <IconButton size="small" color="error" onClick={() => handleDeleteClick(row, 'notification')}>
+            <Delete fontSize="small" />
+          </IconButton>
         </Box>
       ),
     },
   ];
 
+  const templateColumns = [
+    { field: 'name', headerName: 'Name', width: 200 },
+    {
+      field: 'trigger_event',
+      headerName: 'Trigger',
+      width: 150,
+      render: (value) => <Chip label={value?.replace(/_/g, ' ')} size="small" />,
+    },
+    {
+      field: 'notification_type',
+      headerName: 'Type',
+      width: 100,
+      render: (value) => {
+        const colors = { info: 'info', success: 'success', warning: 'warning', error: 'error' };
+        return <Chip label={value} size="small" color={colors[value] || 'default'} />;
+      },
+    },
+    {
+      field: 'is_active',
+      headerName: 'Status',
+      width: 100,
+      render: (value) => (
+        <Chip label={value ? 'Active' : 'Inactive'} size="small" color={value ? 'success' : 'default'} />
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 120,
+      render: (value, row) => (
+        <Box>
+          <IconButton size="small" onClick={() => handleEditTemplate(row)}>
+            <Edit fontSize="small" />
+          </IconButton>
+          <IconButton size="small" color="error" onClick={() => handleDeleteClick(row, 'template')}>
+            <Delete fontSize="small" />
+          </IconButton>
+          <IconButton size="small" onClick={() => handleUseTemplate(row)}>
+            <Send fontSize="small" />
+          </IconButton>
+        </Box>
+      ),
+    },
+  ];
+
+  const scheduleColumns = [
+    { field: 'name', headerName: 'Name', width: 200 },
+    {
+      field: 'schedule_type',
+      headerName: 'Type',
+      width: 100,
+      render: (value) => <Chip label={value} size="small" />,
+    },
+    {
+      field: 'next_run',
+      headerName: 'Next Run',
+      width: 150,
+      render: (value) => (value ? new Date(value).toLocaleString() : '-'),
+    },
+    {
+      field: 'is_active',
+      headerName: 'Status',
+      width: 100,
+      render: (value, row) => (
+        <Switch
+          checked={value}
+          onChange={(e) => handleToggleSchedule(row.id, e.target.checked)}
+          size="small"
+        />
+      ),
+    },
+    {
+      field: 'actions',
+      headerName: 'Actions',
+      width: 80,
+      render: (value, row) => (
+        <IconButton size="small" color="error" onClick={() => handleDeleteClick(row, 'schedule')}>
+          <Delete fontSize="small" />
+        </IconButton>
+      ),
+    },
+  ];
+
+  // ==================== RENDER ====================
+  
   if (!isAdmin()) {
     return (
       <Box sx={{ p: 3 }}>
-        <Alert severity="error" sx={{ borderRadius: 2 }}>
-          Access Denied - Only administrators can access notification and telegram management.
-        </Alert>
+        <Alert severity="error">Access Denied - Admin only</Alert>
       </Box>
     );
   }
@@ -707,804 +647,308 @@ const fetchParentStats = useCallback(async (forceRefresh = false) => {
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            Communications Manager
-          </Typography>
+          <Typography variant="h4" fontWeight="bold">Communications Manager</Typography>
           <Typography variant="body1" color="text.secondary">
-            Manage notifications, Telegram bot, and automated communications
+            Manage notifications, templates, and Telegram bot
           </Typography>
         </Box>
-        
-        <Button
-          variant="outlined"
-          startIcon={<Refresh />}
-          onClick={handleRefresh}
-          disabled={loading || actionLoading}
-          sx={{ borderRadius: 2 }}
-        >
+        <Button variant="outlined" startIcon={<Refresh />} onClick={handleRefresh} disabled={loading}>
           Refresh
         </Button>
       </Box>
 
-      {/* Loading Indicator */}
-      {(loading || actionLoading) && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {/* Loading */}
+      {(loading || actionLoading) && <LinearProgress sx={{ mb: 3 }} />}
 
       {/* Stats Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
+        <Grid item xs={6} md={3}>
+          <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: 'primary.light', color: 'primary.main' }}>
-                  <NotificationsIcon />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {notifications.length}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Total Notifications
-                  </Typography>
-                </Box>
-              </Box>
+              <Typography variant="h4">{notifications.length}</Typography>
+              <Typography variant="caption">Total Notifications</Typography>
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
+        <Grid item xs={6} md={3}>
+          <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: 'success.light', color: 'success.main' }}>
-                  <CheckCircle />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {notifications.filter(n => n.status === 'sent').length}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Successfully Sent
-                  </Typography>
-                </Box>
-              </Box>
+              <Typography variant="h4">{templates.length}</Typography>
+              <Typography variant="caption">Templates</Typography>
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
+        <Grid item xs={6} md={3}>
+          <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: 'warning.light', color: 'warning.main' }}>
-                  <Timer />
-                </Avatar>
-                <Box>
-                  <Typography variant="h4" fontWeight="bold">
-                    {notifications.filter(n => n.status === 'scheduled').length}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    Scheduled
-                  </Typography>
-                </Box>
-              </Box>
+              <Typography variant="h4">{schedules.length}</Typography>
+              <Typography variant="caption">Schedules</Typography>
             </CardContent>
           </Card>
         </Grid>
-        
-        <Grid item xs={12} sm={6} md={3}>
-          <Card sx={{ borderRadius: 2 }}>
+        <Grid item xs={6} md={3}>
+          <Card>
             <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                <Avatar sx={{ bgcolor: telegramStatus?.initialized ? 'success.light' : 'error.light', 
-                              color: telegramStatus?.initialized ? 'success.main' : 'error.main' }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Badge color={telegramStatus?.initialized ? 'success' : 'error'} variant="dot">
                   <Telegram />
-                </Avatar>
-                <Box>
-                  <Typography variant="h6" fontWeight="bold">
-                    {telegramStatus?.initialized ? 'Bot Active' : 'Bot Offline'}
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    @{telegramStatus?.botUsername || 'FamilyAcademy_bot'}
-                  </Typography>
-                </Box>
+                </Badge>
+                <Typography variant="body2">
+                  {telegramStatus?.initialized ? 'Bot Active' : 'Bot Offline'}
+                </Typography>
               </Box>
+              <Button size="small" onClick={handleTestTelegram} sx={{ mt: 1 }}>
+                Test Connection
+              </Button>
             </CardContent>
           </Card>
         </Grid>
       </Grid>
 
       {/* Tabs */}
-      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
-        <Tabs value={tabValue} onChange={(e, v) => setTabValue(v)}>
-          <Tab icon={<History />} label="Notification History" />
-          <Tab icon={<Send />} label="Send Notification" />
-          <Tab icon={<AutoAwesome />} label="Templates" />
-          <Tab icon={<Settings />} label="Telegram Settings" />
-          <Tab icon={<People />} label="Parent Communication" />
+      <Paper sx={{ mb: 3 }}>
+        <Tabs value={activeTab} onChange={(e, v) => setActiveTab(v)}>
+          <Tab label="Send" icon={<Send />} iconPosition="start" />
+          <Tab label="Templates" icon={<AutoAwesome />} iconPosition="start" />
+          <Tab label="Schedules" icon={<Schedule />} iconPosition="start" />
+          <Tab label="History" icon={<History />} iconPosition="start" />
         </Tabs>
-      </Box>
+      </Paper>
 
-      {/* Tab 0: Notification History */}
-      {tabValue === 0 && (
+      {/* Tab 0: Send Notification */}
+      {activeTab === 0 && (
+        <Paper sx={{ p: 3 }}>
+          <Typography variant="h6" fontWeight="bold" gutterBottom>Send Notification</Typography>
+          
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Title" name="title" value={notificationForm.title}
+                onChange={(e) => setNotificationForm({...notificationForm, title: e.target.value})} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Message" name="message" value={notificationForm.message}
+                onChange={(e) => setNotificationForm({...notificationForm, message: e.target.value})}
+                multiline rows={4} />
+            </Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth>
+                <InputLabel>Type</InputLabel>
+                <Select value={notificationForm.type} onChange={(e) => setNotificationForm({...notificationForm, type: e.target.value})}>
+                  {NOTIFICATION_TYPES.map(t => (
+                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={6}>
+              <FormControl fullWidth>
+                <InputLabel>Target</InputLabel>
+                <Select value={notificationForm.target_type} onChange={(e) => setNotificationForm({...notificationForm, target_type: e.target.value})}>
+                  {TARGET_TYPES.map(t => (
+                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            {notificationForm.target_type === 'specific_user' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Select User</InputLabel>
+                  <Select value={notificationForm.target_id} onChange={(e) => setNotificationForm({...notificationForm, target_id: e.target.value})}>
+                    {users.map(u => (
+                      <MenuItem key={u.id} value={u.id}>{u.username}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Switch checked={notificationForm.send_now} onChange={(e) => setNotificationForm({...notificationForm, send_now: e.target.checked})} />}
+                label="Send now"
+              />
+              {!notificationForm.send_now && (
+                <TextField fullWidth type="datetime-local" label="Schedule"
+                  value={notificationForm.scheduled_time}
+                  onChange={(e) => setNotificationForm({...notificationForm, scheduled_time: e.target.value})}
+                  sx={{ mt: 2 }} />
+              )}
+            </Grid>
+            <Grid item xs={12}>
+              <Button variant="contained" onClick={handleSendNotification}
+                disabled={actionLoading || !notificationForm.title || !notificationForm.message}
+                startIcon={actionLoading ? <CircularProgress size={20} /> : <Send />}>
+                {actionLoading ? 'Sending...' : (notificationForm.send_now ? 'Send Now' : 'Schedule')}
+              </Button>
+            </Grid>
+          </Grid>
+
+          {/* Templates quick pick */}
+          {templates.length > 0 && (
+            <Box sx={{ mt: 4 }}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Use Template</Typography>
+              <Grid container spacing={2}>
+                {templates.slice(0, 3).map(t => (
+                  <Grid item xs={12} sm={4} key={t.id}>
+                    <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleUseTemplate(t)}>
+                      <CardContent>
+                        <Typography variant="subtitle2">{t.name}</Typography>
+                        <Typography variant="caption" color="text.secondary">{t.description}</Typography>
+                      </CardContent>
+                    </Card>
+                  </Grid>
+                ))}
+              </Grid>
+            </Box>
+          )}
+        </Paper>
+      )}
+
+      {/* Tab 1: Templates */}
+      {activeTab === 1 && (
         <Box>
-          <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="h6">Templates</Typography>
+            <Button variant="contained" startIcon={<Add />} onClick={() => setTemplateFormOpen(true)}>
+              New Template
+            </Button>
+          </Box>
+          <DataTable columns={templateColumns} data={templates} loading={loading} />
+        </Box>
+      )}
+
+      {/* Tab 2: Schedules */}
+      {activeTab === 2 && (
+        <Box>
+          <Typography variant="h6" gutterBottom>Schedules</Typography>
+          <DataTable columns={scheduleColumns} data={schedules} loading={loading} />
+        </Box>
+      )}
+
+      {/* Tab 3: History */}
+      {activeTab === 3 && (
+        <Box>
+          <Paper sx={{ p: 2, mb: 3 }}>
             <Grid container spacing={2} alignItems="center">
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  placeholder="Search notifications..."
-                  value={searchQuery}
+                <TextField fullWidth size="small" placeholder="Search..." value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  InputProps={{
-                    startAdornment: (
-                      <InputAdornment position="start">
-                        <Search fontSize="small" />
-                      </InputAdornment>
-                    ),
-                  }}
-                />
+                  InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} />
               </Grid>
               <Grid item xs={12} md={3}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
-                  <Select
-                    value={statusFilter}
-                    onChange={(e) => setStatusFilter(e.target.value)}
-                    label="Status"
-                  >
-                    <MenuItem value="all">All Status</MenuItem>
+                  <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                    <MenuItem value="all">All</MenuItem>
                     <MenuItem value="sent">Sent</MenuItem>
                     <MenuItem value="scheduled">Scheduled</MenuItem>
                     <MenuItem value="failed">Failed</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={5}>
-                <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                  <Button
-                    variant="outlined"
-                    startIcon={<Download />}
-                    onClick={() => {
-                      showSuccess('Export feature coming soon');
-                    }}
-                    size="small"
-                  >
-                    Export
-                  </Button>
-                </Box>
+              <Grid item xs={12} md={5} sx={{ textAlign: 'right' }}>
+                <Button startIcon={<Download />} size="small">Export</Button>
               </Grid>
             </Grid>
           </Paper>
-
-          <DataTable
-            columns={notificationColumns}
-            data={filteredNotifications}
-            loading={loading}
-            onRefresh={handleRefresh}
-            title="Notification History"
-            rowKey="id"
-          />
+          <DataTable columns={notificationColumns} data={filteredNotifications} loading={loading} />
         </Box>
       )}
 
-      {/* Tab 1: Send Notification */}
-      {tabValue === 1 && (
-        <Paper sx={{ p: 3, borderRadius: 2 }}>
-          <Typography variant="h6" fontWeight="bold" gutterBottom>
-            Send New Notification
-          </Typography>
-          
+      {/* Template Form Dialog */}
+      <Dialog open={templateFormOpen} onClose={() => setTemplateFormOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="h6">{selectedItem ? 'Edit' : 'New'} Template</Typography>
+            <IconButton onClick={() => setTemplateFormOpen(false)}><Close /></IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
           <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Title *"
-                name="title"
-                value={notificationForm.title}
-                onChange={handleNotificationFormChange}
-                disabled={actionLoading}
-              />
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth label="Name" value={templateForm.name}
+                onChange={(e) => setTemplateForm({...templateForm, name: e.target.value})} required />
             </Grid>
-            
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Message *"
-                name="message"
-                value={notificationForm.message}
-                onChange={handleNotificationFormChange}
-                multiline
-                rows={4}
-                disabled={actionLoading}
-              />
-            </Grid>
-            
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
-                <InputLabel>Notification Type</InputLabel>
-                <Select
-                  name="notification_type"
-                  value={notificationForm.notification_type}
-                  onChange={handleNotificationFormChange}
-                  label="Notification Type"
-                  disabled={actionLoading}
-                >
-                  {NOTIFICATION_TYPES.map(type => (
-                    <MenuItem key={type.value} value={type.value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <Box sx={{ color: type.color }}>{type.icon}</Box>
-                        {type.label}
+                <InputLabel>Trigger Event</InputLabel>
+                <Select value={templateForm.trigger_event} onChange={handleTriggerEventChange}>
+                  {TRIGGER_EVENTS.map(e => (
+                    <MenuItem key={e.value} value={e.value}>
+                      <Box sx={{ display: 'flex', gap: 1 }}>
+                        <Chip label={e.category} size="small" /> {e.label}
                       </Box>
                     </MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <FormControl fullWidth>
-                <InputLabel>Priority</InputLabel>
-                <Select
-                  name="priority"
-                  value={notificationForm.priority}
-                  onChange={handleNotificationFormChange}
-                  label="Priority"
-                  disabled={actionLoading}
-                >
-                  <MenuItem value="low">Low</MenuItem>
-                  <MenuItem value="medium">Medium</MenuItem>
-                  <MenuItem value="high">High</MenuItem>
-                  <MenuItem value="urgent">Urgent</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
-            
             <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                Target Audience
-              </Typography>
+              <TextField fullWidth label="Description" multiline rows={2} value={templateForm.description}
+                onChange={(e) => setTemplateForm({...templateForm, description: e.target.value})} />
             </Grid>
-            
-            <Grid item xs={12} md={6}>
+            <Grid item xs={6}>
               <FormControl fullWidth>
-                <InputLabel>Send To *</InputLabel>
-                <Select
-                  name="target_type"
-                  value={notificationForm.target_type}
-                  onChange={handleNotificationFormChange}
-                  label="Send To *"
-                  disabled={actionLoading}
-                >
-                  {TARGET_TYPES.map(target => (
-                    <MenuItem key={target.value} value={target.value}>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {target.icon}
-                        {target.label}
-                      </Box>
-                    </MenuItem>
+                <InputLabel>Type</InputLabel>
+                <Select value={templateForm.type} onChange={(e) => setTemplateForm({...templateForm, type: e.target.value})}>
+                  {NOTIFICATION_TYPES.map(t => (
+                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
-            
-            {notificationForm.target_type === 'specific_user' && (
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth>
-                  <InputLabel>Select User *</InputLabel>
-                  <Select
-                    name="target_id"
-                    value={notificationForm.target_id}
-                    onChange={handleNotificationFormChange}
-                    label="Select User *"
-                    disabled={actionLoading}
-                  >
-                    {users.map(user => (
-                      <MenuItem key={user.id} value={user.id}>
-                        {user.username} ({user.name || 'No name'})
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
-            
+            <Grid item xs={6}>
+              <TextField fullWidth label="Category" value={templateForm.category}
+                onChange={(e) => setTemplateForm({...templateForm, category: e.target.value})} />
+            </Grid>
             <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                Delivery Options
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={notificationForm.send_immediately}
-                    onChange={(e) => setNotificationForm(prev => ({ ...prev, send_immediately: e.target.checked }))}
-                    disabled={actionLoading}
-                  />
-                }
-                label="Send immediately"
-              />
-              
-              {!notificationForm.send_immediately && (
-                <TextField
-                  fullWidth
-                  label="Schedule Date & Time"
-                  type="datetime-local"
-                  name="scheduled_time"
-                  value={notificationForm.scheduled_time}
-                  onChange={handleNotificationFormChange}
-                  sx={{ mt: 2 }}
-                  InputLabelProps={{ shrink: true }}
-                  disabled={actionLoading}
-                />
-              )}
-            </Grid>
-            
-            <Grid item xs={12}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={notificationForm.include_telegram}
-                    onChange={(e) => setNotificationForm(prev => ({ ...prev, include_telegram: e.target.checked }))}
-                    disabled={actionLoading}
-                  />
-                }
-                label="Send via Telegram"
-              />
-              
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={notificationForm.include_app}
-                    onChange={(e) => setNotificationForm(prev => ({ ...prev, include_app: e.target.checked }))}
-                    disabled={actionLoading}
-                    sx={{ ml: 2 }}
-                  />
-                }
-                label="Send via App Notification"
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end', mt: 2 }}>
-                <Button
-                  variant="outlined"
-                  onClick={() => {
-                    setNotificationForm({
-                      title: '',
-                      message: '',
-                      notification_type: 'info',
-                      target_type: 'all',
-                      target_id: '',
-                      scheduled_time: '',
-                      send_immediately: true,
-                      priority: 'medium',
-                      include_telegram: true,
-                      include_app: true,
-                    });
-                  }}
-                  disabled={actionLoading}
-                  sx={{ borderRadius: 2 }}
-                >
-                  Clear
-                </Button>
-                
-                <Button
-                  variant="contained"
-                  onClick={handleSendNotification}
-                  disabled={actionLoading || !notificationForm.title.trim() || !notificationForm.message.trim()}
-                  startIcon={actionLoading ? <CircularProgress size={20} /> : <Send />}
-                  sx={{ borderRadius: 2 }}
-                >
-                  {actionLoading ? 'Sending...' : (notificationForm.send_immediately ? 'Send Now' : 'Schedule')}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-
-      {/* Tab 2: Templates */}
-      {tabValue === 2 && (
-        <Grid container spacing={3}>
-          {SCHEDULED_TEMPLATES.map(template => (
-            <Grid item xs={12} md={6} key={template.id}>
-              <Card sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-                    <Box>
-                      <Typography variant="h6" fontWeight="bold">
-                        {template.name}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Trigger: {template.trigger.replace(/_/g, ' ')}
-                      </Typography>
-                    </Box>
-                    <Switch
-                      checked={template.enabled}
-                      onChange={(e) => handleToggleTemplate(template.id, e.target.checked)}
-                      size="small"
-                    />
-                  </Box>
-                  
-                  <Typography variant="body2" color="text.secondary" paragraph>
-                    {template.description}
-                  </Typography>
-                  
-                  <Paper variant="outlined" sx={{ p: 1.5, bgcolor: 'grey.50', mb: 2 }}>
-                    <Typography variant="caption" sx={{ fontFamily: 'monospace' }}>
-                      "{template.defaultMessage}"
-                    </Typography>
-                  </Paper>
-                  
-                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Send />}
-                      onClick={() => handleUseTemplate(template)}
-                    >
-                      Use Now
-                    </Button>
-                    <Button
-                      size="small"
-                      variant="outlined"
-                      startIcon={<Schedule />}
-                      onClick={() => handleScheduleTemplate(template)}
-                    >
-                      Schedule
-                    </Button>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Grid>
-          ))}
-        </Grid>
-      )}
-
-      {/* Tab 3: Telegram Settings */}
-      {tabValue === 3 && (
-        <Paper sx={{ p: 3, borderRadius: 2 }}>
-          <Typography variant="h6" fontWeight="bold" gutterBottom>
-            Telegram Bot Configuration
-          </Typography>
-          
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 3 }}>
-                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                  Bot Status
-                </Typography>
-                
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-                  <Badge
-                    color={telegramStatus?.initialized ? 'success' : 'error'}
-                    variant="dot"
-                  >
-                    <Avatar sx={{ bgcolor: telegramStatus?.initialized ? 'success.light' : 'error.light' }}>
-                      <Telegram />
-                    </Avatar>
-                  </Badge>
-                  <Box>
-                    <Typography variant="body1" fontWeight="medium">
-                      @{telegramStatus?.botUsername || 'FamilyAcademy_bot'}
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      Status: {telegramStatus?.initialized ? 'Active' : 'Inactive'} • 
-                      Polling: {telegramStatus?.pollingEnabled ? 'Enabled' : 'Disabled'}
-                    </Typography>
-                  </Box>
-                </Box>
-                
-                <Button
-                  variant="outlined"
-                  startIcon={<Wifi />}
-                  onClick={handleTestTelegram}
-                  disabled={actionLoading}
-                  fullWidth
-                  sx={{ borderRadius: 2 }}
-                >
-                  Test Connection
-                </Button>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <Card variant="outlined" sx={{ p: 2, borderRadius: 2, mb: 3 }}>
-                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                  Bot Statistics
-                </Typography>
-                
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="caption" color="text.secondary">Connected Users</Typography>
-                    <Typography variant="h6">{telegramStatus?.connectedUsers || 0}</Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="caption" color="text.secondary">Total Messages</Typography>
-                    <Typography variant="h6">{telegramStatus?.totalMessages || 0}</Typography>
-                  </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="caption" color="text.secondary">Last Active</Typography>
-                    <Typography variant="body2">
-                      {telegramStatus?.lastActive ? new Date(telegramStatus.lastActive).toLocaleDateString() : 'Never'}
-                    </Typography>
-                  </Grid>
-                </Grid>
-              </Card>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Divider sx={{ my: 2 }} />
-              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                Bot Settings
-              </Typography>
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Bot Token"
-                name="bot_token"
-                type="password"
-                value={telegramSettings.bot_token}
-                onChange={handleTelegramSettingsChange}
-                disabled={actionLoading}
-                size="small"
-                helperText="Get from @BotFather on Telegram"
-              />
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Bot Username"
-                name="bot_username"
-                value={telegramSettings.bot_username}
-                onChange={handleTelegramSettingsChange}
-                disabled={actionLoading}
-                size="small"
-                placeholder="@FamilyAcademy_bot"
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Welcome Message"
-                name="welcome_message"
-                value={telegramSettings.welcome_message}
-                onChange={handleTelegramSettingsChange}
-                multiline
-                rows={2}
-                disabled={actionLoading}
-                size="small"
-              />
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Max Parents per User"
-                name="max_parents_per_user"
-                type="number"
-                value={telegramSettings.max_parents_per_user}
-                onChange={handleTelegramSettingsChange}
-                disabled={actionLoading}
-                size="small"
-                InputProps={{ inputProps: { min: 1, max: 5 } }}
-              />
-            </Grid>
-            
-            <Grid item xs={12} md={6}>
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={telegramSettings.auto_approve}
-                    onChange={handleTelegramSettingsChange}
-                    name="auto_approve"
-                    disabled={actionLoading}
-                  />
-                }
-                label="Auto-approve parent linking"
-              />
-              <FormControlLabel
-                control={
-                  <Switch
-                    checked={telegramSettings.notification_enabled}
-                    onChange={handleTelegramSettingsChange}
-                    name="notification_enabled"
-                    disabled={actionLoading}
-                  />
-                }
-                label="Enable notifications"
-              />
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                <Button
-                  variant="contained"
-                  onClick={handleUpdateTelegramSettings}
-                  disabled={actionLoading}
-                  startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
-                  sx={{ borderRadius: 2 }}
-                >
-                  {actionLoading ? 'Saving...' : 'Save Settings'}
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-
-      {/* Tab 4: Parent Communication */}
-      {tabValue === 4 && (
-        <Box>
-          <Grid container spacing={3}>
-            <Grid item xs={12} md={8}>
-              <Paper sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom>
-                  Parent Communication
-                </Typography>
-                
-                <Grid container spacing={2} sx={{ mb: 4 }}>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ p: 2, textAlign: 'center' }}>
-                      <People sx={{ fontSize: 32, color: 'primary.main', mb: 1 }} />
-                      <Typography variant="h4" fontWeight="bold">
-                        {parentStats.total || 0}
-                      </Typography>
-                      <Typography variant="caption">Total Parents</Typography>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ p: 2, textAlign: 'center' }}>
-                      <CheckCircle sx={{ fontSize: 32, color: 'success.main', mb: 1 }} />
-                      <Typography variant="h4" fontWeight="bold">
-                        {parentStats.active || 0}
-                      </Typography>
-                      <Typography variant="caption">Active This Week</Typography>
-                    </Card>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Card sx={{ p: 2, textAlign: 'center' }}>
-                      <Send sx={{ fontSize: 32, color: 'info.main', mb: 1 }} />
-                      <Typography variant="h4" fontWeight="bold">
-                        {parentStats.notificationsSent || 0}
-                      </Typography>
-                      <Typography variant="caption">Notifications Sent</Typography>
-                    </Card>
-                  </Grid>
-                </Grid>
-                
-                <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                  Quick Actions
-                </Typography>
-                
-                <Stack spacing={2}>
-                  <Button
-                    variant="contained"
-                    startIcon={<Assessment />}
-                    onClick={async () => {
-                      try {
-                        setActionLoading(true);
-                        await telegramApi.sendProgressToAllParents();
-                        showSuccess('Weekly progress reports sent to all parents!');
-                        
-                        // Invalidate parent stats cache
-                        invalidateCache(parentStatsCacheKey);
-                        await fetchParentStats(true);
-                      } catch (err) {
-                        showError('Failed to send reports');
-                      } finally {
-                        setActionLoading(false);
-                      }
-                    }}
-                    disabled={actionLoading}
-                    sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
-                  >
-                    Send Weekly Reports to All Parents
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<LocalFireDepartment />}
-                    onClick={() => {
-                      setNotificationForm({
-                        ...notificationForm,
-                        title: 'Streak Update',
-                        message: 'Your child has maintained a learning streak! Encourage them to keep going! 🔥',
-                        notification_type: 'success',
-                        target_type: 'parents',
-                      });
-                      setTabValue(1);
-                    }}
-                    disabled={actionLoading}
-                    sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
-                  >
-                    Send Streak Reminder to Parents
-                  </Button>
-                  
-                  <Button
-                    variant="outlined"
-                    startIcon={<EmojiEvents />}
-                    onClick={() => {
-                      setNotificationForm({
-                        ...notificationForm,
-                        title: 'Achievement Unlocked!',
-                        message: 'Your child has unlocked a new achievement! Check the app to celebrate! 🏆',
-                        notification_type: 'success',
-                        target_type: 'parents',
-                      });
-                      setTabValue(1);
-                    }}
-                    disabled={actionLoading}
-                    sx={{ borderRadius: 2, justifyContent: 'flex-start' }}
-                  >
-                    Send Achievement Alert to Parents
-                  </Button>
-                </Stack>
+              <Typography variant="subtitle2">Variables</Typography>
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                {templateForm.variables.map(v => (
+                  <Chip key={v} label={`{{${v}}}`} size="small" sx={{ m: 0.5 }} />
+                ))}
               </Paper>
             </Grid>
-            
-            <Grid item xs={12} md={4}>
-              <Paper sx={{ p: 3, borderRadius: 2 }}>
-                <Typography variant="h6" fontWeight="bold" gutterBottom>
-                  Tips & Best Practices
-                </Typography>
-                
-                <List>
-                  <ListItem>
-                    <ListItemIcon>
-                      <Info color="info" />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Keep messages concise"
-                      secondary="Aim for 1-2 sentences maximum"
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <Warning color="warning" />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Test before sending"
-                      secondary="Always test with yourself first"
-                    />
-                  </ListItem>
-                  <ListItem>
-                    <ListItemIcon>
-                      <Timer color="action" />
-                    </ListItemIcon>
-                    <ListItemText 
-                      primary="Schedule wisely"
-                      secondary="Avoid sending during late hours"
-                    />
-                  </ListItem>
-                </List>
-              </Paper>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Title Template" value={templateForm.title_template}
+                onChange={(e) => setTemplateForm({...templateForm, title_template: e.target.value})}
+                required multiline InputProps={{ sx: { fontFamily: 'monospace' } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Message Template" value={templateForm.message_template}
+                onChange={(e) => setTemplateForm({...templateForm, message_template: e.target.value})}
+                required multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Telegram Template" value={templateForm.telegram_template}
+                onChange={(e) => setTemplateForm({...templateForm, telegram_template: e.target.value})}
+                multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Switch checked={templateForm.is_active} onChange={(e) => setTemplateForm({...templateForm, is_active: e.target.checked})} />}
+                label="Active"
+              />
             </Grid>
           </Grid>
-        </Box>
-      )}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTemplateFormOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={selectedItem ? handleUpdateTemplate : handleCreateTemplate}
+            disabled={!templateForm.name || !templateForm.title_template || !templateForm.message_template}>
+            {selectedItem ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <ConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={() => {
-          handleDeleteNotification(selectedNotification);
-          setDeleteConfirmOpen(false);
-        }}
-        title="Delete Notification"
-        message={`Are you sure you want to delete notification "${selectedNotification?.title}"?`}
+        onConfirm={handleConfirmDelete}
+        title={`Delete ${deleteType}`}
+        message={`Are you sure you want to delete this ${deleteType}?`}
         confirmText="Delete"
-        cancelText="Cancel"
         severity="error"
         loading={actionLoading}
       />
