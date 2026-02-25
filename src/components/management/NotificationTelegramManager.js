@@ -93,6 +93,13 @@ const TARGET_TYPES = [
   { value: 'parents', label: 'Parents Only', icon: <People /> },
 ];
 
+const SCHEDULE_TYPES = [
+  { value: 'one_time', label: 'One Time' },
+  { value: 'daily', label: 'Daily' },
+  { value: 'weekly', label: 'Weekly' },
+  { value: 'monthly', label: 'Monthly' },
+];
+
 const TRIGGER_EVENTS = [
   { value: 'payment_verified', label: 'Payment Verified', category: 'payment' },
   { value: 'payment_rejected', label: 'Payment Rejected', category: 'payment' },
@@ -170,13 +177,25 @@ const NotificationTelegramManager = () => {
     send_now: true,
   });
   
+  const [scheduleForm, setScheduleForm] = useState({
+    name: '',
+    template_id: '',
+    schedule_type: 'daily',
+    schedule_value: '',
+    scheduled_time: '09:00',
+    scheduled_day: 'monday',
+    target_type: 'all',
+    target_ids: [],
+    is_active: true,
+  });
+  
   const [templateForm, setTemplateForm] = useState({
     name: '',
     description: '',
     title_template: '',
     message_template: '',
     telegram_template: '',
-    type: 'info',
+    notification_type: 'info',
     trigger_event: '',
     category: 'general',
     variables: [],
@@ -270,6 +289,26 @@ const NotificationTelegramManager = () => {
 
   // ==================== SCHEDULE HANDLERS ====================
   
+  const handleCreateSchedule = async () => {
+    if (!scheduleForm.name || !scheduleForm.template_id) {
+      showError('Name and template are required');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      await notificationsApi.createSchedule(scheduleForm);
+      showSuccess('Schedule created');
+      setScheduleFormOpen(false);
+      resetScheduleForm();
+      fetchAllData();
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to create schedule');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   const handleToggleSchedule = async (id, isActive) => {
     try {
       await notificationsApi.toggleSchedule(id, isActive);
@@ -317,7 +356,7 @@ const NotificationTelegramManager = () => {
       showSuccess('Notification sent');
       resetNotificationForm();
       fetchAllData();
-      setActiveTab(3); // Switch to history tab
+      setActiveTab(3);
     } catch (error) {
       showError(error.response?.data?.message || 'Failed to send');
     } finally {
@@ -381,13 +420,27 @@ const NotificationTelegramManager = () => {
       title_template: '',
       message_template: '',
       telegram_template: '',
-      type: 'info',
+      notification_type: 'info',
       trigger_event: '',
       category: 'general',
       variables: [],
       is_active: true,
     });
     setSelectedItem(null);
+  };
+
+  const resetScheduleForm = () => {
+    setScheduleForm({
+      name: '',
+      template_id: '',
+      schedule_type: 'daily',
+      schedule_value: '',
+      scheduled_time: '09:00',
+      scheduled_day: 'monday',
+      target_type: 'all',
+      target_ids: [],
+      is_active: true,
+    });
   };
 
   const resetNotificationForm = () => {
@@ -412,7 +465,7 @@ const NotificationTelegramManager = () => {
       title_template: template.title_template,
       message_template: template.message_template,
       telegram_template: template.telegram_template || '',
-      type: template.notification_type || 'info',
+      notification_type: template.notification_type || 'info',
       trigger_event: template.trigger_event,
       category: template.category || 'general',
       variables: template.variables || [],
@@ -422,10 +475,18 @@ const NotificationTelegramManager = () => {
   };
 
   const handleUseTemplate = (template) => {
+    // Replace variables with placeholders
+    let message = template.message_template;
+    if (template.variables) {
+      template.variables.forEach(varName => {
+        message = message.replace(new RegExp(`{{${varName}}}`, 'g'), `[${varName}]`);
+      });
+    }
+    
     setNotificationForm({
       ...notificationForm,
       title: template.name,
-      message: template.message_template.replace(/{{(.*?)}}/g, '[var]'),
+      message: message,
       type: template.notification_type || 'info',
     });
     setActiveTab(0);
@@ -482,7 +543,7 @@ const NotificationTelegramManager = () => {
       ),
     },
     {
-      field: 'type',
+      field: 'notification_type',
       headerName: 'Type',
       width: 100,
       render: (value) => {
@@ -524,7 +585,7 @@ const NotificationTelegramManager = () => {
     },
     {
       field: 'created_at',
-      headerName: 'Sent',
+      headerName: 'Created',
       width: 120,
       render: (value) => (
         <Typography variant="caption">
@@ -577,7 +638,7 @@ const NotificationTelegramManager = () => {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 120,
+      width: 150,
       render: (value, row) => (
         <Box>
           <IconButton size="small" onClick={() => handleEditTemplate(row)}>
@@ -596,6 +657,15 @@ const NotificationTelegramManager = () => {
 
   const scheduleColumns = [
     { field: 'name', headerName: 'Name', width: 200 },
+    {
+      field: 'template_name',
+      headerName: 'Template',
+      width: 150,
+      render: (value, row) => {
+        const template = templates.find(t => t.id === row.template_id);
+        return template?.name || '-';
+      },
+    },
     {
       field: 'schedule_type',
       headerName: 'Type',
@@ -665,7 +735,7 @@ const NotificationTelegramManager = () => {
         <Grid item xs={6} md={3}>
           <Card>
             <CardContent>
-              <Typography variant="h4">{notifications.length}</Typography>
+              <Typography variant="h4">{stats.total || notifications.length}</Typography>
               <Typography variant="caption">Total Notifications</Typography>
             </CardContent>
           </Card>
@@ -786,7 +856,7 @@ const NotificationTelegramManager = () => {
           {/* Templates quick pick */}
           {templates.length > 0 && (
             <Box sx={{ mt: 4 }}>
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Use Template</Typography>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>Use a Template</Typography>
               <Grid container spacing={2}>
                 {templates.slice(0, 3).map(t => (
                   <Grid item xs={12} sm={4} key={t.id}>
@@ -799,6 +869,11 @@ const NotificationTelegramManager = () => {
                   </Grid>
                 ))}
               </Grid>
+              {templates.length > 3 && (
+                <Button size="small" sx={{ mt: 1 }} onClick={() => setActiveTab(1)}>
+                  View all templates
+                </Button>
+              )}
             </Box>
           )}
         </Paper>
@@ -809,7 +884,10 @@ const NotificationTelegramManager = () => {
         <Box>
           <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
             <Typography variant="h6">Templates</Typography>
-            <Button variant="contained" startIcon={<Add />} onClick={() => setTemplateFormOpen(true)}>
+            <Button variant="contained" startIcon={<Add />} onClick={() => {
+              resetTemplateForm();
+              setTemplateFormOpen(true);
+            }}>
               New Template
             </Button>
           </Box>
@@ -820,7 +898,15 @@ const NotificationTelegramManager = () => {
       {/* Tab 2: Schedules */}
       {activeTab === 2 && (
         <Box>
-          <Typography variant="h6" gutterBottom>Schedules</Typography>
+          <Box sx={{ mb: 2, display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="h6">Schedules</Typography>
+            <Button variant="contained" startIcon={<Add />} onClick={() => {
+              resetScheduleForm();
+              setScheduleFormOpen(true);
+            }}>
+              New Schedule
+            </Button>
+          </Box>
           <DataTable columns={scheduleColumns} data={schedules} loading={loading} />
         </Box>
       )}
@@ -890,7 +976,7 @@ const NotificationTelegramManager = () => {
             <Grid item xs={6}>
               <FormControl fullWidth>
                 <InputLabel>Type</InputLabel>
-                <Select value={templateForm.type} onChange={(e) => setTemplateForm({...templateForm, type: e.target.value})}>
+                <Select value={templateForm.notification_type} onChange={(e) => setTemplateForm({...templateForm, notification_type: e.target.value})}>
                   {NOTIFICATION_TYPES.map(t => (
                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
@@ -920,7 +1006,7 @@ const NotificationTelegramManager = () => {
                 required multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Telegram Template" value={templateForm.telegram_template}
+              <TextField fullWidth label="Telegram Template (Optional)" value={templateForm.telegram_template}
                 onChange={(e) => setTemplateForm({...templateForm, telegram_template: e.target.value})}
                 multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
             </Grid>
@@ -937,6 +1023,97 @@ const NotificationTelegramManager = () => {
           <Button variant="contained" onClick={selectedItem ? handleUpdateTemplate : handleCreateTemplate}
             disabled={!templateForm.name || !templateForm.title_template || !templateForm.message_template}>
             {selectedItem ? 'Update' : 'Create'}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Schedule Form Dialog */}
+      <Dialog open={scheduleFormOpen} onClose={() => setScheduleFormOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+            <Typography variant="h6">New Schedule</Typography>
+            <IconButton onClick={() => setScheduleFormOpen(false)}><Close /></IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers>
+          <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <TextField fullWidth label="Schedule Name" value={scheduleForm.name}
+                onChange={(e) => setScheduleForm({...scheduleForm, name: e.target.value})} required />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Template</InputLabel>
+                <Select value={scheduleForm.template_id} onChange={(e) => setScheduleForm({...scheduleForm, template_id: e.target.value})}>
+                  {templates.map(t => (
+                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Schedule Type</InputLabel>
+                <Select value={scheduleForm.schedule_type} onChange={(e) => setScheduleForm({...scheduleForm, schedule_type: e.target.value})}>
+                  {SCHEDULE_TYPES.map(t => (
+                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            {scheduleForm.schedule_type === 'weekly' && (
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Day of Week</InputLabel>
+                  <Select value={scheduleForm.scheduled_day} onChange={(e) => setScheduleForm({...scheduleForm, scheduled_day: e.target.value})}>
+                    <MenuItem value="monday">Monday</MenuItem>
+                    <MenuItem value="tuesday">Tuesday</MenuItem>
+                    <MenuItem value="wednesday">Wednesday</MenuItem>
+                    <MenuItem value="thursday">Thursday</MenuItem>
+                    <MenuItem value="friday">Friday</MenuItem>
+                    <MenuItem value="saturday">Saturday</MenuItem>
+                    <MenuItem value="sunday">Sunday</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            {scheduleForm.schedule_type === 'monthly' && (
+              <Grid item xs={12} md={6}>
+                <TextField fullWidth type="number" label="Day of Month (1-31)" 
+                  value={scheduleForm.schedule_value} 
+                  onChange={(e) => setScheduleForm({...scheduleForm, schedule_value: e.target.value})}
+                  inputProps={{ min: 1, max: 31 }} />
+              </Grid>
+            )}
+            <Grid item xs={12} md={6}>
+              <TextField fullWidth type="time" label="Time" 
+                value={scheduleForm.scheduled_time}
+                onChange={(e) => setScheduleForm({...scheduleForm, scheduled_time: e.target.value})}
+                InputLabelProps={{ shrink: true }} />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <FormControl fullWidth>
+                <InputLabel>Target Audience</InputLabel>
+                <Select value={scheduleForm.target_type} onChange={(e) => setScheduleForm({...scheduleForm, target_type: e.target.value})}>
+                  {TARGET_TYPES.map(t => (
+                    <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12}>
+              <FormControlLabel
+                control={<Switch checked={scheduleForm.is_active} onChange={(e) => setScheduleForm({...scheduleForm, is_active: e.target.checked})} />}
+                label="Active"
+              />
+            </Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setScheduleFormOpen(false)}>Cancel</Button>
+          <Button variant="contained" onClick={handleCreateSchedule}
+            disabled={!scheduleForm.name || !scheduleForm.template_id}>
+            Create Schedule
           </Button>
         </DialogActions>
       </Dialog>
