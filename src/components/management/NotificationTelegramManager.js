@@ -343,22 +343,37 @@ const NotificationTelegramManager = () => {
       return;
     }
 
+    // Validate template selection - REQUIRED for production
+    if (!selectedItem || !selectedItem.id) {
+      showError('Please select a template first');
+      setActiveTab(1); // Switch to templates tab
+      return;
+    }
+
     setActionLoading(true);
     try {
-      await notificationsApi.sendNotification({
+      const payload = {
+        template_id: selectedItem.id, // Always required
         title: notificationForm.title,
         message: notificationForm.message,
         notification_type: notificationForm.type,
         target_type: notificationForm.target_type,
         target_id: notificationForm.target_id || null,
         scheduled_time: notificationForm.send_now ? null : notificationForm.scheduled_time,
-      });
-      showSuccess('Notification sent');
+        variables: {} // Add empty variables object as required by backend
+      };
+
+      console.log('Sending notification:', payload);
+
+      const response = await notificationsApi.sendNotification(payload);
+      showSuccess(response.data?.message || 'Notification sent successfully');
       resetNotificationForm();
-      fetchAllData();
-      setActiveTab(3);
+      setSelectedItem(null); // Clear selected template
+      await fetchAllData();
+      setActiveTab(3); // Switch to history tab
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to send');
+      console.error('Send notification error:', error.response?.data || error);
+      showError(error.response?.data?.message || 'Failed to send notification');
     } finally {
       setActionLoading(false);
     }
@@ -489,7 +504,9 @@ const NotificationTelegramManager = () => {
       message: message,
       type: template.notification_type || 'info',
     });
-    setActiveTab(0);
+    setSelectedItem(template); // CRITICAL: Store the selected template
+    setActiveTab(0); // Switch to send tab
+    showSuccess(`Template "${template.name}" selected. You can now send.`);
   };
 
   const handleTriggerEventChange = (event) => {
@@ -788,20 +805,29 @@ const NotificationTelegramManager = () => {
       {/* Tab 0: Send Notification */}
       {activeTab === 0 && (
         <Paper sx={{ p: 3 }}>
-          <Typography variant="h6" fontWeight="bold" gutterBottom>Send Notification</Typography>
+          <Typography variant="h6" fontWeight="bold" gutterBottom>
+            Send Notification {selectedItem && `- Using Template: ${selectedItem.name}`}
+          </Typography>
+          
+          {!selectedItem && (
+            <Alert severity="info" sx={{ mb: 3 }}>
+              Please select a template from the Templates tab first
+            </Alert>
+          )}
           
           <Grid container spacing={3}>
             <Grid item xs={12}>
               <TextField fullWidth label="Title" name="title" value={notificationForm.title}
-                onChange={(e) => setNotificationForm({...notificationForm, title: e.target.value})} />
+                onChange={(e) => setNotificationForm({...notificationForm, title: e.target.value})} 
+                disabled={!selectedItem} />
             </Grid>
             <Grid item xs={12}>
               <TextField fullWidth label="Message" name="message" value={notificationForm.message}
                 onChange={(e) => setNotificationForm({...notificationForm, message: e.target.value})}
-                multiline rows={4} />
+                multiline rows={4} disabled={!selectedItem} />
             </Grid>
             <Grid item xs={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth disabled={!selectedItem}>
                 <InputLabel>Type</InputLabel>
                 <Select value={notificationForm.type} onChange={(e) => setNotificationForm({...notificationForm, type: e.target.value})}>
                   {NOTIFICATION_TYPES.map(t => (
@@ -811,7 +837,7 @@ const NotificationTelegramManager = () => {
               </FormControl>
             </Grid>
             <Grid item xs={6}>
-              <FormControl fullWidth>
+              <FormControl fullWidth disabled={!selectedItem}>
                 <InputLabel>Target</InputLabel>
                 <Select value={notificationForm.target_type} onChange={(e) => setNotificationForm({...notificationForm, target_type: e.target.value})}>
                   {TARGET_TYPES.map(t => (
@@ -822,7 +848,7 @@ const NotificationTelegramManager = () => {
             </Grid>
             {notificationForm.target_type === 'specific_user' && (
               <Grid item xs={12}>
-                <FormControl fullWidth>
+                <FormControl fullWidth disabled={!selectedItem}>
                   <InputLabel>Select User</InputLabel>
                   <Select value={notificationForm.target_id} onChange={(e) => setNotificationForm({...notificationForm, target_id: e.target.value})}>
                     {users.map(u => (
@@ -834,22 +860,27 @@ const NotificationTelegramManager = () => {
             )}
             <Grid item xs={12}>
               <FormControlLabel
-                control={<Switch checked={notificationForm.send_now} onChange={(e) => setNotificationForm({...notificationForm, send_now: e.target.checked})} />}
+                control={<Switch checked={notificationForm.send_now} onChange={(e) => setNotificationForm({...notificationForm, send_now: e.target.checked})} disabled={!selectedItem} />}
                 label="Send now"
               />
               {!notificationForm.send_now && (
                 <TextField fullWidth type="datetime-local" label="Schedule"
                   value={notificationForm.scheduled_time}
                   onChange={(e) => setNotificationForm({...notificationForm, scheduled_time: e.target.value})}
-                  sx={{ mt: 2 }} />
+                  sx={{ mt: 2 }} disabled={!selectedItem} />
               )}
             </Grid>
             <Grid item xs={12}>
               <Button variant="contained" onClick={handleSendNotification}
-                disabled={actionLoading || !notificationForm.title || !notificationForm.message}
+                disabled={actionLoading || !notificationForm.title || !notificationForm.message || !selectedItem}
                 startIcon={actionLoading ? <CircularProgress size={20} /> : <Send />}>
                 {actionLoading ? 'Sending...' : (notificationForm.send_now ? 'Send Now' : 'Schedule')}
               </Button>
+              {selectedItem && (
+                <Button variant="outlined" sx={{ ml: 2 }} onClick={() => setSelectedItem(null)}>
+                  Clear Template
+                </Button>
+              )}
             </Grid>
           </Grid>
 
@@ -860,7 +891,14 @@ const NotificationTelegramManager = () => {
               <Grid container spacing={2}>
                 {templates.slice(0, 3).map(t => (
                   <Grid item xs={12} sm={4} key={t.id}>
-                    <Card variant="outlined" sx={{ cursor: 'pointer' }} onClick={() => handleUseTemplate(t)}>
+                    <Card 
+                      variant="outlined" 
+                      sx={{ 
+                        cursor: 'pointer',
+                        border: selectedItem?.id === t.id ? '2px solid #1976d2' : undefined
+                      }} 
+                      onClick={() => handleUseTemplate(t)}
+                    >
                       <CardContent>
                         <Typography variant="subtitle2">{t.name}</Typography>
                         <Typography variant="caption" color="text.secondary">{t.description}</Typography>
