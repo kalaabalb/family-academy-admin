@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
-import { useUsers } from '../../contexts/UserContext';
 import videosApi from '../../api/videos';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -34,6 +33,11 @@ import {
   CardContent,
   CircularProgress,
   InputAdornment,
+  FormHelperText,
+  Divider,
+  RadioGroup,
+  Radio,
+  FormControlLabel,
 } from '@mui/material';
 import {
   Add,
@@ -52,14 +56,18 @@ import {
   Close,
   Save,
   Search,
-  Image,
+  Info,
+  ErrorOutline,
+  CheckCircleOutline,
+  CloudDone,
+  Warning,
 } from '@mui/icons-material';
 
 const VideoManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
-  const { success: showSuccess, error: showError } = useNotification();
-  const { getCachedData, getCacheKey, invalidateCache } = useUsers();
+  const { success: showSuccess, error: showError, info: showInfo } = useNotification();
   
+  // State
   const [videos, setVideos] = useState([]);
   const [categories, setCategories] = useState([]);
   const [courses, setCourses] = useState([]);
@@ -69,6 +77,7 @@ const VideoManager = () => {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   
+  // UI state
   const [formOpen, setFormOpen] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
@@ -76,88 +85,23 @@ const VideoManager = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [previewVideo, setPreviewVideo] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadError, setUploadError] = useState('');
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [fileValidationError, setFileValidationError] = useState('');
   
+  // Form state
   const [formData, setFormData] = useState({
     title: '',
     category_id: '',
     course_id: '',
     chapter_id: '',
-    description: '',
     video_file: null,
-    video_url: '',
   });
 
-  // For cascading dropdowns
+  // Cascading dropdowns
   const [filteredCourses, setFilteredCourses] = useState([]);
   const [filteredChapters, setFilteredChapters] = useState([]);
-
-  // Cache keys
-  const videosCacheKey = 'videos';
-  const categoriesCacheKey = 'categories';
-  const coursesCacheKey = 'courses';
-  const chaptersCacheKey = 'chapters';
-
-  const fetchData = useCallback(async (forceRefresh = false) => {
-    try {
-      setLoading(true);
-      setError('');
-      
-      // Fetch videos with role-based filtering
-      const params = {};
-      if (isTeacher()) {
-        params.uploaded_by = user.id;
-      }
-      
-      const videosData = await getCachedData(
-        getCacheKey('videos', params),
-        () => videosApi.getAllVideos(params),
-        { forceRefresh }
-      );
-      
-      const categoriesData = await getCachedData(
-        categoriesCacheKey,
-        () => categoriesApi.getAllCategories(),
-        { forceRefresh }
-      );
-      
-      const coursesData = await getCachedData(
-        coursesCacheKey,
-        () => coursesApi.getAllCourses(),
-        { forceRefresh }
-      );
-      
-      const chaptersData = await getCachedData(
-        chaptersCacheKey,
-        () => chaptersApi.getAllChapters(),
-        { forceRefresh }
-      );
-      
-      // Format video data
-      const formattedVideos = (videosData || []).map(video => ({
-        ...video,
-        duration_formatted: formatDuration(video.duration),
-        file_size_formatted: formatFileSize(video.file_size),
-      }));
-      
-      setVideos(formattedVideos);
-      setCategories((categoriesData || []).filter(c => c.status === 'active'));
-      setCourses(coursesData || []);
-      setChapters(chaptersData || []);
-      
-    } catch (err) {
-      console.error('Failed to fetch data:', err);
-      setError(err.response?.data?.message || 'Failed to load videos');
-      showError('Failed to load videos');
-    } finally {
-      setLoading(false);
-    }
-  }, [isTeacher, user, getCachedData, getCacheKey, showError]);
-
-  useEffect(() => {
-    if (isAdmin() || isTeacher()) {
-      fetchData();
-    }
-  }, [isAdmin, isTeacher, fetchData]);
 
   // Helper functions
   const formatDuration = (seconds) => {
@@ -175,12 +119,86 @@ const VideoManager = () => {
     return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
   };
 
+  // Validate video file
+  const validateVideoFile = (file) => {
+    setFileValidationError('');
+    
+    if (!file) return false;
+    
+    // Check file type
+    const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/mov', 'video/avi'];
+    if (!validTypes.includes(file.type)) {
+      setFileValidationError('Invalid file type. Please select MP4, MOV, or AVI.');
+      return false;
+    }
+    
+    // Check file size (500MB max)
+    const maxSize = 500 * 1024 * 1024; // 500MB
+    if (file.size > maxSize) {
+      setFileValidationError(`File too large. Maximum size is 500MB (your file: ${formatFileSize(file.size)})`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Fetch data
+  const fetchData = useCallback(async (forceRefresh = false) => {
+    try {
+      setLoading(true);
+      setError('');
+      
+      // Fetch videos
+      const videosResponse = await videosApi.getAllVideos();
+      const videosData = videosResponse.data?.data || [];
+      
+      // Fetch reference data
+      const [categoriesRes, coursesRes, chaptersRes] = await Promise.all([
+        categoriesApi.getAllCategories(),
+        coursesApi.getAllCourses(),
+        chaptersApi.getAllChapters(),
+      ]);
+      
+      const categoriesData = categoriesRes.data?.data || [];
+      const coursesData = coursesRes.data?.data || [];
+      const chaptersData = chaptersRes.data?.data || [];
+      
+      // Format videos
+      const formattedVideos = videosData.map(video => ({
+        ...video,
+        duration_formatted: formatDuration(video.duration),
+        file_size_formatted: formatFileSize(video.file_size),
+        category_name: coursesData.find(c => c.id === video.course_id)?.category_name,
+        course_name: coursesData.find(c => c.id === video.course_id)?.name,
+        chapter_name: chaptersData.find(ch => ch.id === video.chapter_id)?.name,
+        has_qualities: video.has_qualities || false,
+      }));
+      
+      setVideos(formattedVideos);
+      setCategories(categoriesData.filter(c => c.status === 'active'));
+      setCourses(coursesData);
+      setChapters(chaptersData);
+      
+    } catch (err) {
+      console.error('Failed to fetch data:', err);
+      setError(err.response?.data?.message || 'Failed to load videos');
+      showError('Failed to load videos');
+    } finally {
+      setLoading(false);
+    }
+  }, [showError]);
+
+  useEffect(() => {
+    if (isAdmin() || isTeacher()) {
+      fetchData();
+    }
+  }, [isAdmin, isTeacher, fetchData]);
+
   // Form handlers
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
     
-    // Handle cascading dropdowns
     if (name === 'category_id') {
       const filtered = courses.filter(course => 
         course.category_id === parseInt(value)
@@ -207,115 +225,147 @@ const VideoManager = () => {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Validate file type
-    const validTypes = ['video/mp4', 'video/mov', 'video/avi', 'video/webm', 'video/quicktime'];
-    if (!validTypes.includes(file.type)) {
-      showError('Please select a valid video file (MP4, MOV, AVI, or WEBM)');
-      return;
-    }
+    setFileValidationError('');
+    setSelectedFile(file);
     
-    // Validate file size (max 500MB)
-    if (file.size > 500 * 1024 * 1024) {
-      showError('File size must be less than 500MB');
-      return;
+    if (validateVideoFile(file)) {
+      setFormData(prev => ({ 
+        ...prev, 
+        video_file: file,
+      }));
+      
+      // Auto-fill title from filename if empty
+      if (!formData.title) {
+        const fileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+        setFormData(prev => ({ ...prev, title: fileName }));
+      }
+    } else {
+      // Clear file if invalid
+      e.target.value = null;
+      setSelectedFile(null);
+      setFormData(prev => ({ ...prev, video_file: null }));
     }
-    
-    setFormData(prev => ({ 
-      ...prev, 
-      video_file: file,
-      // Create preview URL
-      video_url: URL.createObjectURL(file)
-    }));
   };
 
   const resetForm = () => {
-    // Clean up preview URL if it exists
-    if (formData.video_url && formData.video_url.startsWith('blob:')) {
-      URL.revokeObjectURL(formData.video_url);
-    }
-    
     setFormData({
       title: '',
       category_id: '',
       course_id: '',
       chapter_id: '',
-      description: '',
       video_file: null,
-      video_url: '',
     });
     setFilteredCourses([]);
     setFilteredChapters([]);
     setIsEditing(false);
     setSelectedVideo(null);
     setUploading(false);
+    setUploadProgress(0);
+    setUploadError('');
+    setSelectedFile(null);
+    setFileValidationError('');
+  };
+
+  const validateForm = () => {
+    if (!formData.title.trim()) {
+      showError('Video title is required');
+      return false;
+    }
+
+    if (!formData.chapter_id) {
+      showError('Please select a chapter');
+      return false;
+    }
+
+    if (!isEditing && !formData.video_file) {
+      showError('Please select a video file');
+      return false;
+    }
+
+    return true;
   };
 
   const handleSubmit = async () => {
     try {
-      // Validation
-      if (!formData.title.trim()) {
-        showError('Video title is required');
-        return;
-      }
-
-      if (!formData.chapter_id) {
-        showError('Please select a chapter');
-        return;
-      }
-
-      if (!isEditing && !formData.video_file) {
-        showError('Please select a video file');
-        return;
-      }
+      if (!validateForm()) return;
 
       setUploading(true);
+      setUploadProgress(0);
+      setUploadError('');
 
       if (isEditing && selectedVideo) {
-        // Update existing video
-        const updateData = {
+        // Update video (title only)
+        await videosApi.updateVideo(selectedVideo.id, {
           title: formData.title.trim(),
-          description: formData.description || null,
-        };
-        
-        await videosApi.updateVideo(selectedVideo.id, updateData);
+        });
         showSuccess('Video updated successfully!');
-        
-        // Invalidate caches
-        invalidateCache(/^videos/);
-        invalidateCache(chaptersCacheKey);
+        setFormOpen(false);
+        resetForm();
+        await fetchData(true);
       } else {
-        // Create new video with file upload
+        // Create new video with upload
         const formDataToSend = new FormData();
         formDataToSend.append('title', formData.title.trim());
         formDataToSend.append('chapter_id', formData.chapter_id);
-        if (formData.description) {
-          formDataToSend.append('description', formData.description);
-        }
-        formDataToSend.append('file', formData.video_file);
+        formDataToSend.append('video', formData.video_file);
         
-        await videosApi.createVideo(formDataToSend);
+        showInfo('Uploading video... This may take a few minutes for large files.', 10000);
+        
+        const response = await videosApi.createVideo(formDataToSend);
+        
+        console.log('Upload response:', response.data);
+        
         showSuccess('Video uploaded successfully!');
-        
-        // Invalidate caches
-        invalidateCache(/^videos/);
-        invalidateCache(chaptersCacheKey);
+        setFormOpen(false);
+        resetForm();
+        await fetchData(true);
       }
-
-      setFormOpen(false);
-      resetForm();
-      await fetchData(true);
       
     } catch (err) {
       console.error('Failed to save video:', err);
-      showError(err.response?.data?.message || 'Failed to save video');
+      
+      // Detailed error handling
+      let errorMessage = 'Failed to save video';
+      
+      if (err.response) {
+        // Server responded with error
+        errorMessage = err.response.data?.message || `Server error: ${err.response.status}`;
+        
+        if (err.response.status === 400) {
+          errorMessage = err.response.data?.message || 'Bad request. Check your input.';
+        } else if (err.response.status === 401) {
+          errorMessage = 'Authentication expired. Please login again.';
+        } else if (err.response.status === 403) {
+          errorMessage = 'You don\'t have permission to upload videos.';
+        } else if (err.response.status === 413) {
+          errorMessage = 'File too large. Maximum size is 500MB.';
+        } else if (err.response.status === 415) {
+          errorMessage = 'Unsupported file type. Please use MP4, MOV, or AVI.';
+        }
+        
+        console.error('Error response:', {
+          status: err.response.status,
+          data: err.response.data,
+          headers: err.response.headers
+        });
+        
+      } else if (err.request) {
+        // Request made but no response
+        errorMessage = 'No response from server. Please check your internet connection.';
+      } else {
+        // Something else
+        errorMessage = err.message || 'An unexpected error occurred';
+      }
+      
+      setUploadError(errorMessage);
+      showError(errorMessage);
+      
     } finally {
       setUploading(false);
-      setActionLoading(false);
     }
   };
 
   const handleEdit = (video) => {
-    // Check if teacher can edit
     if (isTeacher() && video.uploaded_by !== user.id) {
       showError('You can only edit videos you uploaded');
       return;
@@ -324,28 +374,18 @@ const VideoManager = () => {
     setSelectedVideo(video);
     setIsEditing(true);
     
-    // Find category for this video
     const course = courses.find(c => c.id === video.course_id);
-    if (course) {
-      setFormData(prev => ({ ...prev, category_id: course.category_id?.toString() || '' }));
-      const filtered = courses.filter(c => c.category_id === course.category_id);
-      setFilteredCourses(filtered);
-    }
-    
-    if (video.course_id) {
-      const filtered = chapters.filter(ch => ch.course_id === video.course_id);
-      setFilteredChapters(filtered);
-    }
     
     setFormData({
       title: video.title || '',
       category_id: course?.category_id?.toString() || '',
       course_id: video.course_id?.toString() || '',
       chapter_id: video.chapter_id?.toString() || '',
-      description: video.description || '',
       video_file: null,
-      video_url: video.file_path || '',
     });
+    
+    setFilteredCourses(courses.filter(c => c.category_id === course?.category_id));
+    setFilteredChapters(chapters.filter(ch => ch.course_id === video.course_id));
     
     setFormOpen(true);
   };
@@ -356,7 +396,6 @@ const VideoManager = () => {
   };
 
   const handleDelete = (video) => {
-    // Check if teacher can delete
     if (isTeacher() && video.uploaded_by !== user.id) {
       showError('You can only delete videos you uploaded');
       return;
@@ -373,12 +412,7 @@ const VideoManager = () => {
       setActionLoading(true);
       await videosApi.deleteVideo(selectedVideo.id);
       
-      // Invalidate caches
-      invalidateCache(/^videos/);
-      invalidateCache(chaptersCacheKey);
-      
       setVideos(prev => prev.filter(v => v.id !== selectedVideo.id));
-      
       showSuccess(`Video "${selectedVideo.title}" deleted successfully`);
       setDeleteConfirmOpen(false);
       setSelectedVideo(null);
@@ -395,43 +429,28 @@ const VideoManager = () => {
     fetchData(true);
   };
 
-  // Filter videos based on search
+  // Filter videos
   const filteredVideos = videos.filter(video => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
       video.title.toLowerCase().includes(query) ||
-      (video.description && video.description.toLowerCase().includes(query)) ||
       (video.chapter_name && video.chapter_name.toLowerCase().includes(query)) ||
       (video.course_name && video.course_name.toLowerCase().includes(query))
     );
   });
 
+  // Table columns
   const columns = [
-    {
-      field: 'id',
-      headerName: 'ID',
-      width: 70,
-      render: (value) => (
-        <Typography variant="body2" color="text.secondary">
-          #{value}
-        </Typography>
-      ),
-    },
     {
       field: 'title',
       headerName: 'Video Title',
-      flex: 1,
+      flex: 2,
       render: (value, row) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Avatar
             variant="rounded"
-            sx={{
-              width: 60,
-              height: 40,
-              bgcolor: 'primary.light',
-              color: 'primary.main',
-            }}
+            sx={{ width: 60, height: 40, bgcolor: 'primary.light' }}
           >
             <PlayCircle />
           </Avatar>
@@ -439,13 +458,17 @@ const VideoManager = () => {
             <Typography variant="body2" fontWeight="medium">
               {value}
             </Typography>
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+            <Typography variant="caption" color="text.secondary">
               {row.chapter_name} • {row.course_name}
             </Typography>
-            {row.description && (
-              <Typography variant="caption" color="text.secondary">
-                {row.description.substring(0, 60)}...
-              </Typography>
+            {row.has_qualities && (
+              <Chip
+                label="HD Ready"
+                size="small"
+                color="info"
+                variant="outlined"
+                sx={{ ml: 1, height: 20 }}
+              />
             )}
           </Box>
         </Box>
@@ -478,19 +501,14 @@ const VideoManager = () => {
       headerName: 'Views',
       width: 90,
       render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color="info"
-          variant="outlined"
-        />
+        <Chip label={value || 0} size="small" color="info" variant="outlined" />
       ),
     },
     {
       field: 'uploader_role',
       headerName: 'Uploader',
       width: 100,
-      render: (value, row) => (
+      render: (value) => (
         <Chip
           label={value === 'admin' ? 'Admin' : 'Teacher'}
           size="small"
@@ -512,61 +530,28 @@ const VideoManager = () => {
     {
       field: 'actions',
       headerName: 'Actions',
-      width: 180,
+      width: 160,
       render: (value, row) => {
         const canEdit = isAdmin() || (isTeacher() && row.uploaded_by === user.id);
         
         return (
           <Box sx={{ display: 'flex', gap: 1 }}>
-            <Tooltip title="Preview Video">
-              <span>
-                <IconButton
-                  size="small"
-                  onClick={() => handlePreview(row)}
-                  color="info"
-                  disabled={actionLoading}
-                  sx={{
-                    opacity: actionLoading ? 0.5 : 1,
-                    transition: 'opacity 0.2s',
-                  }}
-                >
-                  <Visibility fontSize="small" />
-                </IconButton>
-              </span>
+            <Tooltip title="Preview">
+              <IconButton size="small" onClick={() => handlePreview(row)} color="info">
+                <Visibility fontSize="small" />
+              </IconButton>
             </Tooltip>
             {canEdit && (
               <>
-                <Tooltip title="Edit Video">
-                  <span>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleEdit(row)}
-                      color="primary"
-                      disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
-                    >
-                      <Edit fontSize="small" />
-                    </IconButton>
-                  </span>
+                <Tooltip title="Edit">
+                  <IconButton size="small" onClick={() => handleEdit(row)} color="primary">
+                    <Edit fontSize="small" />
+                  </IconButton>
                 </Tooltip>
-                <Tooltip title="Delete Video">
-                  <span>
-                    <IconButton
-                      size="small"
-                      onClick={() => handleDelete(row)}
-                      color="error"
-                      disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
-                    >
-                      <Delete fontSize="small" />
-                    </IconButton>
-                  </span>
+                <Tooltip title="Delete">
+                  <IconButton size="small" onClick={() => handleDelete(row)} color="error">
+                    <Delete fontSize="small" />
+                  </IconButton>
                 </Tooltip>
               </>
             )}
@@ -617,7 +602,7 @@ const VideoManager = () => {
                 resetForm();
                 setFormOpen(true);
               }}
-              disabled={loading || actionLoading}
+              disabled={loading}
               sx={{ borderRadius: 2 }}
             >
               Upload Video
@@ -626,10 +611,8 @@ const VideoManager = () => {
         </Stack>
       </Box>
 
-      {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
-      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -639,12 +622,12 @@ const VideoManager = () => {
         </Alert>
       )}
 
-      {/* Search Bar */}
+      {/* Search */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
         <TextField
           fullWidth
           size="small"
-          placeholder="Search videos by title, description, or course..."
+          placeholder="Search videos by title..."
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
           InputProps={{
@@ -664,17 +647,17 @@ const VideoManager = () => {
         />
       </Paper>
 
-      {/* Videos Table */}
+      {/* Table */}
       <DataTable
         columns={columns}
         data={filteredVideos}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Videos `}
+        title="Videos"
         rowKey="id"
       />
 
-      {/* Upload/Edit Video Dialog */}
+      {/* Upload/Edit Dialog */}
       <Dialog
         open={formOpen}
         onClose={() => !uploading && setFormOpen(false)}
@@ -704,6 +687,7 @@ const VideoManager = () => {
         
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
+            {/* Title */}
             <Grid item xs={12}>
               <TextField
                 fullWidth
@@ -713,10 +697,11 @@ const VideoManager = () => {
                 onChange={handleInputChange}
                 required
                 disabled={uploading}
+                helperText="Give your video a descriptive title"
               />
             </Grid>
 
-            {/* File Upload Section */}
+            {/* File Upload */}
             {!isEditing && (
               <Grid item xs={12}>
                 <Paper
@@ -725,18 +710,18 @@ const VideoManager = () => {
                     p: 3,
                     textAlign: 'center',
                     borderStyle: 'dashed',
-                    borderColor: formData.video_file ? 'success.main' : 'divider',
-                    bgcolor: formData.video_file ? 'success.light' : 'transparent',
+                    borderColor: fileValidationError ? 'error.main' : (formData.video_file ? 'success.main' : 'divider'),
+                    bgcolor: fileValidationError ? 'error.lighter' : (formData.video_file ? 'success.light' : 'transparent'),
                     borderRadius: 2,
-                    cursor: 'pointer',
-                    transition: 'all 0.3s',
+                    cursor: uploading ? 'not-allowed' : 'pointer',
+                    opacity: uploading ? 0.7 : 1,
                   }}
-                  onClick={() => !uploading && document.getElementById('video-file-input')?.click()}
+                  onClick={() => !uploading && document.getElementById('video-file')?.click()}
                 >
                   <input
-                    id="video-file-input"
+                    id="video-file"
                     type="file"
-                    accept="video/*,.mp4,.mov,.avi,.webm"
+                    accept="video/mp4,video/quicktime,video/x-msvideo,video/mov,video/avi"
                     onChange={handleFileChange}
                     style={{ display: 'none' }}
                     disabled={uploading}
@@ -745,68 +730,66 @@ const VideoManager = () => {
                   {uploading ? (
                     <Box>
                       <CircularProgress size={48} sx={{ mb: 2 }} />
-                      <Typography variant="body1" gutterBottom>
+                      <Typography variant="h6" gutterBottom>
                         Uploading video...
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        {uploadProgress > 0 ? `${Math.round(uploadProgress)}% complete` : 'Preparing upload...'}
+                      </Typography>
+                      <LinearProgress 
+                        variant={uploadProgress > 0 ? 'determinate' : 'indeterminate'} 
+                        value={uploadProgress} 
+                        sx={{ height: 8, borderRadius: 4 }}
+                      />
+                      <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
+                        This may take a few minutes for large files
                       </Typography>
                     </Box>
                   ) : formData.video_file ? (
                     <Box>
                       <CheckCircle sx={{ fontSize: 48, color: 'success.main', mb: 1 }} />
-                      <Typography variant="body1" fontWeight="medium" gutterBottom>
-                        File Selected: {formData.video_file.name}
+                      <Typography fontWeight="medium" variant="h6">
+                        {formData.video_file.name}
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Size: {formatFileSize(formData.video_file.size)} • 
-                        Type: {formData.video_file.type}
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        Size: {formatFileSize(formData.video_file.size)} • Type: {formData.video_file.type}
                       </Typography>
+                      <Button
+                        variant="text"
+                        color="primary"
+                        size="small"
+                        sx={{ mt: 1 }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData(prev => ({ ...prev, video_file: null }));
+                          setSelectedFile(null);
+                          document.getElementById('video-file').value = '';
+                        }}
+                      >
+                        Choose Different File
+                      </Button>
                     </Box>
                   ) : (
                     <Box>
-                      <CloudUpload sx={{ fontSize: 48, color: 'primary.main', mb: 1 }} />
-                      <Typography variant="body1" fontWeight="medium" gutterBottom>
+                      <CloudUpload sx={{ fontSize: 48, color: fileValidationError ? 'error.main' : 'primary.main', mb: 1 }} />
+                      <Typography fontWeight="medium" variant="h6">
                         Click to select video file
                       </Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        Supported formats: MP4, MOV, AVI, WEBM • Max size: 500MB
+                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                        MP4, MOV, AVI • Max 500MB
                       </Typography>
+                      {fileValidationError && (
+                        <Alert severity="error" sx={{ mt: 2, textAlign: 'left' }}>
+                          {fileValidationError}
+                        </Alert>
+                      )}
                     </Box>
                   )}
                 </Paper>
               </Grid>
             )}
 
-            {/* Video Preview */}
-            {(formData.video_url || (isEditing && selectedVideo?.file_path)) && (
-              <Grid item xs={12}>
-                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
-                  <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
-                    Video Preview
-                  </Typography>
-                  <Box
-                    sx={{
-                      position: 'relative',
-                      width: '100%',
-                      height: 200,
-                      bgcolor: 'black',
-                      borderRadius: 1,
-                      overflow: 'hidden',
-                    }}
-                  >
-                    <video
-                      src={formData.video_url || selectedVideo?.file_path}
-                      controls
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'contain',
-                      }}
-                    />
-                  </Box>
-                </Paper>
-              </Grid>
-            )}
-
-            {/* Category Select (Admin only) */}
+            {/* Category (Admin only) */}
             {isAdmin() && (
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
@@ -820,16 +803,14 @@ const VideoManager = () => {
                   >
                     <MenuItem value="">Select Category</MenuItem>
                     {categories.map(cat => (
-                      <MenuItem key={cat.id} value={cat.id}>
-                        {cat.name}
-                      </MenuItem>
+                      <MenuItem key={cat.id} value={cat.id}>{cat.name}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
             )}
 
-            {/* Course Select */}
+            {/* Course */}
             <Grid item xs={12} md={isAdmin() ? 6 : 12}>
               <FormControl fullWidth>
                 <InputLabel>Course *</InputLabel>
@@ -842,15 +823,16 @@ const VideoManager = () => {
                 >
                   <MenuItem value="">Select Course</MenuItem>
                   {(isAdmin() ? filteredCourses : courses).map(course => (
-                    <MenuItem key={course.id} value={course.id}>
-                      {course.name}
-                    </MenuItem>
+                    <MenuItem key={course.id} value={course.id}>{course.name}</MenuItem>
                   ))}
                 </Select>
+                {isAdmin() && !formData.category_id && (
+                  <FormHelperText>Select a category first</FormHelperText>
+                )}
               </FormControl>
             </Grid>
 
-            {/* Chapter Select */}
+            {/* Chapter */}
             <Grid item xs={12}>
               <FormControl fullWidth>
                 <InputLabel>Chapter *</InputLabel>
@@ -863,27 +845,45 @@ const VideoManager = () => {
                 >
                   <MenuItem value="">Select Chapter</MenuItem>
                   {(isAdmin() ? filteredChapters : chapters.filter(ch => ch.course_id === parseInt(formData.course_id))).map(chapter => (
-                    <MenuItem key={chapter.id} value={chapter.id}>
-                      {chapter.name}
-                    </MenuItem>
+                    <MenuItem key={chapter.id} value={chapter.id}>{chapter.name}</MenuItem>
                   ))}
                 </Select>
+                {!formData.course_id && (
+                  <FormHelperText>Select a course first</FormHelperText>
+                )}
               </FormControl>
             </Grid>
 
-            {/* Description */}
+            {/* Upload Error */}
+            {uploadError && (
+              <Grid item xs={12}>
+                <Alert severity="error" sx={{ borderRadius: 2 }}>
+                  {uploadError}
+                </Alert>
+              </Grid>
+            )}
+
+            {/* Info Box */}
             <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Description (Optional)"
-                name="description"
-                value={formData.description}
-                onChange={handleInputChange}
-                multiline
-                rows={3}
-                disabled={uploading}
-                placeholder="Enter video description..."
-              />
+              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'info.50', borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', gap: 2 }}>
+                  <Info color="info" />
+                  <Box>
+                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                      Video Processing Information
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      • Videos are automatically processed to generate multiple quality versions (360p, 480p, 720p, 1080p)
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      • Thumbnails are auto-generated from the video
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      • Processing may take a few minutes after upload
+                    </Typography>
+                  </Box>
+                </Box>
+              </Paper>
             </Grid>
           </Grid>
         </DialogContent>
@@ -907,17 +907,18 @@ const VideoManager = () => {
               uploading || 
               !formData.title.trim() || 
               !formData.chapter_id || 
-              (!isEditing && !formData.video_file)
+              (!isEditing && !formData.video_file) ||
+              !!fileValidationError
             }
             startIcon={uploading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {uploading ? 'Uploading...' : (isEditing ? 'Update Video' : 'Upload Video')}
+            {uploading ? 'Uploading...' : (isEditing ? 'Update' : 'Upload')}
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Video Preview Dialog */}
+      {/* Preview Dialog */}
       <Dialog
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -939,35 +940,20 @@ const VideoManager = () => {
         <DialogContent dividers sx={{ p: 3 }}>
           {previewVideo && (
             <Box>
-              {/* Video Player */}
-              <Box
-                sx={{
-                  position: 'relative',
-                  width: '100%',
-                  bgcolor: 'black',
-                  borderRadius: 2,
-                  overflow: 'hidden',
-                  mb: 3,
-                }}
-              >
+              <Box sx={{ bgcolor: 'black', borderRadius: 2, overflow: 'hidden', mb: 3 }}>
                 <video
                   src={previewVideo.file_path}
                   controls
-                  style={{
-                    width: '100%',
-                    maxHeight: '60vh',
-                    objectFit: 'contain',
-                  }}
+                  style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain' }}
                 />
               </Box>
               
-              {/* Video Info */}
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
                   <Card variant="outlined" sx={{ borderRadius: 2 }}>
                     <CardContent>
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Video Information
+                        Video Info
                       </Typography>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
@@ -977,7 +963,7 @@ const VideoManager = () => {
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption">File Size:</Typography>
+                          <Typography variant="caption">Size:</Typography>
                           <Typography variant="caption" fontWeight="medium">
                             {previewVideo.file_size_formatted}
                           </Typography>
@@ -988,12 +974,18 @@ const VideoManager = () => {
                             {previewVideo.view_count || 0}
                           </Typography>
                         </Box>
-                        <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                          <Typography variant="caption">Uploaded:</Typography>
-                          <Typography variant="caption" fontWeight="medium">
-                            {previewVideo.created_at ? new Date(previewVideo.created_at).toLocaleDateString() : '-'}
-                          </Typography>
-                        </Box>
+                        {previewVideo.has_qualities && (
+                          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                            <Typography variant="caption">Quality:</Typography>
+                            <Chip 
+                              label="Multiple Qualities" 
+                              size="small" 
+                              color="info" 
+                              variant="outlined"
+                              sx={{ height: 20 }}
+                            />
+                          </Box>
+                        )}
                       </Box>
                     </CardContent>
                   </Card>
@@ -1003,69 +995,50 @@ const VideoManager = () => {
                   <Card variant="outlined" sx={{ borderRadius: 2 }}>
                     <CardContent>
                       <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                        Course Information
+                        Course Info
                       </Typography>
                       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <CategoryIcon fontSize="small" color="primary" />
                           <Typography variant="caption">
-                            Category: {previewVideo.category_name}
+                            {previewVideo.category_name || 'N/A'}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <Book fontSize="small" color="primary" />
                           <Typography variant="caption">
-                            Course: {previewVideo.course_name}
+                            {previewVideo.course_name || 'N/A'}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           <MenuBook fontSize="small" color="primary" />
                           <Typography variant="caption">
-                            Chapter: {previewVideo.chapter_name}
+                            {previewVideo.chapter_name || 'N/A'}
                           </Typography>
                         </Box>
                       </Box>
                     </CardContent>
                   </Card>
                 </Grid>
-                
-                {previewVideo.description && (
-                  <Grid item xs={12}>
-                    <Card variant="outlined" sx={{ borderRadius: 2 }}>
-                      <CardContent>
-                        <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                          Description
-                        </Typography>
-                        <Typography variant="body2">
-                          {previewVideo.description}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Grid>
-                )}
               </Grid>
             </Box>
           )}
         </DialogContent>
         
         <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setPreviewOpen(false)}
-            sx={{ borderRadius: 2 }}
-          >
+          <Button variant="outlined" onClick={() => setPreviewOpen(false)} sx={{ borderRadius: 2 }}>
             Close
           </Button>
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      {/* Delete Confirmation */}
       <ConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}
         onConfirm={confirmDelete}
         title="Delete Video"
-        message={`Are you sure you want to delete video "${selectedVideo?.title}"?`}
+        message={`Are you sure you want to delete "${selectedVideo?.title}"?`}
         confirmText="Delete"
         cancelText="Cancel"
         severity="error"
