@@ -55,6 +55,7 @@ import {
   Info,
   AddPhotoAlternate,
 } from '@mui/icons-material';
+import axiosInstance from '../../api/axiosConfig';
 
 const VideoManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
@@ -92,6 +93,7 @@ const VideoManager = () => {
     release_date: '',
     video_file: null,
     thumbnail_file: null,
+    detected_duration: 0,
   });
 
   // Cascading dropdowns
@@ -271,7 +273,6 @@ const VideoManager = () => {
       try {
         const duration = await getVideoDuration(file);
         console.log(`📹 Video duration: ${formatDuration(duration)} (${duration}s)`);
-        // Store duration temporarily for display
         setFormData(prev => ({ ...prev, detected_duration: duration }));
       } catch (err) {
         console.warn('Could not get video duration:', err);
@@ -306,6 +307,7 @@ const VideoManager = () => {
       release_date: '',
       video_file: null,
       thumbnail_file: null,
+      detected_duration: 0,
     });
     setFilteredCourses([]);
     setFilteredChapters([]);
@@ -373,10 +375,18 @@ const VideoManager = () => {
         
         showInfo('Uploading video... This may take a few minutes.', 10000);
         
-        const response = await videosApi.createVideo(
-          formDataToSend, 
-          (progress) => setUploadProgress(progress)
-        );
+        // Use axios directly with progress tracking
+        const response = await axiosInstance.post('/videos', formDataToSend, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          timeout: 10 * 60 * 1000, // 10 minutes
+          onUploadProgress: (progressEvent) => {
+            if (progressEvent.total) {
+              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
+              setUploadProgress(percentCompleted);
+              console.log(`📊 Upload progress: ${percentCompleted}%`);
+            }
+          },
+        });
         
         console.log('Upload response:', response.data);
         
@@ -444,6 +454,7 @@ const VideoManager = () => {
       release_date: video.release_date ? video.release_date.slice(0, 16) : '',
       video_file: null,
       thumbnail_file: null,
+      detected_duration: video.duration || 0,
     });
     
     setFilteredCourses(courses.filter(c => c.category_id === course?.category_id));
@@ -827,8 +838,11 @@ const VideoManager = () => {
                       <LinearProgress 
                         variant="determinate" 
                         value={uploadProgress} 
-                        sx={{ height: 8, borderRadius: 4 }}
+                        sx={{ height: 8, borderRadius: 4, mb: 2 }}
                       />
+                      <Typography variant="body2" color="text.secondary">
+                        {formData.video_file?.name} • {formatFileSize(formData.video_file?.size)} • {uploadProgress}% complete
+                      </Typography>
                     </Box>
                   ) : formData.video_file ? (
                     <Box>
@@ -1005,6 +1019,45 @@ const VideoManager = () => {
                 )}
               </FormControl>
             </Grid>
+
+            {/* Upload Progress Bar - VISIBLE DURING UPLOAD */}
+            {uploading && (
+              <Grid item xs={12}>
+                <Alert 
+                  severity="info" 
+                  sx={{ 
+                    borderRadius: 2,
+                    '& .MuiAlert-message': { width: '100%' }
+                  }}
+                >
+                  <Box sx={{ width: '100%' }}>
+                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                      <Typography variant="body2" fontWeight="medium">
+                        Uploading Video
+                      </Typography>
+                      <Typography variant="body2" fontWeight="bold" color="primary.main">
+                        {uploadProgress}%
+                      </Typography>
+                    </Box>
+                    <LinearProgress 
+                      variant="determinate" 
+                      value={uploadProgress} 
+                      sx={{ 
+                        height: 8, 
+                        borderRadius: 4,
+                        mb: 1,
+                        '& .MuiLinearProgress-bar': {
+                          borderRadius: 4,
+                        }
+                      }}
+                    />
+                    <Typography variant="caption" color="text.secondary">
+                      {formatFileSize(formData.video_file?.size)} • Please don't close this window
+                    </Typography>
+                  </Box>
+                </Alert>
+              </Grid>
+            )}
 
             {/* Upload Error */}
             {uploadError && (
