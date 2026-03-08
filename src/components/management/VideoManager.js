@@ -34,10 +34,6 @@ import {
   CircularProgress,
   InputAdornment,
   FormHelperText,
-  Divider,
-  RadioGroup,
-  Radio,
-  FormControlLabel,
 } from '@mui/material';
 import {
   Add,
@@ -57,10 +53,7 @@ import {
   Save,
   Search,
   Info,
-  ErrorOutline,
-  CheckCircleOutline,
-  CloudDone,
-  Warning,
+  AddPhotoAlternate,
 } from '@mui/icons-material';
 
 const VideoManager = () => {
@@ -87,8 +80,8 @@ const VideoManager = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
-  const [selectedFile, setSelectedFile] = useState(null);
   const [fileValidationError, setFileValidationError] = useState('');
+  const [thumbnailPreview, setThumbnailPreview] = useState(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -96,7 +89,9 @@ const VideoManager = () => {
     category_id: '',
     course_id: '',
     chapter_id: '',
+    release_date: '',
     video_file: null,
+    thumbnail_file: null,
   });
 
   // Cascading dropdowns
@@ -105,18 +100,42 @@ const VideoManager = () => {
 
   // Helper functions
   const formatDuration = (seconds) => {
-    if (!seconds || isNaN(seconds)) return '00:00';
-    const mins = Math.floor(seconds / 60);
+    if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
+    
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
   const formatFileSize = (bytes) => {
-    if (!bytes) return '0 KB';
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-    return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
+    if (!bytes || bytes === 0) return '0 B';
+    const units = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(1024));
+    return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+  };
+
+  // Get video duration from file
+  const getVideoDuration = (file) => {
+    return new Promise((resolve, reject) => {
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      
+      video.onloadedmetadata = function() {
+        URL.revokeObjectURL(video.src);
+        resolve(Math.round(video.duration));
+      };
+      
+      video.onerror = function() {
+        reject('Could not load video metadata');
+      };
+      
+      video.src = URL.createObjectURL(file);
+    });
   };
 
   // Validate video file
@@ -125,17 +144,33 @@ const VideoManager = () => {
     
     if (!file) return false;
     
-    // Check file type
     const validTypes = ['video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/mov', 'video/avi'];
     if (!validTypes.includes(file.type)) {
       setFileValidationError('Invalid file type. Please select MP4, MOV, or AVI.');
       return false;
     }
     
-    // Check file size (500MB max)
-    const maxSize = 500 * 1024 * 1024; // 500MB
+    const maxSize = 500 * 1024 * 1024;
     if (file.size > maxSize) {
       setFileValidationError(`File too large. Maximum size is 500MB (your file: ${formatFileSize(file.size)})`);
+      return false;
+    }
+    
+    return true;
+  };
+
+  // Validate thumbnail image
+  const validateThumbnailFile = (file) => {
+    if (!file) return true; // Optional field
+    
+    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
+    if (!validTypes.includes(file.type)) {
+      showError('Please select a valid image file (JPG, PNG, WEBP)');
+      return false;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) { // 5MB
+      showError('Thumbnail image must be less than 5MB');
       return false;
     }
     
@@ -148,11 +183,9 @@ const VideoManager = () => {
       setLoading(true);
       setError('');
       
-      // Fetch videos
       const videosResponse = await videosApi.getAllVideos();
       const videosData = videosResponse.data?.data || [];
       
-      // Fetch reference data
       const [categoriesRes, coursesRes, chaptersRes] = await Promise.all([
         categoriesApi.getAllCategories(),
         coursesApi.getAllCourses(),
@@ -163,15 +196,13 @@ const VideoManager = () => {
       const coursesData = coursesRes.data?.data || [];
       const chaptersData = chaptersRes.data?.data || [];
       
-      // Format videos
       const formattedVideos = videosData.map(video => ({
         ...video,
-        duration_formatted: formatDuration(video.duration),
-        file_size_formatted: formatFileSize(video.file_size),
+        duration_formatted: video.duration_formatted || formatDuration(video.duration),
+        file_size_formatted: video.file_size_formatted || formatFileSize(video.file_size),
         category_name: coursesData.find(c => c.id === video.course_id)?.category_name,
         course_name: coursesData.find(c => c.id === video.course_id)?.name,
         chapter_name: chaptersData.find(ch => ch.id === video.chapter_id)?.name,
-        has_qualities: video.has_qualities || false,
       }));
       
       setVideos(formattedVideos);
@@ -221,29 +252,48 @@ const VideoManager = () => {
     }
   };
 
-  const handleFileChange = (e) => {
+  const handleVideoFileChange = async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     
     setFileValidationError('');
-    setSelectedFile(file);
     
     if (validateVideoFile(file)) {
-      setFormData(prev => ({ 
-        ...prev, 
-        video_file: file,
-      }));
+      setFormData(prev => ({ ...prev, video_file: file }));
       
       // Auto-fill title from filename if empty
       if (!formData.title) {
-        const fileName = file.name.replace(/\.[^/.]+$/, ''); // Remove extension
+        const fileName = file.name.replace(/\.[^/.]+$/, '');
         setFormData(prev => ({ ...prev, title: fileName }));
       }
+      
+      // Get duration for display
+      try {
+        const duration = await getVideoDuration(file);
+        console.log(`📹 Video duration: ${formatDuration(duration)} (${duration}s)`);
+        // Store duration temporarily for display
+        setFormData(prev => ({ ...prev, detected_duration: duration }));
+      } catch (err) {
+        console.warn('Could not get video duration:', err);
+      }
     } else {
-      // Clear file if invalid
       e.target.value = null;
-      setSelectedFile(null);
       setFormData(prev => ({ ...prev, video_file: null }));
+    }
+  };
+
+  const handleThumbnailChange = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    if (validateThumbnailFile(file)) {
+      setFormData(prev => ({ ...prev, thumbnail_file: file }));
+      
+      // Create preview URL
+      const previewUrl = URL.createObjectURL(file);
+      setThumbnailPreview(previewUrl);
+    } else {
+      e.target.value = null;
     }
   };
 
@@ -253,7 +303,9 @@ const VideoManager = () => {
       category_id: '',
       course_id: '',
       chapter_id: '',
+      release_date: '',
       video_file: null,
+      thumbnail_file: null,
     });
     setFilteredCourses([]);
     setFilteredChapters([]);
@@ -262,8 +314,8 @@ const VideoManager = () => {
     setUploading(false);
     setUploadProgress(0);
     setUploadError('');
-    setSelectedFile(null);
     setFileValidationError('');
+    setThumbnailPreview(null);
   };
 
   const validateForm = () => {
@@ -294,9 +346,10 @@ const VideoManager = () => {
       setUploadError('');
 
       if (isEditing && selectedVideo) {
-        // Update video (title only)
+        // Update video (title and release date only)
         await videosApi.updateVideo(selectedVideo.id, {
           title: formData.title.trim(),
+          release_date: formData.release_date || null,
         });
         showSuccess('Video updated successfully!');
         setFormOpen(false);
@@ -307,11 +360,23 @@ const VideoManager = () => {
         const formDataToSend = new FormData();
         formDataToSend.append('title', formData.title.trim());
         formDataToSend.append('chapter_id', formData.chapter_id);
+        
+        if (formData.release_date) {
+          formDataToSend.append('release_date', formData.release_date);
+        }
+        
         formDataToSend.append('video', formData.video_file);
         
-        showInfo('Uploading video... This may take a few minutes for large files.', 10000);
+        if (formData.thumbnail_file) {
+          formDataToSend.append('thumbnail', formData.thumbnail_file);
+        }
         
-        const response = await videosApi.createVideo(formDataToSend);
+        showInfo('Uploading video... This may take a few minutes.', 10000);
+        
+        const response = await videosApi.createVideo(
+          formDataToSend, 
+          (progress) => setUploadProgress(progress)
+        );
         
         console.log('Upload response:', response.data);
         
@@ -324,11 +389,9 @@ const VideoManager = () => {
     } catch (err) {
       console.error('Failed to save video:', err);
       
-      // Detailed error handling
       let errorMessage = 'Failed to save video';
       
       if (err.response) {
-        // Server responded with error
         errorMessage = err.response.data?.message || `Server error: ${err.response.status}`;
         
         if (err.response.status === 400) {
@@ -346,14 +409,11 @@ const VideoManager = () => {
         console.error('Error response:', {
           status: err.response.status,
           data: err.response.data,
-          headers: err.response.headers
         });
         
       } else if (err.request) {
-        // Request made but no response
         errorMessage = 'No response from server. Please check your internet connection.';
       } else {
-        // Something else
         errorMessage = err.message || 'An unexpected error occurred';
       }
       
@@ -381,7 +441,9 @@ const VideoManager = () => {
       category_id: course?.category_id?.toString() || '',
       course_id: video.course_id?.toString() || '',
       chapter_id: video.chapter_id?.toString() || '',
+      release_date: video.release_date ? video.release_date.slice(0, 16) : '',
       video_file: null,
+      thumbnail_file: null,
     });
     
     setFilteredCourses(courses.filter(c => c.category_id === course?.category_id));
@@ -450,7 +512,8 @@ const VideoManager = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <Avatar
             variant="rounded"
-            sx={{ width: 60, height: 40, bgcolor: 'primary.light' }}
+            src={row.thumbnail_url}
+            sx={{ width: 80, height: 45, bgcolor: 'primary.light' }}
           >
             <PlayCircle />
           </Avatar>
@@ -461,15 +524,26 @@ const VideoManager = () => {
             <Typography variant="caption" color="text.secondary">
               {row.chapter_name} • {row.course_name}
             </Typography>
-            {row.has_qualities && (
-              <Chip
-                label="HD Ready"
-                size="small"
-                color="info"
-                variant="outlined"
-                sx={{ ml: 1, height: 20 }}
-              />
-            )}
+            <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+              {row.has_qualities && (
+                <Chip
+                  label="HD"
+                  size="small"
+                  color="info"
+                  variant="outlined"
+                  sx={{ height: 20 }}
+                />
+              )}
+              {row.processing_status === 'completed' && (
+                <Chip
+                  label="Ready"
+                  size="small"
+                  color="success"
+                  variant="outlined"
+                  sx={{ height: 20 }}
+                />
+              )}
+            </Box>
           </Box>
         </Box>
       ),
@@ -481,7 +555,7 @@ const VideoManager = () => {
       render: (value) => (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
           <AccessTime sx={{ fontSize: 16, color: 'text.secondary' }} />
-          <Typography variant="body2">{value}</Typography>
+          <Typography variant="body2">{value || '00:00'}</Typography>
         </Box>
       ),
     },
@@ -701,9 +775,27 @@ const VideoManager = () => {
               />
             </Grid>
 
-            {/* File Upload */}
+            {/* Release Date */}
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Release Date (Optional)"
+                type="datetime-local"
+                name="release_date"
+                value={formData.release_date || ''}
+                onChange={handleInputChange}
+                InputLabelProps={{ shrink: true }}
+                disabled={uploading}
+                helperText="Leave empty for immediate release"
+              />
+            </Grid>
+
+            {/* Video File Upload */}
             {!isEditing && (
               <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Video File * (MP4, MOV, AVI - Max 500MB)
+                </Typography>
                 <Paper
                   variant="outlined"
                   sx={{
@@ -714,15 +806,14 @@ const VideoManager = () => {
                     bgcolor: fileValidationError ? 'error.lighter' : (formData.video_file ? 'success.light' : 'transparent'),
                     borderRadius: 2,
                     cursor: uploading ? 'not-allowed' : 'pointer',
-                    opacity: uploading ? 0.7 : 1,
                   }}
                   onClick={() => !uploading && document.getElementById('video-file')?.click()}
                 >
                   <input
                     id="video-file"
                     type="file"
-                    accept="video/mp4,video/quicktime,video/x-msvideo,video/mov,video/avi"
-                    onChange={handleFileChange}
+                    accept="video/mp4,video/quicktime,video/x-msvideo"
+                    onChange={handleVideoFileChange}
                     style={{ display: 'none' }}
                     disabled={uploading}
                   />
@@ -731,19 +822,13 @@ const VideoManager = () => {
                     <Box>
                       <CircularProgress size={48} sx={{ mb: 2 }} />
                       <Typography variant="h6" gutterBottom>
-                        Uploading video...
-                      </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                        {uploadProgress > 0 ? `${Math.round(uploadProgress)}% complete` : 'Preparing upload...'}
+                        Uploading video... {uploadProgress}%
                       </Typography>
                       <LinearProgress 
-                        variant={uploadProgress > 0 ? 'determinate' : 'indeterminate'} 
+                        variant="determinate" 
                         value={uploadProgress} 
                         sx={{ height: 8, borderRadius: 4 }}
                       />
-                      <Typography variant="caption" color="text.secondary" sx={{ mt: 2, display: 'block' }}>
-                        This may take a few minutes for large files
-                      </Typography>
                     </Box>
                   ) : formData.video_file ? (
                     <Box>
@@ -752,7 +837,8 @@ const VideoManager = () => {
                         {formData.video_file.name}
                       </Typography>
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                        Size: {formatFileSize(formData.video_file.size)} • Type: {formData.video_file.type}
+                        Size: {formatFileSize(formData.video_file.size)} • 
+                        Duration: {formatDuration(formData.detected_duration)}
                       </Typography>
                       <Button
                         variant="text"
@@ -762,7 +848,6 @@ const VideoManager = () => {
                         onClick={(e) => {
                           e.stopPropagation();
                           setFormData(prev => ({ ...prev, video_file: null }));
-                          setSelectedFile(null);
                           document.getElementById('video-file').value = '';
                         }}
                       >
@@ -775,7 +860,7 @@ const VideoManager = () => {
                       <Typography fontWeight="medium" variant="h6">
                         Click to select video file
                       </Typography>
-                      <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                      <Typography variant="body2" color="text.secondary">
                         MP4, MOV, AVI • Max 500MB
                       </Typography>
                       {fileValidationError && (
@@ -783,6 +868,73 @@ const VideoManager = () => {
                           {fileValidationError}
                         </Alert>
                       )}
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
+            )}
+
+            {/* Thumbnail Upload */}
+            {!isEditing && (
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" gutterBottom>
+                  Thumbnail Image (Optional)
+                </Typography>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    textAlign: 'center',
+                    borderStyle: 'dashed',
+                    borderColor: formData.thumbnail_file ? 'success.main' : 'divider',
+                    borderRadius: 2,
+                    cursor: 'pointer',
+                  }}
+                  onClick={() => !uploading && document.getElementById('thumbnail-file')?.click()}
+                >
+                  <input
+                    id="thumbnail-file"
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    onChange={handleThumbnailChange}
+                    style={{ display: 'none' }}
+                    disabled={uploading}
+                  />
+                  
+                  {formData.thumbnail_file ? (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                      <Avatar 
+                        src={thumbnailPreview} 
+                        variant="rounded"
+                        sx={{ width: 80, height: 45 }}
+                      />
+                      <Box sx={{ flex: 1, textAlign: 'left' }}>
+                        <Typography variant="body2" fontWeight="medium">
+                          {formData.thumbnail_file.name}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {formatFileSize(formData.thumbnail_file.size)}
+                        </Typography>
+                      </Box>
+                      <IconButton 
+                        size="small" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFormData(prev => ({ ...prev, thumbnail_file: null }));
+                          setThumbnailPreview(null);
+                          document.getElementById('thumbnail-file').value = '';
+                        }}
+                      >
+                        <Close />
+                      </IconButton>
+                    </Box>
+                  ) : (
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                      <AddPhotoAlternate sx={{ color: 'primary.main' }} />
+                      <Typography variant="body2">Click to upload thumbnail image</Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        (JPG, PNG, WEBP • Max 5MB)
+                      </Typography>
                     </Box>
                   )}
                 </Paper>
@@ -870,16 +1022,16 @@ const VideoManager = () => {
                   <Info color="info" />
                   <Box>
                     <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
-                      Video Processing Information
+                      Video Information
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      • Videos are automatically processed to generate multiple quality versions (360p, 480p, 720p, 1080p)
+                      • Duration will be automatically extracted from the video
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      • Thumbnails are auto-generated from the video
+                      • Thumbnail will be auto-generated if not provided
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      • Processing may take a few minutes after upload
+                      • Cloudinary videos will have multiple quality options (360p-1080p)
                     </Typography>
                   </Box>
                 </Box>
@@ -913,7 +1065,7 @@ const VideoManager = () => {
             startIcon={uploading ? <CircularProgress size={20} /> : <Save />}
             sx={{ borderRadius: 2 }}
           >
-            {uploading ? 'Uploading...' : (isEditing ? 'Update' : 'Upload')}
+            {uploading ? `Uploading ${uploadProgress}%` : (isEditing ? 'Update' : 'Upload')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -943,6 +1095,7 @@ const VideoManager = () => {
               <Box sx={{ bgcolor: 'black', borderRadius: 2, overflow: 'hidden', mb: 3 }}>
                 <video
                   src={previewVideo.file_path}
+                  poster={previewVideo.thumbnail_url}
                   controls
                   style={{ width: '100%', maxHeight: '60vh', objectFit: 'contain' }}
                 />

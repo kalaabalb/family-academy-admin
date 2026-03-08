@@ -3,28 +3,29 @@ import axiosInstance from './axiosConfig';
 const videosApi = {
   /**
    * Get all videos with optional filters
-   * @param {Object} params - Query parameters (chapter_id, course_id, category_id)
    */
   getAllVideos: (params = {}) => 
     axiosInstance.get('/videos', { params }),
 
   /**
    * Get videos for a specific chapter
-   * @param {number} chapterId - Chapter ID
    */
   getVideosForChapter: (chapterId) => 
     axiosInstance.get(`/chapters/${chapterId}/videos`),
 
   /**
-   * Create a new video
-   * @param {FormData} formData - Form data with title, chapter_id, and video file
+   * Create a new video with optional thumbnail
+   * @param {FormData} formData - Contains title, chapter_id, video file, optional thumbnail
+   * @param {Function} onProgress - Progress callback
    */
-  createVideo: (formData) => {
+  createVideo: (formData, onProgress) => {
     // Log FormData contents for debugging
     console.log('📤 Sending video upload request:');
     for (let pair of formData.entries()) {
       if (pair[0] === 'video') {
         console.log(`  - ${pair[0]}: [FILE: ${pair[1].name}, ${(pair[1].size / 1024 / 1024).toFixed(2)}MB, ${pair[1].type}]`);
+      } else if (pair[0] === 'thumbnail') {
+        console.log(`  - ${pair[0]}: [IMAGE: ${pair[1].name}, ${(pair[1].size / 1024).toFixed(2)}KB, ${pair[1].type}]`);
       } else {
         console.log(`  - ${pair[0]}: ${pair[1]}`);
       }
@@ -34,12 +35,11 @@ const videosApi = {
       headers: { 
         'Content-Type': 'multipart/form-data',
       },
-      // Add timeout for large files
-      timeout: 5 * 60 * 1000, // 5 minutes
+      timeout: 10 * 60 * 1000, // 10 minutes for large files
       onUploadProgress: (progressEvent) => {
-        if (progressEvent.total) {
+        if (progressEvent.total && onProgress) {
           const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-          console.log(`📊 Upload progress: ${percentCompleted}%`);
+          onProgress(percentCompleted);
         }
       },
     });
@@ -47,22 +47,18 @@ const videosApi = {
 
   /**
    * Update video details
-   * @param {number} id - Video ID
-   * @param {Object} data - Updated data (title only)
    */
   updateVideo: (id, data) => 
     axiosInstance.put(`/videos/${id}`, data),
 
   /**
    * Delete a video
-   * @param {number} id - Video ID
    */
   deleteVideo: (id) => 
     axiosInstance.delete(`/videos/${id}`),
 
   /**
    * Increment video view count
-   * @param {number} id - Video ID
    */
   incrementViewCount: (id) => 
     axiosInstance.post(`/videos/${id}/view`),
