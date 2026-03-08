@@ -14,8 +14,8 @@ const videosApi = {
     axiosInstance.get(`/chapters/${chapterId}/videos`),
 
   /**
-   * Create a new video with optional thumbnail
-   * @param {FormData} formData - Contains title, chapter_id, video file, optional thumbnail
+   * Create a new video
+   * @param {FormData} formData - Contains title, chapter_id, video file
    * @param {Function} onProgress - Progress callback
    */
   createVideo: (formData, onProgress) => {
@@ -24,8 +24,6 @@ const videosApi = {
     for (let pair of formData.entries()) {
       if (pair[0] === 'video') {
         console.log(`  - ${pair[0]}: [FILE: ${pair[1].name}, ${(pair[1].size / 1024 / 1024).toFixed(2)}MB, ${pair[1].type}]`);
-      } else if (pair[0] === 'thumbnail') {
-        console.log(`  - ${pair[0]}: [IMAGE: ${pair[1].name}, ${(pair[1].size / 1024).toFixed(2)}KB, ${pair[1].type}]`);
       } else {
         console.log(`  - ${pair[0]}: ${pair[1]}`);
       }

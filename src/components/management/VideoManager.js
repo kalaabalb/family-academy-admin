@@ -53,7 +53,6 @@ import {
   Save,
   Search,
   Info,
-  AddPhotoAlternate,
 } from '@mui/icons-material';
 import axiosInstance from '../../api/axiosConfig';
 
@@ -82,7 +81,6 @@ const VideoManager = () => {
   const [uploadProgress, setUploadProgress] = useState(0);
   const [uploadError, setUploadError] = useState('');
   const [fileValidationError, setFileValidationError] = useState('');
-  const [thumbnailPreview, setThumbnailPreview] = useState(null);
   
   // Form state
   const [formData, setFormData] = useState({
@@ -90,9 +88,7 @@ const VideoManager = () => {
     category_id: '',
     course_id: '',
     chapter_id: '',
-    release_date: '',
     video_file: null,
-    thumbnail_file: null,
     detected_duration: 0,
   });
 
@@ -155,24 +151,6 @@ const VideoManager = () => {
     const maxSize = 500 * 1024 * 1024;
     if (file.size > maxSize) {
       setFileValidationError(`File too large. Maximum size is 500MB (your file: ${formatFileSize(file.size)})`);
-      return false;
-    }
-    
-    return true;
-  };
-
-  // Validate thumbnail image
-  const validateThumbnailFile = (file) => {
-    if (!file) return true; // Optional field
-    
-    const validTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
-    if (!validTypes.includes(file.type)) {
-      showError('Please select a valid image file (JPG, PNG, WEBP)');
-      return false;
-    }
-    
-    if (file.size > 5 * 1024 * 1024) { // 5MB
-      showError('Thumbnail image must be less than 5MB');
       return false;
     }
     
@@ -283,30 +261,13 @@ const VideoManager = () => {
     }
   };
 
-  const handleThumbnailChange = (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
-    
-    if (validateThumbnailFile(file)) {
-      setFormData(prev => ({ ...prev, thumbnail_file: file }));
-      
-      // Create preview URL
-      const previewUrl = URL.createObjectURL(file);
-      setThumbnailPreview(previewUrl);
-    } else {
-      e.target.value = null;
-    }
-  };
-
   const resetForm = () => {
     setFormData({
       title: '',
       category_id: '',
       course_id: '',
       chapter_id: '',
-      release_date: '',
       video_file: null,
-      thumbnail_file: null,
       detected_duration: 0,
     });
     setFilteredCourses([]);
@@ -317,7 +278,6 @@ const VideoManager = () => {
     setUploadProgress(0);
     setUploadError('');
     setFileValidationError('');
-    setThumbnailPreview(null);
   };
 
   const validateForm = () => {
@@ -348,10 +308,9 @@ const VideoManager = () => {
       setUploadError('');
 
       if (isEditing && selectedVideo) {
-        // Update video (title and release date only)
+        // Update video (title only)
         await videosApi.updateVideo(selectedVideo.id, {
           title: formData.title.trim(),
-          release_date: formData.release_date || null,
         });
         showSuccess('Video updated successfully!');
         setFormOpen(false);
@@ -362,31 +321,14 @@ const VideoManager = () => {
         const formDataToSend = new FormData();
         formDataToSend.append('title', formData.title.trim());
         formDataToSend.append('chapter_id', formData.chapter_id);
-        
-        if (formData.release_date) {
-          formDataToSend.append('release_date', formData.release_date);
-        }
-        
         formDataToSend.append('video', formData.video_file);
-        
-        if (formData.thumbnail_file) {
-          formDataToSend.append('thumbnail', formData.thumbnail_file);
-        }
         
         showInfo('Uploading video... This may take a few minutes.', 10000);
         
-        // Use axios directly with progress tracking
-        const response = await axiosInstance.post('/videos', formDataToSend, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          timeout: 10 * 60 * 1000, // 10 minutes
-          onUploadProgress: (progressEvent) => {
-            if (progressEvent.total) {
-              const percentCompleted = Math.round((progressEvent.loaded * 100) / progressEvent.total);
-              setUploadProgress(percentCompleted);
-              console.log(`📊 Upload progress: ${percentCompleted}%`);
-            }
-          },
-        });
+        const response = await videosApi.createVideo(
+          formDataToSend, 
+          (progress) => setUploadProgress(progress)
+        );
         
         console.log('Upload response:', response.data);
         
@@ -451,9 +393,7 @@ const VideoManager = () => {
       category_id: course?.category_id?.toString() || '',
       course_id: video.course_id?.toString() || '',
       chapter_id: video.chapter_id?.toString() || '',
-      release_date: video.release_date ? video.release_date.slice(0, 16) : '',
       video_file: null,
-      thumbnail_file: null,
       detected_duration: video.duration || 0,
     });
     
@@ -786,21 +726,6 @@ const VideoManager = () => {
               />
             </Grid>
 
-            {/* Release Date */}
-            <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
-                label="Release Date (Optional)"
-                type="datetime-local"
-                name="release_date"
-                value={formData.release_date || ''}
-                onChange={handleInputChange}
-                InputLabelProps={{ shrink: true }}
-                disabled={uploading}
-                helperText="Leave empty for immediate release"
-              />
-            </Grid>
-
             {/* Video File Upload */}
             {!isEditing && (
               <Grid item xs={12}>
@@ -882,73 +807,6 @@ const VideoManager = () => {
                           {fileValidationError}
                         </Alert>
                       )}
-                    </Box>
-                  )}
-                </Paper>
-              </Grid>
-            )}
-
-            {/* Thumbnail Upload */}
-            {!isEditing && (
-              <Grid item xs={12}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Thumbnail Image (Optional)
-                </Typography>
-                <Paper
-                  variant="outlined"
-                  sx={{
-                    p: 2,
-                    textAlign: 'center',
-                    borderStyle: 'dashed',
-                    borderColor: formData.thumbnail_file ? 'success.main' : 'divider',
-                    borderRadius: 2,
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => !uploading && document.getElementById('thumbnail-file')?.click()}
-                >
-                  <input
-                    id="thumbnail-file"
-                    type="file"
-                    accept="image/jpeg,image/jpg,image/png,image/webp"
-                    onChange={handleThumbnailChange}
-                    style={{ display: 'none' }}
-                    disabled={uploading}
-                  />
-                  
-                  {formData.thumbnail_file ? (
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-                      <Avatar 
-                        src={thumbnailPreview} 
-                        variant="rounded"
-                        sx={{ width: 80, height: 45 }}
-                      />
-                      <Box sx={{ flex: 1, textAlign: 'left' }}>
-                        <Typography variant="body2" fontWeight="medium">
-                          {formData.thumbnail_file.name}
-                        </Typography>
-                        <Typography variant="caption" color="text.secondary">
-                          {formatFileSize(formData.thumbnail_file.size)}
-                        </Typography>
-                      </Box>
-                      <IconButton 
-                        size="small" 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setFormData(prev => ({ ...prev, thumbnail_file: null }));
-                          setThumbnailPreview(null);
-                          document.getElementById('thumbnail-file').value = '';
-                        }}
-                      >
-                        <Close />
-                      </IconButton>
-                    </Box>
-                  ) : (
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                      <AddPhotoAlternate sx={{ color: 'primary.main' }} />
-                      <Typography variant="body2">Click to upload thumbnail image</Typography>
-                      <Typography variant="caption" color="text.secondary">
-                        (JPG, PNG, WEBP • Max 5MB)
-                      </Typography>
                     </Box>
                   )}
                 </Paper>
@@ -1081,7 +939,7 @@ const VideoManager = () => {
                       • Duration will be automatically extracted from the video
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      • Thumbnail will be auto-generated if not provided
+                      • Thumbnail will be auto-generated from the video
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
                       • Cloudinary videos will have multiple quality options (360p-1080p)
