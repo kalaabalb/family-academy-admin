@@ -775,6 +775,16 @@ const VideoManager = () => {
                       <Typography fontWeight="medium" variant="h6">
                         {formData.video_file.name}
                       </Typography>
+                      
+                      {/* Video Preview */}
+                      <Box sx={{ mt: 2, mb: 2, position: 'relative', bgcolor: 'black', borderRadius: 2, overflow: 'hidden' }}>
+                        <video
+                          src={URL.createObjectURL(formData.video_file)}
+                          controls
+                          style={{ width: '100%', maxHeight: '200px', objectFit: 'contain' }}
+                        />
+                      </Box>
+                      
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
                         Size: {formatFileSize(formData.video_file.size)} • 
                         Duration: {formatDuration(formData.detected_duration)}
@@ -877,45 +887,6 @@ const VideoManager = () => {
                 )}
               </FormControl>
             </Grid>
-
-            {/* Upload Progress Bar - VISIBLE DURING UPLOAD */}
-            {uploading && (
-              <Grid item xs={12}>
-                <Alert 
-                  severity="info" 
-                  sx={{ 
-                    borderRadius: 2,
-                    '& .MuiAlert-message': { width: '100%' }
-                  }}
-                >
-                  <Box sx={{ width: '100%' }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                      <Typography variant="body2" fontWeight="medium">
-                        Uploading Video
-                      </Typography>
-                      <Typography variant="body2" fontWeight="bold" color="primary.main">
-                        {uploadProgress}%
-                      </Typography>
-                    </Box>
-                    <LinearProgress 
-                      variant="determinate" 
-                      value={uploadProgress} 
-                      sx={{ 
-                        height: 8, 
-                        borderRadius: 4,
-                        mb: 1,
-                        '& .MuiLinearProgress-bar': {
-                          borderRadius: 4,
-                        }
-                      }}
-                    />
-                    <Typography variant="caption" color="text.secondary">
-                      {formatFileSize(formData.video_file?.size)} • Please don't close this window
-                    </Typography>
-                  </Box>
-                </Alert>
-              </Grid>
-            )}
 
             {/* Upload Error */}
             {uploadError && (
