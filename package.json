@@ -3,6 +3,10 @@
   "version": "2.0.0",
   "private": true,
   "homepage": ".",
+  "engines": {
+    "node": "22.x",
+    "npm": ">=10"
+  },
   "dependencies": {
     "@draft-js-plugins/editor": "^4.1.4",
     "@draft-js-plugins/static-toolbar": "^4.1.4",
