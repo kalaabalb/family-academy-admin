@@ -1443,17 +1443,6 @@ const ExamManager = () => {
             >
               Add Question
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<ImportExport />}
-              onClick={() => {
-                setQuestionDialogOpen(true);
-                fetchAvailableQuestions();
-              }}
-              disabled={actionLoading}
-            >
-              Import Questions
-            </Button>
           </Box>
 
           {examQuestions.length === 0 ? (

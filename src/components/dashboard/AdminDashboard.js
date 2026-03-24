@@ -178,6 +178,16 @@ const parseLogDetails = (details) => {
 const isMeaningfulLog = (log) => {
   const action = String(log.action || '').toLowerCase();
   const description = String(log.description || log.message || '').toLowerCase();
+  const details = parseLogDetails(log.details);
+  const level = String(log.level || '').toLowerCase();
+
+  if (level === 'error' || level === 'warn' || level === 'warning') {
+    return true;
+  }
+
+  if (Number(details.statusCode || 0) >= 400) {
+    return true;
+  }
 
   if (['http_access', 'request', 'response'].includes(action)) {
     return false;
