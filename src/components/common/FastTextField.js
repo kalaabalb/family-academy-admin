@@ -23,6 +23,7 @@ const FastTextField = ({ value = '', onDebouncedChange, delay = 150, onImmediate
     const v = e.target.value;
     latestValue.current = v;
     setLocal(v);
+    props.onChange?.(e);
     // Call immediate handler if provided (useful for local-only effects)
     onImmediateChange?.(v);
 
