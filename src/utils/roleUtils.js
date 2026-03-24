@@ -25,6 +25,7 @@ export const roleUtils = {
         'payments_verify',
         'users_manage',
         'teachers_manage',
+        'admins_manage',
         'notifications_send',
         'settings_manage',
         'telegram_manage',

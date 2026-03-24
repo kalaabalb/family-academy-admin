@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
@@ -8,7 +8,8 @@ import coursesApi from '../../api/courses';
 import chaptersApi from '../../api/chapters';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
-import RichTextEditor from '../common/RichTextEditor';
+import TiptapEditor from '../common/TiptapEditor';
+import FastTextField from '../common/FastTextField';
 import {
   Box,
   Paper,
@@ -34,6 +35,7 @@ import {
   CircularProgress,
   InputAdornment,
   LinearProgress,
+  FormHelperText,
 } from '@mui/material';
 import {
   FilterList,
@@ -41,7 +43,6 @@ import {
   Edit,
   Delete,
   Refresh,
-  Person,
   Category as CategoryIcon,
   Book,
   Close,
@@ -51,7 +52,15 @@ import {
   Search,
   MenuBook,
   Notes as NotesIcon,
+  Schedule,
 } from '@mui/icons-material';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import SchedulePicker from '../common/SchedulePicker';
+import ContentAssignmentFields from '../common/ContentAssignmentFields';
+import DetailRow from '../common/DetailRow';
+import { devError } from '../../utils/devLogger';
 
 const NoteManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
@@ -97,8 +106,9 @@ const NoteManager = () => {
     category_id: '',
     course_id: '',
     chapter_id: '',
-    release_date: '',
+    release_date: null,
   });
+  const [scheduleEnabled, setScheduleEnabled] = useState(false);
 
   // Cache keys
   const notesCacheKey = 'notes';
@@ -107,9 +117,9 @@ const NoteManager = () => {
   const chaptersCacheKey = 'chapters';
 
   const fetchData = useCallback(async (forceRefresh = false) => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      setError('');
       
       // Fetch notes with role-based filtering
       const params = {};
@@ -141,8 +151,28 @@ const NoteManager = () => {
         { forceRefresh }
       );
       
-      setCategories(categoriesData || []);
-      setCourses(coursesData || []);
+      // FIX: Filter courses for teachers based on assigned_courses
+      let filteredCoursesData = coursesData || [];
+      let filteredCategoriesData = categoriesData || [];
+      
+      if (isTeacher()) {
+        const assignedCourseIds = user?.assigned_courses || [];
+        
+        filteredCoursesData = coursesData.filter(course => 
+          assignedCourseIds.includes(course.id)
+        );
+        
+        // Filter categories to only show those with accessible courses
+        const accessibleCategoryIds = new Set(
+          filteredCoursesData.map(c => c.category_id)
+        );
+        filteredCategoriesData = categoriesData.filter(cat => 
+          accessibleCategoryIds.has(cat.id)
+        );
+      }
+      
+      setCategories(filteredCategoriesData || []);
+      setCourses(filteredCoursesData || []);
       setChapters(chaptersData || []);
       
       // Enrich notes with course and category names
@@ -155,13 +185,14 @@ const NoteManager = () => {
           chapter_name: chapter?.name || 'Unknown Chapter',
           course_name: course?.name || 'Unknown Course',
           category_name: category?.name || 'Unknown Category',
+          release_date: note.release_date || null,
         };
       });
       
       setNotes(enrichedNotes);
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load notes');
       showError('Failed to load notes');
     } finally {
@@ -177,15 +208,25 @@ const NoteManager = () => {
 
   // Update filtered courses and chapters when filters change
   useEffect(() => {
+    // FIX: Use filtered courses based on teacher's assignments
+    let availableCourses = courses;
+    
+    if (isTeacher()) {
+      const assignedCourseIds = user?.assigned_courses || [];
+      availableCourses = courses.filter(course => 
+        assignedCourseIds.includes(course.id)
+      );
+    }
+    
     if (filters.category_id) {
-      const filtered = courses.filter(course => 
+      const filtered = availableCourses.filter(course => 
         course.category_id === parseInt(filters.category_id)
       );
       setFilteredCourses(filtered);
     } else {
       setFilteredCourses([]);
     }
-  }, [filters.category_id, courses]);
+  }, [filters.category_id, courses, isTeacher, user]);
 
   useEffect(() => {
     if (filters.course_id) {
@@ -227,30 +268,15 @@ const NoteManager = () => {
   // Form handlers
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    setFormData(prev => {
-      const newForm = { ...prev, [name]: value };
-      
-      // Update cascading dropdowns
-      if (name === 'category_id') {
-        const filtered = courses.filter(course => 
-          course.category_id === parseInt(value)
-        );
-        setFormFilteredCourses(filtered);
-        newForm.course_id = '';
-        newForm.chapter_id = '';
-        setFormFilteredChapters([]);
-      }
-      
-      if (name === 'course_id') {
-        const filtered = chapters.filter(chapter => 
-          chapter.course_id === parseInt(value)
-        );
-        setFormFilteredChapters(filtered);
-        newForm.chapter_id = '';
-      }
-      
-      return newForm;
-    });
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAssignmentChange = (updates) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
+
+  const handleDateChange = (date) => {
+    setFormData(prev => ({ ...prev, release_date: date }));
   };
 
   const handleContentChange = (content) => {
@@ -264,10 +290,9 @@ const NoteManager = () => {
       category_id: '',
       course_id: '',
       chapter_id: '',
-      release_date: '',
+      release_date: null,
     });
-    setFormFilteredCourses([]);
-    setFormFilteredChapters([]);
+    setScheduleEnabled(false);
     setIsEditing(false);
     setSelectedNote(null);
   };
@@ -278,7 +303,6 @@ const NoteManager = () => {
       return false;
     }
     
-    // Check if content is not empty (remove HTML tags)
     const cleanContent = formData.content?.replace(/<[^>]*>/g, '').trim();
     if (!cleanContent) {
       showError('Note content is required');
@@ -303,11 +327,14 @@ const NoteManager = () => {
         title: formData.title.trim(),
         content: formData.content,
         chapter_id: parseInt(formData.chapter_id),
-        ...(formData.release_date && { release_date: formData.release_date })
       };
       
+      // FIX: Add release_date if provided (for scheduling)
+      if (formData.release_date) {
+        noteData.release_date = formData.release_date.toISOString();
+      }
+      
       if (isEditing && selectedNote) {
-        // Check if teacher can edit
         if (isTeacher() && selectedNote.created_by !== user.id) {
           showError('You can only edit notes you created');
           setActionLoading(false);
@@ -317,14 +344,12 @@ const NoteManager = () => {
         await notesApi.updateNote(selectedNote.id, noteData);
         showSuccess('Note updated successfully!');
         
-        // Invalidate caches
         invalidateCache(/^notes/);
         invalidateCache(chaptersCacheKey);
       } else {
         await notesApi.createNote(noteData);
         showSuccess('Note created successfully!');
         
-        // Invalidate caches
         invalidateCache(/^notes/);
         invalidateCache(chaptersCacheKey);
       }
@@ -334,7 +359,7 @@ const NoteManager = () => {
       await fetchData(true);
       
     } catch (err) {
-      console.error('Failed to save note:', err);
+      devError('Failed to save note:', err);
       showError(err.response?.data?.message || 'Failed to save note');
     } finally {
       setActionLoading(false);
@@ -342,7 +367,6 @@ const NoteManager = () => {
   };
 
   const handleEdit = (note) => {
-    // Check if teacher can edit
     if (isTeacher() && note.created_by !== user.id) {
       showError('You can only edit notes you created');
       return;
@@ -351,7 +375,6 @@ const NoteManager = () => {
     setSelectedNote(note);
     setIsEditing(true);
     
-    // Find category and course for this note
     const chapter = chapters.find(ch => ch.id === note.chapter_id);
     if (chapter) {
       const course = courses.find(c => c.id === chapter.course_id);
@@ -372,8 +395,9 @@ const NoteManager = () => {
       category_id: note.category_id?.toString() || '',
       course_id: note.course_id?.toString() || '',
       chapter_id: note.chapter_id?.toString() || '',
-      release_date: note.release_date ? note.release_date.slice(0, 16) : '',
+      release_date: note.release_date ? new Date(note.release_date) : null,
     });
+    setScheduleEnabled(!!note.release_date);
     
     setFormOpen(true);
   };
@@ -384,7 +408,6 @@ const NoteManager = () => {
   };
 
   const handleDelete = (note) => {
-    // Check if teacher can delete
     if (isTeacher() && note.created_by !== user.id) {
       showError('You can only delete notes you created');
       return;
@@ -401,7 +424,6 @@ const NoteManager = () => {
       setActionLoading(true);
       await notesApi.deleteNote(selectedNote.id);
       
-      // Invalidate caches
       invalidateCache(/^notes/);
       invalidateCache(chaptersCacheKey);
       
@@ -412,25 +434,23 @@ const NoteManager = () => {
       setSelectedNote(null);
       
     } catch (err) {
-      console.error('Failed to delete note:', err);
+      devError('Failed to delete note:', err);
       showError(err.response?.data?.message || 'Failed to delete note');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     fetchData(true);
-  };
+  }, [fetchData]);
 
   // Filter notes based on filters and search
-  const filteredNotes = notes.filter(note => {
-    // Apply filters
+  const filteredNotes = useMemo(() => notes.filter(note => {
     if (filters.category_id && note.category_id !== parseInt(filters.category_id)) return false;
     if (filters.course_id && note.course_id !== parseInt(filters.course_id)) return false;
     if (filters.chapter_id && note.chapter_id !== parseInt(filters.chapter_id)) return false;
     
-    // Apply search
     if (searchQuery) {
       const query = searchQuery.toLowerCase();
       return (
@@ -442,16 +462,16 @@ const NoteManager = () => {
     }
     
     return true;
-  });
+  }), [notes, filters.category_id, filters.course_id, filters.chapter_id, searchQuery]);
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
       render: (value) => (
         <Typography variant="body2" color="text.secondary">
-          #{value}
+          {value}
         </Typography>
       ),
     },
@@ -459,50 +479,58 @@ const NoteManager = () => {
       field: 'title',
       headerName: 'Title',
       flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="medium">
-            {value}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.chapter_name} • {row.course_name}
-          </Typography>
-        </Box>
-      ),
-    },
-    {
-      field: 'category_name',
-      headerName: 'Category',
-      width: 120,
       render: (value) => (
-        <Chip
-          label={value || 'N/A'}
-          size="small"
-          variant="outlined"
-          icon={<CategoryIcon fontSize="small" />}
-        />
+        <Typography variant="body2" fontWeight="medium">
+          {value}
+        </Typography>
       ),
     },
     {
-      field: 'creator_role',
+      field: 'chapter_name',
+      headerName: 'Chapter',
+      width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Chapter'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'course_name',
+      headerName: 'Course',
+      width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Course'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'created_by_name',
       headerName: 'Created By',
-      width: 120,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Person fontSize="small" color="action" />
-          <Typography variant="body2">
-            {value === 'admin' ? 'Admin' : 'Teacher'}
-            {row.created_by === user?.id && ' (You)'}
-          </Typography>
-        </Box>
+      width: 170,
+      render: (value) => (
+        <Typography variant="body2" color="text.primary">
+          {value || 'Unknown'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'release_date',
+      headerName: 'Release Date',
+      width: 130,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value ? new Date(value).toLocaleString() : 'Immediate'}
+        </Typography>
       ),
     },
     {
       field: 'created_at',
-      headerName: 'Created',
+      headerName: 'Created At',
       width: 120,
       render: (value) => (
-        <Typography variant="caption" color="text.secondary">
+        <Typography variant="body2" color="text.secondary">
           {value ? new Date(value).toLocaleDateString() : '-'}
         </Typography>
       ),
@@ -523,10 +551,6 @@ const NoteManager = () => {
                   onClick={() => handlePreview(row)}
                   color="info"
                   disabled={actionLoading}
-                  sx={{
-                    opacity: actionLoading ? 0.5 : 1,
-                    transition: 'opacity 0.2s',
-                  }}
                 >
                   <Visibility fontSize="small" />
                 </IconButton>
@@ -541,10 +565,6 @@ const NoteManager = () => {
                       onClick={() => handleEdit(row)}
                       color="primary"
                       disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
                     >
                       <Edit fontSize="small" />
                     </IconButton>
@@ -557,10 +577,6 @@ const NoteManager = () => {
                       onClick={() => handleDelete(row)}
                       color="error"
                       disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
                     >
                       <Delete fontSize="small" />
                     </IconButton>
@@ -572,7 +588,7 @@ const NoteManager = () => {
         );
       },
     },
-  ];
+  ], [actionLoading, handleDelete, handleEdit, handlePreview, isAdmin, isTeacher, user?.id]);
 
   if (!isAdmin() && !isTeacher()) {
     return (
@@ -585,464 +601,422 @@ const NoteManager = () => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            Notes Management
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Create and manage study notes with rich text formatting
-          </Typography>
-        </Box>
-        
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={handleRefresh}
-            disabled={loading || actionLoading}
-            sx={{ borderRadius: 2 }}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<FilterList />}
-            onClick={() => setShowFilters(!showFilters)}
-            disabled={loading}
-            sx={{ borderRadius: 2 }}
-          >
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Button>
-          {(isAdmin() || isTeacher()) && (
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
+      <Box sx={{ p: 3 }}>
+        {/* Header */}
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <Box>
+            <Typography variant="h4" fontWeight="bold" gutterBottom>
+              Notes Management
+            </Typography>
+            <Typography variant="body1" color="text.secondary">
+              Create and manage study notes with scheduling
+            </Typography>
+          </Box>
+          
+          <Stack direction="row" spacing={2}>
             <Button
-              variant="contained"
-              startIcon={<Add />}
-              onClick={() => {
-                resetForm();
-                setFormOpen(true);
-              }}
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={handleRefresh}
               disabled={loading || actionLoading}
               sx={{ borderRadius: 2 }}
             >
-              Create Note
+              Refresh
             </Button>
-          )}
-        </Stack>
-      </Box>
-
-      {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
-
-      {/* Error Alert */}
-      {error && (
-        <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
-          {error}
-          <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
-            Retry
-          </Button>
-        </Alert>
-      )}
-
-      {/* Search Bar */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search notes by title or content..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search fontSize="small" />
-              </InputAdornment>
-            ),
-            endAdornment: searchQuery && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearchQuery('')}>
-                  <Close />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Paper>
-
-      {/* Filters Section */}
-      {showFilters && (
-        <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
-          <Typography variant="h6" fontWeight="medium" gutterBottom>
-            Filter Notes
-          </Typography>
-          
-          <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Category</InputLabel>
-                <Select
-                  name="category_id"
-                  value={filters.category_id}
-                  onChange={handleFilterChange}
-                  label="Category"
-                >
-                  <MenuItem value="">All Categories</MenuItem>
-                  {categories.map(cat => (
-                    <MenuItem key={cat.id} value={cat.id}>
-                      {cat.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Course</InputLabel>
-                <Select
-                  name="course_id"
-                  value={filters.course_id}
-                  onChange={handleFilterChange}
-                  label="Course"
-                  disabled={!filters.category_id}
-                >
-                  <MenuItem value="">All Courses</MenuItem>
-                  {filteredCourses.map(course => (
-                    <MenuItem key={course.id} value={course.id}>
-                      {course.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12} md={4}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Chapter</InputLabel>
-                <Select
-                  name="chapter_id"
-                  value={filters.chapter_id}
-                  onChange={handleFilterChange}
-                  label="Chapter"
-                  disabled={!filters.course_id}
-                >
-                  <MenuItem value="">All Chapters</MenuItem>
-                  {filteredChapters.map(chapter => (
-                    <MenuItem key={chapter.id} value={chapter.id}>
-                      {chapter.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-            
-            <Grid item xs={12}>
-              <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-                <Button
-                  variant="outlined"
-                  onClick={clearFilters}
-                  size="small"
-                >
-                  Clear Filters
-                </Button>
-              </Box>
-            </Grid>
-          </Grid>
-        </Paper>
-      )}
-
-      {/* Notes Table */}
-      <DataTable
-        columns={columns}
-        data={filteredNotes}
-        loading={loading}
-        onRefresh={handleRefresh}
-        title={`Notes `}
-        rowKey="id"
-      />
-
-      {/* Create/Edit Note Dialog */}
-      <Dialog
-        open={formOpen}
-        onClose={() => !actionLoading && setFormOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6" fontWeight="bold">
-              {isEditing ? 'Edit Note' : 'Create New Note'}
-            </Typography>
-            <IconButton
-              onClick={() => {
-                if (!actionLoading) {
-                  setFormOpen(false);
-                  resetForm();
-                }
-              }}
-              size="small"
-              disabled={actionLoading}
+            <Button
+              variant="outlined"
+              startIcon={<FilterList />}
+              onClick={() => setShowFilters(!showFilters)}
+              disabled={loading}
+              sx={{ borderRadius: 2 }}
             >
-              <Close />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        
-        <DialogContent dividers sx={{ p: 3 }}>
-          <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <TextField
-                fullWidth
-                label="Note Title *"
-                name="title"
-                value={formData.title}
-                onChange={handleInputChange}
-                required
-                disabled={actionLoading}
-              />
-            </Grid>
-
-            {isAdmin() && (
-              <>
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Category *</InputLabel>
-                    <Select
-                      name="category_id"
-                      value={formData.category_id}
-                      onChange={handleInputChange}
-                      label="Category *"
-                      disabled={actionLoading}
-                    >
-                      <MenuItem value="">Select Category</MenuItem>
-                      {categories.map(cat => (
-                        <MenuItem key={cat.id} value={cat.id}>
-                          {cat.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth>
-                    <InputLabel>Course *</InputLabel>
-                    <Select
-                      name="course_id"
-                      value={formData.course_id}
-                      onChange={handleInputChange}
-                      label="Course *"
-                      disabled={actionLoading || !formData.category_id}
-                    >
-                      <MenuItem value="">Select Course</MenuItem>
-                      {formFilteredCourses.map(course => (
-                        <MenuItem key={course.id} value={course.id}>
-                          {course.name}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                </Grid>
-              </>
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </Button>
+            {(isAdmin() || isTeacher()) && (
+              <Button
+                variant="contained"
+                startIcon={<Add />}
+                onClick={() => {
+                  resetForm();
+                  setFormOpen(true);
+                }}
+                disabled={loading || actionLoading}
+                sx={{ borderRadius: 2 }}
+              >
+                Create Note
+              </Button>
             )}
+          </Stack>
+        </Box>
 
-            <Grid item xs={12} md={isAdmin() ? 4 : 12}>
-              <FormControl fullWidth>
-                <InputLabel>Chapter *</InputLabel>
-                <Select
-                  name="chapter_id"
-                  value={formData.chapter_id}
-                  onChange={handleInputChange}
-                  label="Chapter *"
-                  disabled={actionLoading || (isAdmin() && !formData.course_id)}
-                >
-                  <MenuItem value="">Select Chapter</MenuItem>
-                  {(isAdmin() ? formFilteredChapters : chapters).map(chapter => (
-                    <MenuItem key={chapter.id} value={chapter.id}>
-                      {chapter.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+        {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
-            {isAdmin() && (
+        {error && (
+          <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
+            {error}
+            <Button size="small" onClick={handleRefresh} sx={{ ml: 2 }}>
+              Retry
+            </Button>
+          </Alert>
+        )}
+
+        <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <FastTextField
+            fullWidth
+            size="small"
+            placeholder="Search notes by title or content..."
+            value={searchQuery}
+            onDebouncedChange={(v) => setSearchQuery(v)}
+            delay={120}
+            InputProps={{
+              startAdornment: (
+                <InputAdornment position="start">
+                  <Search fontSize="small" />
+                </InputAdornment>
+              ),
+              endAdornment: searchQuery && (
+                <InputAdornment position="end">
+                  <IconButton size="small" onClick={() => setSearchQuery('')}>
+                    <Close />
+                  </IconButton>
+                </InputAdornment>
+              ),
+            }}
+          />
+        </Paper>
+
+        {showFilters && (
+          <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
+            <Typography variant="h6" fontWeight="medium" gutterBottom>
+              Filter Notes
+            </Typography>
+            
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Category</InputLabel>
+                  <Select
+                    name="category_id"
+                    value={filters.category_id}
+                    onChange={handleFilterChange}
+                    label="Category"
+                  >
+                    <MenuItem value="">All Categories</MenuItem>
+                    {categories.map(cat => (
+                      <MenuItem key={cat.id} value={cat.id}>
+                        {cat.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Course</InputLabel>
+                  <Select
+                    name="course_id"
+                    value={filters.course_id}
+                    onChange={handleFilterChange}
+                    label="Course"
+                    disabled={!filters.category_id}
+                  >
+                    <MenuItem value="">All Courses</MenuItem>
+                    {filteredCourses.map(course => (
+                      <MenuItem key={course.id} value={course.id}>
+                        {course.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Chapter</InputLabel>
+                  <Select
+                    name="chapter_id"
+                    value={filters.chapter_id}
+                    onChange={handleFilterChange}
+                    label="Chapter"
+                    disabled={!filters.course_id}
+                  >
+                    <MenuItem value="">All Chapters</MenuItem>
+                    {filteredChapters.map(chapter => (
+                      <MenuItem key={chapter.id} value={chapter.id}>
+                        {chapter.name}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+              
               <Grid item xs={12}>
-                <TextField
+                <Box sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+                  <Button
+                    variant="outlined"
+                    onClick={clearFilters}
+                    size="small"
+                  >
+                    Clear Filters
+                  </Button>
+                </Box>
+              </Grid>
+            </Grid>
+          </Paper>
+        )}
+
+        <DataTable
+          showToolbar={false}
+          columns={columns}
+          data={filteredNotes}
+          loading={loading}
+          onRefresh={handleRefresh}
+          title={`Notes `}
+          rowKey="id"
+        />
+
+        <Dialog
+          open={formOpen}
+          onClose={() => !actionLoading && setFormOpen(false)}
+          keepMounted
+          disableRestoreFocus
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 2.5 } }}
+        >
+          <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography component="div" variant="h6" fontWeight="bold">
+                {isEditing ? 'Edit Note' : 'Create New Note'}
+              </Typography>
+              <IconButton
+                onClick={() => {
+                  if (!actionLoading) {
+                    setFormOpen(false);
+                    resetForm();
+                  }
+                }}
+                size="small"
+                disabled={actionLoading}
+              >
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          
+          <DialogContent dividers sx={{ p: 3 }}>
+            <Grid container spacing={3}>
+            <Grid item xs={12}>
+                <FastTextField
                   fullWidth
-                  type="datetime-local"
-                  label="Release Date (Optional)"
-                  name="release_date"
-                  value={formData.release_date}
-                  onChange={handleInputChange}
-                  InputLabelProps={{ shrink: true }}
+                  label="Note Title *"
+                  name="title"
+                  value={formData.title}
+                  onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, title: value }))}
+                  delay={80}
+                  required
                   disabled={actionLoading}
                 />
               </Grid>
-            )}
 
-            <Grid item xs={12}>
-              <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
-                Content *
-              </Typography>
-              <RichTextEditor
-                value={formData.content}
-                onChange={handleContentChange}
-                placeholder="Start writing your note content here..."
-                height={400}
-                readOnly={actionLoading}
+              <ContentAssignmentFields
+                categories={categories}
+                courses={courses}
+                chapters={chapters}
+                values={formData}
+                onChange={handleAssignmentChange}
+                disabled={actionLoading}
+                showCategory
+                showCourse
+                showChapter
               />
-            </Grid>
-          </Grid>
-        </DialogContent>
-        
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => {
-              setFormOpen(false);
-              resetForm();
-            }}
-            disabled={actionLoading}
-            sx={{ borderRadius: 2 }}
-          >
-            Cancel
-          </Button>
-          <Button
-            variant="contained"
-            onClick={handleSubmit}
-            disabled={
-              actionLoading || 
-              !formData.title.trim() || 
-              !formData.chapter_id ||
-              !formData.content?.replace(/<[^>]*>/g, '').trim()
-            }
-            startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
-            sx={{ borderRadius: 2 }}
-          >
-            {actionLoading ? 'Saving...' : (isEditing ? 'Update Note' : 'Create Note')}
-          </Button>
-        </DialogActions>
-      </Dialog>
 
-      {/* Preview Note Dialog */}
-      <Dialog
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        maxWidth="lg"
-        fullWidth
-        PaperProps={{ sx: { borderRadius: 2 } }}
-      >
-        <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6" fontWeight="bold">
-              {previewNote?.title}
-            </Typography>
-            <IconButton onClick={() => setPreviewOpen(false)} size="small">
-              <Close />
-            </IconButton>
-          </Box>
-        </DialogTitle>
-        
-        <DialogContent dividers sx={{ p: 3 }}>
-          {previewNote && (
-            <Box>
-              {/* Metadata */}
-              <Paper variant="outlined" sx={{ p: 2, mb: 3, bgcolor: 'grey.50', borderRadius: 2 }}>
-                <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="caption" color="text.secondary">
-                      <strong>Category:</strong> {previewNote.category_name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="caption" color="text.secondary">
-                      <strong>Course:</strong> {previewNote.course_name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="caption" color="text.secondary">
-                      <strong>Chapter:</strong> {previewNote.chapter_name || 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="caption" color="text.secondary">
-                      <strong>Created:</strong> {previewNote.created_at ? new Date(previewNote.created_at).toLocaleString() : 'N/A'}
-                    </Typography>
-                  </Grid>
-                  <Grid item xs={12} md={4}>
-                    <Typography variant="caption" color="text.secondary">
-                      <strong>Created By:</strong> {previewNote.creator_role === 'admin' ? 'Admin' : 'Teacher'}
-                    </Typography>
-                  </Grid>
-                  {previewNote.release_date && (
-                    <Grid item xs={12} md={4}>
-                      <Typography variant="caption" color="text.secondary">
-                        <strong>Release Date:</strong> {new Date(previewNote.release_date).toLocaleDateString()}
-                      </Typography>
-                    </Grid>
-                  )}
-                </Grid>
-              </Paper>
-              
-              {/* Content */}
-              <Paper
-                variant="outlined"
-                sx={{
-                  p: 3,
-                  borderRadius: 2,
-                  bgcolor: 'background.paper',
-                  minHeight: 300,
-                  maxHeight: 500,
-                  overflow: 'auto',
-                }}
-              >
-                <div dangerouslySetInnerHTML={{ __html: previewNote.content || '' }} />
-              </Paper>
-            </Box>
-          )}
-        </DialogContent>
-        
-        <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setPreviewOpen(false)}
-            sx={{ borderRadius: 2 }}
-          >
-            Close
-          </Button>
-          {(isAdmin() || (isTeacher() && previewNote?.created_by === user?.id)) && (
+              <Grid item xs={12}>
+                <SchedulePicker
+                  enabled={scheduleEnabled}
+                  onEnabledChange={(enabled) => {
+                    setScheduleEnabled(enabled);
+                    if (!enabled) {
+                      handleDateChange(null);
+                    }
+                  }}
+                  value={formData.release_date}
+                  onChange={handleDateChange}
+                  label="Release Date"
+                  helperText="Pick when this note should become visible"
+                  disabled={actionLoading}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
+                  Content *
+                </Typography>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    borderRadius: 2,
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
+                    boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
+                    borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
+                    p: 1,
+                  }}
+                >
+                  <TiptapEditor
+                    value={formData.content}
+                    onChange={handleContentChange}
+                    placeholder="Start writing your note content here..."
+                    height={400}
+                    readOnly={actionLoading}
+                  />
+                </Paper>
+              </Grid>
+            </Grid>
+          </DialogContent>
+          
+          <DialogActions sx={{ p: 3, pt: 2 }}>
             <Button
-              variant="contained"
+              variant="outlined"
               onClick={() => {
-                setPreviewOpen(false);
-                handleEdit(previewNote);
+                setFormOpen(false);
+                resetForm();
               }}
-              startIcon={<Edit />}
+              disabled={actionLoading}
               sx={{ borderRadius: 2 }}
             >
-              Edit Note
+              Cancel
             </Button>
-          )}
-        </DialogActions>
-      </Dialog>
+            <Button
+              variant="contained"
+              onClick={handleSubmit}
+              disabled={
+                actionLoading || 
+                !formData.title.trim() || 
+                !formData.chapter_id ||
+                !formData.content?.replace(/<[^>]*>/g, '').trim()
+              }
+              startIcon={actionLoading ? <CircularProgress size={20} /> : <Save />}
+              sx={{ borderRadius: 2 }}
+            >
+              {actionLoading ? 'Saving...' : (isEditing ? 'Update Note' : 'Create Note')}
+            </Button>
+          </DialogActions>
+        </Dialog>
 
-      {/* Delete Confirmation Dialog */}
-      <ConfirmDialog
-        open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
-        onConfirm={confirmDelete}
-        title="Delete Note"
-        message={`Are you sure you want to delete the note "${selectedNote?.title}"?`}
-        confirmText="Delete"
-        cancelText="Cancel"
-        severity="error"
-        loading={actionLoading}
-      />
-    </Box>
+        <Dialog
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          keepMounted
+          disableRestoreFocus
+          maxWidth="lg"
+          fullWidth
+          PaperProps={{ sx: { borderRadius: 2 } }}
+        >
+          <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Typography component="div" variant="h6" fontWeight="bold">
+                {previewNote?.title}
+              </Typography>
+              <IconButton onClick={() => setPreviewOpen(false)} size="small">
+                <Close />
+              </IconButton>
+            </Box>
+          </DialogTitle>
+          
+          <DialogContent dividers sx={{ p: 3 }}>
+            {previewNote && (
+              <Box>
+                <Paper variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 2.5 }}>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12} md={4}>
+                      <DetailRow label="Category" value={previewNote.category_name || 'N/A'} align="flex-start" />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <DetailRow label="Course" value={previewNote.course_name || 'N/A'} align="flex-start" />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <DetailRow label="Chapter" value={previewNote.chapter_name || 'N/A'} align="flex-start" />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <DetailRow
+                        label="Created"
+                        value={previewNote.created_at ? new Date(previewNote.created_at).toLocaleString() : 'N/A'}
+                        align="flex-start"
+                      />
+                    </Grid>
+                    <Grid item xs={12} md={4}>
+                      <DetailRow label="Created By" value={previewNote.created_by_name || 'Unknown'} align="flex-start" />
+                    </Grid>
+                    {previewNote.release_date && (
+                      <Grid item xs={12} md={4}>
+                        <DetailRow
+                          label="Release Date"
+                          value={new Date(previewNote.release_date).toLocaleString()}
+                          align="flex-start"
+                        />
+                      </Grid>
+                    )}
+                  </Grid>
+                </Paper>
+                
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 3,
+                    borderRadius: 2,
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
+                    minHeight: 300,
+                    maxHeight: 500,
+                    overflow: 'auto',
+                    boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
+                    borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
+                  }}
+                >
+                  <div dangerouslySetInnerHTML={{ __html: previewNote.content || '' }} />
+                </Paper>
+              </Box>
+            )}
+          </DialogContent>
+          
+          <DialogActions sx={{ p: 3, pt: 2 }}>
+            <Button
+              variant="outlined"
+              onClick={() => setPreviewOpen(false)}
+              sx={{ borderRadius: 2 }}
+            >
+              Close
+            </Button>
+            {(isAdmin() || (isTeacher() && previewNote?.created_by === user?.id)) && (
+              <Button
+                variant="contained"
+                onClick={() => {
+                  setPreviewOpen(false);
+                  handleEdit(previewNote);
+                }}
+                startIcon={<Edit />}
+                sx={{ borderRadius: 2 }}
+              >
+                Edit Note
+              </Button>
+            )}
+          </DialogActions>
+        </Dialog>
+
+        <ConfirmDialog
+          open={deleteConfirmOpen}
+          onClose={() => setDeleteConfirmOpen(false)}
+          onConfirm={confirmDelete}
+          title="Delete Note"
+          message={`Are you sure you want to delete the note "${selectedNote?.title}"?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          severity="error"
+          loading={actionLoading}
+        />
+      </Box>
+    </LocalizationProvider>
   );
 };
 

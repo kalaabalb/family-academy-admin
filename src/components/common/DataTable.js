@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Paper,
   Table,
@@ -20,7 +20,11 @@ import {
   Checkbox,
   LinearProgress,
   Button,
+  useTheme,
+  alpha,
+  useMediaQuery,
 } from '@mui/material';
+import FastTextField from './FastTextField';
 import {
   Search,
   Edit,
@@ -47,6 +51,7 @@ const DataTable = ({
   pagination = true,
   title,
   onRefresh,
+  showToolbar = true,
   rowKey = 'id',
   selectable = false,
   bulkActions = false,
@@ -54,11 +59,23 @@ const DataTable = ({
   onBulkAction,
   ...props
 }) => {
+  const theme = useTheme();
+  const isSmallScreen = useMediaQuery(theme.breakpoints.down('md'));
+  const headerBg = theme.palette.mode === 'dark'
+    ? alpha(theme.palette.text.primary, 0.08)
+    : 'rgba(0, 0, 0, 0.02)';
+
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
   const [order, setOrder] = useState('asc');
   const [orderBy, setOrderBy] = useState(columns[0]?.field || '');
+  const tableContainerRef = useRef(null);
+  const dragStateRef = useRef({
+    isDragging: false,
+    startX: 0,
+    startScrollLeft: 0,
+  });
 
   const handleRequestSort = (property) => {
     const isAsc = orderBy === property && order === 'asc';
@@ -131,6 +148,68 @@ const DataTable = ({
   const paginatedData = pagination
     ? sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
     : sortedData;
+
+  const tableMinWidth = useMemo(() => {
+    const baseColumnsWidth = columns.reduce((total, column) => {
+      if (column.minWidth) return total + column.minWidth;
+      if (column.width) return total + column.width;
+      return total + 160;
+    }, 0);
+
+    const selectableWidth = selectable ? 60 : 0;
+    const actionsWidth = (onView || onEdit || onDelete) ? 120 : 0;
+    return baseColumnsWidth + selectableWidth + actionsWidth;
+  }, [columns, selectable, onView, onEdit, onDelete]);
+
+  const getRowId = (row, index) => {
+    const primaryValue = row?.[rowKey];
+    if (primaryValue !== undefined && primaryValue !== null && primaryValue !== '') {
+      return primaryValue;
+    }
+
+    const fallbackKeys = ['id', 'source_id', 'device_id', 'user_id', 'uuid'];
+    const fallbackParts = fallbackKeys
+      .map((key) => row?.[key])
+      .filter((value) => value !== undefined && value !== null && value !== '');
+
+    if (fallbackParts.length > 0) {
+      return fallbackParts.join('-');
+    }
+
+    return `row-${index}`;
+  };
+
+  const handlePointerDown = (event) => {
+    const container = tableContainerRef.current;
+    if (!container || container.scrollWidth <= container.clientWidth) return;
+
+    dragStateRef.current = {
+      isDragging: true,
+      startX: event.clientX,
+      startScrollLeft: container.scrollLeft,
+    };
+
+    container.style.cursor = 'grabbing';
+    container.style.userSelect = 'none';
+  };
+
+  const handlePointerMove = (event) => {
+    const container = tableContainerRef.current;
+    if (!container || !dragStateRef.current.isDragging) return;
+
+    const deltaX = event.clientX - dragStateRef.current.startX;
+    container.scrollLeft = dragStateRef.current.startScrollLeft - deltaX;
+  };
+
+  const handlePointerUp = () => {
+    const container = tableContainerRef.current;
+    dragStateRef.current.isDragging = false;
+
+    if (container) {
+      container.style.cursor = container.scrollWidth > container.clientWidth ? 'grab' : 'default';
+      container.style.removeProperty('user-select');
+    }
+  };
 
   const renderCell = (row, column) => {
     const value = row[column.field];
@@ -239,60 +318,78 @@ const DataTable = ({
   };
 
   return (
-    <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 2, ...sx }}>
-      {/* Header */}
-      <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          {title && (
-            <Typography variant="h6" fontWeight="bold">
-              {title} ({filteredData.length})
-            </Typography>
-          )}
-        </Box>
-        
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-          {searchable && (
-            <TextField
-              size="small"
-              placeholder="Search..."
-              value={search}
-              onChange={(e) => {
-                setSearch(e.target.value);
-                setPage(0);
-              }}
-              sx={{ width: 250 }}
-              InputProps={{
-                startAdornment: (
-                  <InputAdornment position="start">
-                    <Search />
-                  </InputAdornment>
-                ),
-                endAdornment: search && (
-                  <InputAdornment position="end">
-                    <IconButton size="small" onClick={() => setSearch('')}>
-                      <Clear />
-                    </IconButton>
-                  </InputAdornment>
-                ),
-              }}
-            />
-          )}
+    <Paper sx={{ width: '100%', overflow: 'hidden', borderRadius: 2, minWidth: 0, ...sx }}>
+      {showToolbar && (
+        <Box
+          sx={{
+            p: { xs: 1.5, sm: 2 },
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: { xs: 'stretch', md: 'center' },
+            flexDirection: { xs: 'column', md: 'row' },
+            gap: 1.5,
+          }}
+        >
+          <Box sx={{ minWidth: 0 }}>
+            {title && (
+              <Typography variant="h6" fontWeight="bold" sx={{ wordBreak: 'break-word' }}>
+                {title} ({filteredData.length})
+              </Typography>
+            )}
+          </Box>
           
-          {onRefresh && (
-            <Tooltip title="Refresh">
-              <span>
-                <IconButton 
-                  onClick={onRefresh} 
-                  size="small"
-                  disabled={loading}
-                >
-                  <Refresh />
-                </IconButton>
-              </span>
-            </Tooltip>
-          )}
+          <Box
+            sx={{
+              display: 'flex',
+              gap: 1,
+              alignItems: 'center',
+              justifyContent: { xs: 'stretch', md: 'flex-end' },
+              flexWrap: 'wrap',
+              width: { xs: '100%', md: 'auto' },
+            }}
+          >
+            {searchable && (
+              <FastTextField
+                size="small"
+                placeholder="Search..."
+                value={search}
+                onImmediateChange={() => setPage(0)}
+                onDebouncedChange={(v) => setSearch(v)}
+                delay={120}
+                sx={{ width: { xs: '100%', sm: 280, md: 250 }, minWidth: 0 }}
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <Search />
+                    </InputAdornment>
+                  ),
+                  endAdornment: search && (
+                    <InputAdornment position="end">
+                      <IconButton size="small" onClick={() => setSearch('')}>
+                        <Clear />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            )}
+            
+            {onRefresh && (
+              <Tooltip title="Refresh">
+                <span>
+                  <IconButton 
+                    onClick={onRefresh} 
+                    size="small"
+                    disabled={loading}
+                  >
+                    <Refresh />
+                  </IconButton>
+                </span>
+              </Tooltip>
+            )}
+          </Box>
         </Box>
-      </Box>
+      )}
 
       {/* Bulk Actions Bar */}
       {selectable && selectedRows.length > 0 && (
@@ -328,12 +425,47 @@ const DataTable = ({
         </Box>
       )}
 
-      {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ width: '100%' }} />}
+      {/* Loading Indicator: only show the progress bar when we already have data to avoid duplicate loaders */}
+      {loading && data.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
 
       {/* Table */}
-      <TableContainer sx={{ maxHeight: 600 }}>
-        <Table stickyHeader>
+      <TableContainer
+        ref={tableContainerRef}
+        onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        sx={{
+          maxHeight: 600,
+          overflowX: 'auto',
+          overflowY: 'auto',
+          cursor: tableMinWidth > 0 ? 'grab' : 'default',
+          overscrollBehaviorX: 'contain',
+          scrollbarWidth: 'thin',
+          '&::-webkit-scrollbar': {
+            height: 10,
+            width: 10,
+          },
+          '&::-webkit-scrollbar-thumb': {
+            backgroundColor: alpha(theme.palette.text.primary, 0.2),
+            borderRadius: 999,
+          },
+          '&::-webkit-scrollbar-track': {
+            backgroundColor: alpha(theme.palette.text.primary, 0.06),
+          },
+        }}
+      >
+        <Table
+          stickyHeader
+          size="small"
+          sx={{
+            minWidth: tableMinWidth,
+            tableLayout: 'auto',
+            '& .MuiTableCell-root': {
+              borderBottomColor: alpha(theme.palette.divider, 0.8),
+            },
+          }}
+        >
           <TableHead>
             <TableRow>
               {selectable && (
@@ -353,11 +485,15 @@ const DataTable = ({
                   align={column.align || 'left'}
                   sortDirection={orderBy === column.field ? order : false}
                   sx={{
-                    fontWeight: 'bold',
-                    bgcolor: 'grey.50',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    bgcolor: headerBg,
                     whiteSpace: 'nowrap',
-                    minWidth: column.minWidth,
+                    wordBreak: 'normal',
+                    minWidth: column.minWidth || column.width || 160,
                     maxWidth: column.maxWidth,
+                    py: { xs: 1, sm: 1.25 },
+                    px: 1.75,
                   }}
                 >
                   {column.sortable !== false ? (
@@ -379,7 +515,7 @@ const DataTable = ({
               {(onView || onEdit || onDelete) && (
                 <TableCell 
                   align="center"
-                  sx={{ fontWeight: 'bold', bgcolor: 'grey.50' }}
+                  sx={{ fontWeight: 700, fontSize: '0.8rem', bgcolor: headerBg }}
                 >
                   Actions
                 </TableCell>
@@ -423,16 +559,17 @@ const DataTable = ({
               </TableRow>
             ) : (
               paginatedData.map((row) => {
-                const isSelected = selectedRows.includes(row[rowKey]);
+                const rowId = getRowId(row, page * rowsPerPage + paginatedData.indexOf(row));
+                const isSelected = selectedRows.includes(rowId);
                 
                 return (
                   <TableRow
-                    key={row[rowKey]}
+                    key={rowId}
                     hover
                     selected={isSelected}
                     onClick={(e) => {
                       if (selectable) {
-                        handleSelect(row[rowKey]);
+                        handleSelect(rowId);
                       } else if (onRowClick) {
                         onRowClick(row);
                       }
@@ -441,13 +578,16 @@ const DataTable = ({
                       cursor: onRowClick || selectable ? 'pointer' : 'default',
                       opacity: loading ? 0.7 : 1,
                       transition: 'opacity 0.2s',
+                      '&:hover td': {
+                        bgcolor: 'action.hover',
+                      },
                     }}
                   >
                     {selectable && (
                       <TableCell padding="checkbox">
                         <Checkbox
                           checked={isSelected}
-                          onChange={() => handleSelect(row[rowKey])}
+                          onChange={() => handleSelect(rowId)}
                           onClick={(e) => e.stopPropagation()}
                           disabled={loading}
                         />
@@ -459,11 +599,16 @@ const DataTable = ({
                         key={column.field}
                         align={column.align || 'left'}
                         sx={{
+                          minWidth: column.minWidth || column.width || 160,
                           maxWidth: column.maxWidth || 'auto',
                           overflow: 'hidden',
                           textOverflow: 'ellipsis',
                           whiteSpace: 'nowrap',
-                          py: 1.5,
+                          wordBreak: 'normal',
+                          py: { xs: 1, sm: 1.25 },
+                          px: 1.75,
+                          fontSize: '0.875rem',
+                          verticalAlign: 'middle',
                         }}
                       >
                         {renderCell(row, column)}
@@ -472,7 +617,7 @@ const DataTable = ({
                     
                     {/* Actions Column */}
                     {(onView || onEdit || onDelete) && (
-                      <TableCell align="center">
+                      <TableCell align="center" sx={{ whiteSpace: 'nowrap', py: { xs: 0.75, sm: 1 } }}>
                         {renderActions(row)}
                       </TableCell>
                     )}
@@ -492,13 +637,25 @@ const DataTable = ({
           count={filteredData.length}
           rowsPerPage={rowsPerPage}
           page={page}
+          sx={{
+            borderTop: 1,
+            borderColor: 'divider',
+            '& .MuiTablePagination-toolbar': {
+              flexWrap: 'wrap',
+              justifyContent: 'flex-end',
+              gap: 1,
+              px: { xs: 1, sm: 2 },
+            },
+            '& .MuiTablePagination-selectLabel, & .MuiTablePagination-displayedRows': {
+              fontSize: { xs: '0.8rem', sm: '0.875rem' },
+            },
+          }}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
-          sx={{ borderTop: 1, borderColor: 'divider' }}
         />
       )}
     </Paper>
   );
 };
 
-export default DataTable;
+export default React.memo(DataTable);

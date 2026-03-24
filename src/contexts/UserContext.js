@@ -1,5 +1,6 @@
-import React, { createContext, useState, useContext, useCallback } from 'react';
+import React, { createContext, useState, useContext, useCallback, useRef } from 'react';
 import { cacheManager, generateCacheKey } from '../api/utils';
+import { devError } from '../utils/devLogger';
 
 // Create context
 const UserContext = createContext(null);
@@ -18,6 +19,7 @@ export const UserProvider = ({ children }) => {
   const [users, setUsers] = useState([]);
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(false);
+  const pendingRequestsRef = useRef(new Map());
   
   // ============== CACHE MANAGEMENT ==============
   
@@ -29,32 +31,49 @@ export const UserProvider = ({ children }) => {
    * @returns {Promise<any>} Data
    */
   const getCachedData = useCallback(async (key, fetchFn, options = {}) => {
-    const { forceRefresh = false, ttl } = options;
+    const { forceRefresh = false, ttl, preserveShape = false } = options;
     
     if (!forceRefresh && cacheManager.has(key)) {
       const cached = cacheManager.get(key);
       // Ensure we return an array for list data
       return cached || [];
     }
-    
-    try {
-      const response = await fetchFn();
-      // Extract data from response based on common patterns
-      let data = response;
-      if (response?.data?.data) {
-        data = response.data.data;
-      } else if (response?.data) {
-        data = response.data;
-      }
-      
-      // Ensure we store an array
-      const processedData = Array.isArray(data) ? data : (data ? [data] : []);
-      cacheManager.set(key, processedData, ttl);
-      return processedData;
-    } catch (error) {
-      console.error(`Error fetching data for key ${key}:`, error);
-      return []; // Return empty array on error
+
+    if (pendingRequestsRef.current.has(key)) {
+      return pendingRequestsRef.current.get(key);
     }
+    
+    const requestPromise = (async () => {
+      try {
+        const response = await fetchFn();
+        let data = response;
+
+        if (response?.data?.data) {
+          data = response.data.data;
+        } else if (response?.data) {
+          data = response.data;
+        }
+        
+        const processedData = preserveShape
+          ? (data ?? null)
+          : (Array.isArray(data) ? data : (data ? [data] : []));
+        cacheManager.set(key, processedData, ttl);
+        return processedData;
+      } catch (error) {
+        devError(`Error fetching data for key ${key}:`, error);
+
+        if (cacheManager.has(key)) {
+          return cacheManager.get(key) || [];
+        }
+
+        return [];
+      } finally {
+        pendingRequestsRef.current.delete(key);
+      }
+    })();
+
+    pendingRequestsRef.current.set(key, requestPromise);
+    return requestPromise;
   }, []);
 
   /**

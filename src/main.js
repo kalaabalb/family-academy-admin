@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import App from './App';
 import theme from './theme';
 import './App.css';
+import { devError } from './utils/devLogger';
 
 // Error Boundary Component
 class ErrorBoundary extends React.Component {
@@ -18,7 +19,7 @@ class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('Application Error:', error, errorInfo);
+    devError('Application Error:', error, errorInfo);
     this.setState({ error, errorInfo });
   }
 
@@ -85,12 +86,10 @@ class ErrorBoundary extends React.Component {
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
 root.render(
-  <React.StrictMode>
-    <ThemeProvider theme={theme}>
-      <CssBaseline />
-      <ErrorBoundary>
-        <App />
-      </ErrorBoundary>
-    </ThemeProvider>
-  </React.StrictMode>
+  <ThemeProvider theme={theme}>
+    <CssBaseline />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
+  </ThemeProvider>
 );

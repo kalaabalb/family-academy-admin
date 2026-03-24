@@ -7,6 +7,15 @@ import categoriesApi from '../../api/categories';
 import teachersApi from '../../api/teachers';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import {
+  renderCountChip,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableId,
+} from '../common/tableFormatters';
 import {
   Box,
   Paper,
@@ -47,6 +56,7 @@ import {
   Assignment,
   Search,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
 
 const CourseManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
@@ -116,7 +126,7 @@ const CourseManager = () => {
       }
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load data');
       showError('Failed to load courses');
     } finally {
@@ -265,7 +275,7 @@ const CourseManager = () => {
       await fetchData(true);
       
     } catch (err) {
-      console.error('Failed to save course:', err);
+      devError('Failed to save course:', err);
       showError(err.response?.data?.message || 'Failed to save course');
     } finally {
       setActionLoading(false);
@@ -302,7 +312,7 @@ const CourseManager = () => {
       await fetchData(true);
       
     } catch (err) {
-      console.error('Failed to assign teachers:', err);
+      devError('Failed to assign teachers:', err);
       showError(err.response?.data?.message || 'Failed to assign teachers');
     } finally {
       setActionLoading(false);
@@ -359,7 +369,7 @@ const CourseManager = () => {
       setSelectedCourse(null);
       
     } catch (err) {
-      console.error('Failed to delete course:', err);
+      devError('Failed to delete course:', err);
       showError(err.response?.data?.message || 'Failed to delete course');
     } finally {
       setActionLoading(false);
@@ -375,91 +385,44 @@ const CourseManager = () => {
       field: 'id',
       headerName: 'ID',
       width: 70,
-      render: (value) => (
-        <Typography variant="body2" color="text.secondary">
-          #{value}
-        </Typography>
-      ),
+      render: (value) => renderTableId(value),
     },
     {
       field: 'name',
-      headerName: 'Course Name',
+      headerName: 'Name',
       flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="medium">
-            {value}
-          </Typography>
-          {row.description && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              {row.description.substring(0, 60)}...
-            </Typography>
-          )}
-          {isTeacher() && getAssignedCourseIds().includes(row.id) && (
-            <Chip
-              label="Assigned to you"
-              size="small"
-              color="success"
-              variant="outlined"
-              sx={{ mt: 0.5, height: 20 }}
-            />
-          )}
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: value,
+        secondary: row.description ? `${row.description.substring(0, 60)}...` : null,
+        tertiary: isTeacher() && getAssignedCourseIds().includes(row.id) ? 'Assigned To You' : null,
+      }),
     },
     {
       field: 'category_name',
       headerName: 'Category',
       width: 150,
-      render: (value) => (
-        <Chip
-          label={value || 'N/A'}
-          size="small"
-          color="primary"
-          variant="outlined"
-          icon={<CategoryIcon fontSize="small" />}
-        />
-      ),
+      render: (value) => renderTableChip(value || 'N/A', {
+        color: 'primary',
+        icon: <CategoryIcon fontSize="small" />,
+      }),
     },
     {
       field: 'chapter_count',
-      headerName: 'Chapters',
+      headerName: 'Chapter Count',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color={value > 0 ? 'primary' : 'default'}
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderCountChip(value, { color: 'primary' }),
     },
     {
       field: 'exam_count',
-      headerName: 'Exams',
+      headerName: 'Exam Count',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color={value > 0 ? 'secondary' : 'default'}
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderCountChip(value, { color: 'secondary' }),
     },
     {
       field: 'teacher_count',
-      headerName: 'Teachers',
+      headerName: 'Teacher Count',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color={value > 0 ? 'success' : 'default'}
-          variant="outlined"
-          icon={<Person fontSize="small" />}
-        />
-      ),
+      render: (value) => renderCountChip(value, { color: 'success' }),
     },
     {
       field: 'actions',
@@ -532,20 +495,15 @@ const CourseManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            Course Management
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            {isAdmin() 
-              ? 'Create and manage courses under categories'
-              : 'Manage your assigned courses'}
-          </Typography>
-        </Box>
-        
-        <Stack direction="row" spacing={2}>
+      <ManagementPageHeader
+        title="Course Management"
+        subtitle={
+          isAdmin() 
+            ? 'Create and manage courses under categories'
+            : 'Manage your assigned courses'
+        }
+        actions={
+          <>
           <Button
             variant="outlined"
             startIcon={<Refresh />}
@@ -583,8 +541,9 @@ const CourseManager = () => {
               Assign Teachers
             </Button>
           )}
-        </Stack>
-      </Box>
+          </>
+        }
+      />
 
       {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
@@ -599,39 +558,22 @@ const CourseManager = () => {
         </Alert>
       )}
 
-      {/* Search Bar */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search courses by name or description..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search fontSize="small" />
-              </InputAdornment>
-            ),
-            endAdornment: searchQuery && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearchQuery('')}>
-                  <Close />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Paper>
+      <ManagementSearchToolbar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search courses by name or description..."
+      />
 
       {/* Courses Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredCourses}
         loading={loading}
         onRefresh={handleRefresh}
         title={`Courses `}
         rowKey="id"
+        searchable={false}
       />
 
       {/* Add/Edit Course Dialog */}
@@ -660,12 +602,13 @@ const CourseManager = () => {
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Course Name *"
                 name="name"
                 value={formData.name}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, name: value }))}
+                delay={80}
                 required
                 placeholder="Enter course name"
                 disabled={actionLoading}
@@ -693,12 +636,13 @@ const CourseManager = () => {
             </Grid>
 
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Description (Optional)"
                 name="description"
                 value={formData.description}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, description: value }))}
+                delay={80}
                 multiline
                 rows={3}
                 placeholder="Enter course description..."

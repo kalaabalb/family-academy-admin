@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { devError } from '../utils/devLogger';
 
 /**
  * Handle API errors consistently
@@ -7,7 +8,7 @@ import { useState, useCallback, useEffect } from 'react';
  * @returns {Object} Standardized error response
  */
 export const handleApiError = (error, context = 'API request') => {
-  console.error(`❌ ${context} failed:`, error);
+  devError(`${context} failed:`, error);
   
   // Check if it's a custom error with userMessage
   if (error.userMessage) {
@@ -250,7 +251,7 @@ export const copyToClipboard = async (text) => {
     await navigator.clipboard.writeText(text);
     return true;
   } catch (error) {
-    console.error('Failed to copy:', error);
+    devError('Failed to copy:', error);
     return false;
   }
 };
@@ -263,7 +264,7 @@ export const copyToClipboard = async (text) => {
 class CacheManager {
   constructor() {
     this.cache = new Map();
-    this.defaultTTL = 5 * 60 * 1000; // 5 minutes
+    this.defaultTTL = 15 * 60 * 1000; // 15 minutes
   }
 
   /**

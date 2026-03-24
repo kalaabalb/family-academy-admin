@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import usersApi from '../../api/users';
 import schoolsApi from '../../api/schools';
 import categoriesApi from '../../api/categories';
@@ -9,6 +10,17 @@ import subscriptionsApi from '../../api/subscriptions';
 import examResultsApi from '../../api/examResults';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
+import DetailRow from '../common/DetailRow';
+import {
+  renderCountChip,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+  renderTableId,
+} from '../common/tableFormatters';
 import {
   Box,
   Grid,
@@ -96,10 +108,19 @@ import {
   OpenInNew,
 } from '@mui/icons-material';
 import { getRelativeTime } from '../../api/utils';
+import { devError } from '../../utils/devLogger';
+
+const formatStatusLabel = (value) =>
+  value
+    ? String(value)
+        .replace(/_/g, ' ')
+        .replace(/\b\w/g, (char) => char.toUpperCase())
+    : '-';
 
 const UserManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, invalidateCache } = useUsers();
   const theme = useTheme();
   
   // States
@@ -167,16 +188,15 @@ const UserManager = () => {
     try {
       setLoading(true);
       
-      const [usersRes, schoolsRes, categoriesRes] = await Promise.all([
-        usersApi.getAllUsers({ limit: 1000 }),
-        schoolsApi.getAllSchools(),
-        categoriesApi.getAllCategories(),
+      const [usersData, schoolsData, categoriesData] = await Promise.all([
+        getCachedData('users-admin', () => usersApi.getAllUsers({ limit: 1000 }), { ttl: 15 * 60 * 1000 }),
+        getCachedData('schools', () => schoolsApi.getAllSchools(), { ttl: 15 * 60 * 1000 }),
+        getCachedData('categories', () => categoriesApi.getAllCategories(), { ttl: 15 * 60 * 1000 }),
       ]);
       
-      const usersData = usersRes.data.data || [];
       setUsers(usersData);
-      setSchools(schoolsRes.data.data || []);
-      setCategories(categoriesRes.data.data || []);
+      setSchools(schoolsData || []);
+      setCategories(categoriesData || []);
       
       // Calculate stats
       const today = new Date().toDateString();
@@ -208,12 +228,12 @@ const UserManager = () => {
       });
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       showError('Failed to load user data');
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -227,8 +247,6 @@ const UserManager = () => {
       setViewingUserId(userId); // Set which user is being viewed
       setViewModalOpen(true);
       
-      console.log('Loading details for user:', userId);
-      
       const [
         userRes,
         userProgressRes,
@@ -237,15 +255,12 @@ const UserManager = () => {
       ] = await Promise.allSettled([
         usersApi.getUserDetails(userId),
         usersApi.getUserProgress(userId).catch(err => {
-          console.log('Progress API error:', err);
           return { data: { data: {} } };
         }),
         usersApi.getUserStreak(userId).catch(err => {
-          console.log('Streak API error:', err);
           return { data: { data: { history: [] } } };
         }),
         usersApi.getUserAchievements(userId).catch(err => {
-          console.log('Achievements API error:', err);
           return { data: { data: [] } };
         }),
       ]);
@@ -256,25 +271,20 @@ const UserManager = () => {
       let examsData = [];
       
       if (userRes.status === 'fulfilled') {
-        console.log('User details response:', userRes.value.data);
-        
         const responseData = userRes.value.data.data || {};
         
         userData = responseData.user || responseData || {};
         
         if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
           subscriptionsData = responseData.subscriptions;
-          console.log('Found subscriptions in user details:', subscriptionsData);
         }
         
         if (responseData.payments && Array.isArray(responseData.payments)) {
           paymentsData = responseData.payments;
-          console.log('Found payments in user details:', paymentsData);
         }
         
         if (responseData.exams && Array.isArray(responseData.exams)) {
           examsData = responseData.exams;
-          console.log('Found exams in user details:', examsData);
         }
       }
       
@@ -289,8 +299,6 @@ const UserManager = () => {
       };
       
       if (userProgressRes.status === 'fulfilled') {
-        console.log('Progress response raw:', userProgressRes.value.data);
-        
         const progressResponse = userProgressRes.value.data.data || {};
         
         if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
@@ -318,18 +326,15 @@ const UserManager = () => {
           }
         }
         
-        console.log('Processed progress data:', progressData);
       }
       
       let streakData = { history: [] };
       if (userStreakRes.status === 'fulfilled') {
-        console.log('Streak response:', userStreakRes.value.data);
         streakData = userStreakRes.value.data.data || streakData;
       }
       
       let achievementsData = [];
       if (userAchievementsRes.status === 'fulfilled') {
-        console.log('Achievements response:', userAchievementsRes.value.data);
         achievementsData = userAchievementsRes.value.data.data || [];
       }
       
@@ -338,10 +343,8 @@ const UserManager = () => {
           const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
           if (paymentsRes.data && paymentsRes.data.data) {
             paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
-            console.log('Fetched and filtered payments for user:', paymentsData);
           }
         } catch (err) {
-          console.log('Payments fetch failed:', err);
         }
       }
       
@@ -350,14 +353,10 @@ const UserManager = () => {
           const examsRes = await examResultsApi.getExamResultsByUser(userId);
           if (examsRes.data && examsRes.data.data) {
             examsData = examsRes.data.data;
-            console.log('✅ Fetched exam results via new endpoint:', examsData);
           }
         } catch (err) {
-          console.log('Exam fetch failed:', err);
-          
           if (userData.exam_results) {
             examsData = userData.exam_results;
-            console.log('Got exams from user details:', examsData);
           }
         }
       }
@@ -372,7 +371,6 @@ const UserManager = () => {
         achievements: achievementsData,
       };
       
-      console.log('Final user details:', details);
       setUserDetails(details);
       setSelectedUser(userId);
       setTabValue(0);
@@ -382,7 +380,9 @@ const UserManager = () => {
       setProgressPage(0);
       
     } catch (err) {
-      console.error('Failed to load user details:', err);
+      if (process.env.NODE_ENV !== 'production') {
+        devError('Failed to load user details:', err);
+      }
       showError('Failed to load user details');
       setViewModalOpen(false);
     } finally {
@@ -440,7 +440,7 @@ const UserManager = () => {
       showSuccess('User updated successfully');
       
     } catch (err) {
-      console.error('Failed to update user:', err);
+      devError('Failed to update user:', err);
       showError(err.response?.data?.message || 'Failed to update user');
     } finally {
       setActionLoading(false);
@@ -467,7 +467,7 @@ const UserManager = () => {
       
       showSuccess(`User "${selectedUser.username}" deleted successfully`);
     } catch (err) {
-      console.error('Failed to delete user:', err);
+      devError('Failed to delete user:', err);
       showError(err.response?.data?.message || 'Failed to delete user');
     } finally {
       setActionLoading(false);
@@ -532,87 +532,54 @@ const UserManager = () => {
 
   const columns = [
     {
+      field: 'id',
+      headerName: 'ID',
+      width: 70,
+      render: (value) => renderTableId(value),
+    },
+    {
       field: 'username',
-      headerName: 'User',
+      headerName: 'Username',
       flex: 1,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar
-            src={row.profile_image || undefined}
-            sx={{
-              width: 40,
-              height: 40,
-              bgcolor: row.account_status === 'active' ? 'success.main' : 
-                      row.account_status === 'expired' ? 'warning.main' : 'grey.400',
-            }}
-          >
-            {value?.[0]?.toUpperCase()}
-          </Avatar>
-          <Box>
-            <Typography variant="body2" fontWeight="bold">
-              {value}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              ID: {row.id} • Streak: {row.streak_count || 0}
-            </Typography>
-          </Box>
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: value,
+        secondary: row.email || row.phone || 'No contact details',
+        tertiary: `Streak: ${row.streak_count || 0}`,
+      }),
     },
     {
       field: 'email',
       headerName: 'Contact',
       width: 200,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2">{value || '-'}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.phone || 'No phone'}
-          </Typography>
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: value || '-',
+        secondary: row.phone || 'No phone',
+        primaryWeight: 400,
+      }),
     },
     {
       field: 'school_name',
       headerName: 'School',
       width: 150,
-      render: (value) => (
-        <Chip
-          label={value || 'No school'}
-          size="small"
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderTableChip(value || 'No School', { color: 'primary' }),
     },
     {
       field: 'account_status',
       headerName: 'Status',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value}
-          size="small"
-          color={
-            value === 'active' ? 'success' :
-            value === 'expired' ? 'warning' : 'default'
-          }
-        />
-      ),
+      render: (value) => renderTableChip(formatStatusLabel(value), {
+        color: value === 'active' ? 'success' : value === 'expired' ? 'warning' : 'default',
+      }),
     },
     {
       field: 'streak_count',
       headerName: 'Streak',
       width: 80,
-      render: (value) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <LocalFireDepartment sx={{ fontSize: 16, color: value > 0 ? 'warning.main' : 'text.disabled' }} />
-          <Typography variant="body2">{value || 0}</Typography>
-        </Box>
-      ),
+      render: (value) => renderCountChip(value, { color: 'warning' }),
     },
     {
       field: 'total_study_time',
-      headerName: 'Study Time',
+      headerName: 'Study Hours',
       width: 100,
       render: (value) => (
         <Tooltip title={`${Math.round(value / 60)} hours studied`}>
@@ -625,28 +592,17 @@ const UserManager = () => {
     },
     {
       field: 'parent_linked',
-      headerName: 'Parent',
+      headerName: 'Parent Link',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value ? 'Linked' : 'Not Linked'}
-          size="small"
-          color={value ? 'info' : 'default'}
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderTableChip(value ? 'Linked' : 'Not Linked', {
+        color: value ? 'info' : 'default',
+      }),
     },
     {
       field: 'created_at',
-      headerName: 'Joined',
+      headerName: 'Created At',
       width: 120,
-      render: (value) => (
-        <Tooltip title={new Date(value).toLocaleString()}>
-          <Typography variant="caption">
-            {new Date(value).toLocaleDateString()}
-          </Typography>
-        </Tooltip>
-      ),
+      render: (value) => renderTableDate(value, { dateOnly: true }),
     },
     {
       field: 'actions',
@@ -735,80 +691,51 @@ const UserManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom color="primary">
-            User Management
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Manage student accounts, subscriptions, payments, and track progress
-          </Typography>
-        </Box>
-        
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<FilterList />}
-            onClick={() => setShowFilters(!showFilters)}
-            sx={{ borderRadius: 2 }}
-          >
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={fetchData}
-            disabled={loading}
-            sx={{ borderRadius: 2 }}
-          >
-            Refresh
-          </Button>
-        </Stack>
-      </Box>
+      <ManagementPageHeader
+        title="User Management"
+        subtitle="Manage student accounts, subscription status, linked parents, and learning progress."
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<FilterList />}
+              onClick={() => setShowFilters(!showFilters)}
+              sx={{ borderRadius: 2 }}
+            >
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={fetchData}
+              disabled={loading}
+              sx={{ borderRadius: 2 }}
+            >
+              Refresh
+            </Button>
+          </>
+        }
+      />
 
-      {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      <ManagementSearchToolbar
+        value={filters.search}
+        onChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+        placeholder="Search users by username, email, phone, or school..."
+      />
 
-      {/* Stats Cards */}
-      <Grid container spacing={2} sx={{ mb: 3 }}>
-        {[
-          { label: 'Total Users', value: stats.total, icon: <Person />, color: 'primary' },
-          { label: 'Active', value: stats.active, icon: <CheckCircle />, color: 'success' },
-          { label: 'Unpaid', value: stats.unpaid, icon: <HourglassEmpty />, color: 'warning' },
-          { label: 'Expired', value: stats.expired, icon: <Warning />, color: 'error' },
-          { label: 'Parents Linked', value: stats.withParents, icon: <CheckCircle />, color: 'info' },
-          { label: 'Avg Streak', value: stats.avgStreak, icon: <LocalFireDepartment />, color: 'secondary' },
-        ].map((stat, index) => (
-          <Grid item xs={12} sm={6} md={4} lg={2} key={index}>
-            <Grow in timeout={300 + index * 100}>
-              <Card sx={{ borderRadius: 2 }}>
-                <CardContent>
-                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                    <Box
-                      sx={{
-                        p: 1,
-                        mr: 1,
-                        borderRadius: 1,
-                        bgcolor: `${stat.color}.light`,
-                        color: `${stat.color}.main`,
-                      }}
-                    >
-                      {stat.icon}
-                    </Box>
-                    <Typography variant="body2" color="text.secondary">
-                      {stat.label}
-                    </Typography>
-                  </Box>
-                  <Typography variant="h4" fontWeight="bold" color={`${stat.color}.main`}>
-                    {stat.value}
-                  </Typography>
-                </CardContent>
-              </Card>
-            </Grow>
-          </Grid>
-        ))}
-      </Grid>
+      {/* Loading Indicator (only show the bar once we already have data loaded) */}
+      {loading && users.length > 0 && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+
+      <SummaryStrip
+        items={[
+          { label: 'Total Users', value: stats.total, color: 'primary' },
+          { label: 'Active', value: stats.active, color: 'success' },
+          { label: 'Unpaid', value: stats.unpaid, color: 'warning' },
+          { label: 'Expired', value: stats.expired, color: 'error' },
+          { label: 'Parents Linked', value: stats.withParents, color: 'info' },
+          { label: 'Average Streak', value: stats.avgStreak, color: 'secondary' },
+        ]}
+      />
 
       {/* Filters Section */}
       {showFilters && (
@@ -818,25 +745,6 @@ const UserManager = () => {
           </Typography>
           
           <Grid container spacing={2}>
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                label="Search"
-                name="search"
-                value={filters.search}
-                onChange={handleFilterChange}
-                size="small"
-                placeholder="Search by username, email, phone..."
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Person fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            
             <Grid item xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>School</InputLabel>
@@ -920,6 +828,7 @@ const UserManager = () => {
 
       {/* Users Table - REMOVED onRowClick */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredUsers}
         loading={loading}
@@ -945,12 +854,12 @@ const UserManager = () => {
           </Box>
         ) : userDetails && (
           <>
-            <DialogTitle sx={{ m: 0, p: 3, pb: 2, bgcolor: 'primary.main', color: 'white' }}>
+            <DialogTitle sx={{ m: 0, p: 3, pb: 2, borderBottom: 1, borderColor: 'divider' }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                   <Avatar
                     src={userDetails.user.profile_image}
-                    sx={{ width: 56, height: 56, border: '2px solid white' }}
+                    sx={{ width: 56, height: 56 }}
                   >
                     {userDetails.user.username?.[0]?.toUpperCase()}
                   </Avatar>
@@ -958,7 +867,7 @@ const UserManager = () => {
                     <Typography variant="h5" fontWeight="bold">
                       {userDetails.user.username}
                     </Typography>
-                    <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                    <Typography variant="body2" color="text.secondary">
                       ID: {userDetails.user.id} • Joined: {new Date(userDetails.user.created_at).toLocaleDateString()}
                     </Typography>
                   </Box>
@@ -966,12 +875,12 @@ const UserManager = () => {
                 <Box>
                   <IconButton
                     onClick={() => openEditModal(userDetails.user)}
-                    sx={{ color: 'white', mr: 1 }}
+                    sx={{ mr: 1 }}
                     disabled={actionLoading}
                   >
                     <Edit />
                   </IconButton>
-                  <IconButton onClick={() => setViewModalOpen(false)} sx={{ color: 'white' }}>
+                  <IconButton onClick={() => setViewModalOpen(false)}>
                     <Close />
                   </IconButton>
                 </Box>
@@ -999,7 +908,7 @@ const UserManager = () => {
                 {tabValue === 0 && (
                   <Grid container spacing={3}>
                     <Grid item xs={12} md={4}>
-                      <Card sx={{ p: 3, textAlign: 'center' }}>
+                      <Card variant="outlined" sx={{ p: 3, textAlign: 'center', borderRadius: 2.5 }}>
                         <Avatar
                           src={userDetails.user.profile_image}
                           sx={{ width: 120, height: 120, mx: 'auto', mb: 2, fontSize: 48 }}
@@ -1009,14 +918,11 @@ const UserManager = () => {
                         <Typography variant="h5" fontWeight="bold" gutterBottom>
                           {userDetails.user.username}
                         </Typography>
-                        <Chip
-                          label={userDetails.user.account_status}
-                          color={
+                        {renderTableChip(formatStatusLabel(userDetails.user.account_status), {
+                          color:
                             userDetails.user.account_status === 'active' ? 'success' :
-                            userDetails.user.account_status === 'expired' ? 'warning' : 'default'
-                          }
-                          sx={{ mb: 2 }}
-                        />
+                              userDetails.user.account_status === 'expired' ? 'warning' : 'default',
+                        })}
                         
                         <Divider sx={{ my: 2 }} />
                         
@@ -1051,51 +957,48 @@ const UserManager = () => {
                     </Grid>
 
                     <Grid item xs={12} md={8}>
-                      <Card sx={{ p: 3 }}>
+                      <Card variant="outlined" sx={{ p: 3, borderRadius: 2.5 }}>
                         <Typography variant="h6" fontWeight="bold" gutterBottom>
                           User Information
                         </Typography>
                         
                         <Grid container spacing={2}>
                           <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary">Email</Typography>
-                            <Typography variant="body1">{userDetails.user.email || 'Not provided'}</Typography>
+                            <DetailRow label="Email" value={userDetails.user.email || 'Not provided'} align="flex-start" />
                           </Grid>
                           <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary">Phone</Typography>
-                            <Typography variant="body1">{userDetails.user.phone || 'Not provided'}</Typography>
+                            <DetailRow label="Phone" value={userDetails.user.phone || 'Not provided'} align="flex-start" />
                           </Grid>
                           <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary">School</Typography>
-                            <Typography variant="body1">{userDetails.user.school_name || 'Not assigned'}</Typography>
+                            <DetailRow label="School" value={userDetails.user.school_name || 'Not assigned'} align="flex-start" />
                           </Grid>
                           <Grid item xs={12} sm={6}>
-                            <Typography variant="body2" color="text.secondary">Parent Linked</Typography>
-                            <Typography variant="body1">{userDetails.user.parent_linked ? 'Yes' : 'No'}</Typography>
+                            <DetailRow label="Parent Linked" value={userDetails.user.parent_linked ? 'Yes' : 'No'} align="flex-start" />
                           </Grid>
                           <Grid item xs={12}>
                             <Typography variant="body2" color="text.secondary">Admin Notes</Typography>
-                            <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                            <Paper
+                              variant="outlined"
+                              sx={{
+                                p: 2,
+                                bgcolor: 'background.paper',
+                                borderColor: 'divider',
+                                color: 'text.primary',
+                              }}
+                            >
                               {userDetails.user.admin_notes || 'No notes'}
                             </Paper>
                           </Grid>
                         </Grid>
                       </Card>
                       
-                      <Grid container spacing={2} sx={{ mt: 2 }}>
-                        <Grid item xs={12} md={6}>
-                          <Card sx={{ p: 2, bgcolor: 'success.light', color: 'white' }}>
-                            <Typography variant="subtitle2">Active Subscriptions</Typography>
-                            <Typography variant="h4">{userDetails.subscriptions?.filter(s => s.status === 'active').length || 0}</Typography>
-                          </Card>
-                        </Grid>
-                        <Grid item xs={12} md={6}>
-                          <Card sx={{ p: 2, bgcolor: 'info.light', color: 'white' }}>
-                            <Typography variant="subtitle2">Total Payments</Typography>
-                            <Typography variant="h4">{userDetails.payments?.length || 0}</Typography>
-                          </Card>
-                        </Grid>
-                      </Grid>
+                      <SummaryStrip
+                        sx={{ mt: 2, mb: 0 }}
+                        items={[
+                          { label: 'Active Subscriptions', value: userDetails.subscriptions?.filter(s => s.status === 'active').length || 0, color: 'success' },
+                          { label: 'Total Payments', value: userDetails.payments?.length || 0, color: 'info' },
+                        ]}
+                      />
                     </Grid>
                   </Grid>
                 )}
@@ -1121,48 +1024,34 @@ const UserManager = () => {
                       </Paper>
                     ) : (
                       <>
-                        <Grid container spacing={2} sx={{ mb: 3 }}>
-                          <Grid item xs={12} md={3}>
-                            <Card sx={{ p: 2, textAlign: 'center' }}>
-                              <Book sx={{ color: 'primary.main', fontSize: 32, mb: 1 }} />
-                              <Typography variant="h5" fontWeight="bold">
-                                {userDetails.progress.stats?.total_chapters_started || 
-                                 userDetails.progress.chapters?.length || 0}
-                              </Typography>
-                              <Typography variant="caption">Chapters Started</Typography>
-                            </Card>
-                          </Grid>
-                          <Grid item xs={12} md={3}>
-                            <Card sx={{ p: 2, textAlign: 'center' }}>
-                              <CheckCircle sx={{ color: 'success.main', fontSize: 32, mb: 1 }} />
-                              <Typography variant="h5" fontWeight="bold">
-                                {userDetails.progress.stats?.chapters_completed || 
-                                 userDetails.progress.chapters?.filter(c => c.completed).length || 0}
-                              </Typography>
-                              <Typography variant="caption">Completed</Typography>
-                            </Card>
-                          </Grid>
-                          <Grid item xs={12} md={3}>
-                            <Card sx={{ p: 2, textAlign: 'center' }}>
-                              <Quiz sx={{ color: 'warning.main', fontSize: 32, mb: 1 }} />
-                              <Typography variant="h5" fontWeight="bold">
-                                {userDetails.progress.stats?.total_questions_attempted || 
-                                 userDetails.progress.chapters?.reduce((sum, c) => sum + (c.questions_attempted || 0), 0) || 0}
-                              </Typography>
-                              <Typography variant="caption">Questions</Typography>
-                            </Card>
-                          </Grid>
-                          <Grid item xs={12} md={3}>
-                            <Card sx={{ p: 2, textAlign: 'center' }}>
-                              <Timer sx={{ color: 'info.main', fontSize: 32, mb: 1 }} />
-                              <Typography variant="h5" fontWeight="bold">
-                                {userDetails.progress.stats?.study_time_hours || 
-                                 Math.round((userDetails.user.total_study_time || 0) / 60)}h
-                              </Typography>
-                              <Typography variant="caption">Study Time</Typography>
-                            </Card>
-                          </Grid>
-                        </Grid>
+                        <SummaryStrip
+                          items={[
+                            {
+                              label: 'Chapters Started',
+                              value: userDetails.progress.stats?.total_chapters_started ||
+                                userDetails.progress.chapters?.length || 0,
+                              color: 'primary',
+                            },
+                            {
+                              label: 'Completed',
+                              value: userDetails.progress.stats?.chapters_completed ||
+                                userDetails.progress.chapters?.filter(c => c.completed).length || 0,
+                              color: 'success',
+                            },
+                            {
+                              label: 'Questions',
+                              value: userDetails.progress.stats?.total_questions_attempted ||
+                                userDetails.progress.chapters?.reduce((sum, c) => sum + (c.questions_attempted || 0), 0) || 0,
+                              color: 'warning',
+                            },
+                            {
+                              label: 'Study Time',
+                              value: `${userDetails.progress.stats?.study_time_hours ||
+                                Math.round((userDetails.user.total_study_time || 0) / 60)}h`,
+                              color: 'info',
+                            },
+                          ]}
+                        />
 
                         <Typography variant="h6" fontWeight="bold" gutterBottom sx={{ mt: 3 }}>
                           Chapter Progress
@@ -1177,11 +1066,11 @@ const UserManager = () => {
                               const accuracy = questionsAttempted > 0 ? (questionsCorrect / questionsAttempted) * 100 : 0;
                               
                               return (
-                                <Card key={chapter.id || chapter.chapter_id || Math.random()} sx={{ mb: 2, overflow: 'hidden' }}>
+                                <Card key={chapter.id || chapter.chapter_id || Math.random()} variant="outlined" sx={{ mb: 2, overflow: 'hidden', borderRadius: 2.5 }}>
                                   <ListItem
                                     button
                                     onClick={() => toggleChapterExpand(chapter.id || chapter.chapter_id)}
-                                    sx={{ bgcolor: 'grey.50' }}
+                                    sx={{ bgcolor: 'background.paper' }}
                                   >
                                     <ListItemIcon>
                                       {chapter.completed ? 
@@ -1285,23 +1174,23 @@ const UserManager = () => {
                   <Box>
                     <Grid container spacing={3}>
                       <Grid item xs={12} md={4}>
-                        <Card sx={{ p: 3, textAlign: 'center', bgcolor: 'warning.50' }}>
-                          <LocalFireDepartment sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
-                          <Typography variant="h2" fontWeight="bold" color="warning.main">
-                            {userDetails.user.streak_count || 0}
-                          </Typography>
-                          <Typography variant="h6" color="text.secondary" gutterBottom>
-                            Current Streak
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            Last active: {userDetails.user.last_streak_date 
-                              ? new Date(userDetails.user.last_streak_date).toLocaleDateString() 
-                              : 'Never'}
-                          </Typography>
-                        </Card>
+                        <Card variant="outlined" sx={{ p: 3, textAlign: 'center', borderRadius: 2.5 }}>
+                        <LocalFireDepartment sx={{ fontSize: 64, color: 'warning.main', mb: 2 }} />
+                        <Typography variant="h2" fontWeight="bold" color="warning.main">
+                          {userDetails.user.streak_count || 0}
+                        </Typography>
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          Current Streak
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          Last active: {userDetails.user.last_streak_date 
+                            ? new Date(userDetails.user.last_streak_date).toLocaleDateString() 
+                            : 'Never'}
+                        </Typography>
+                      </Card>
                       </Grid>
                       <Grid item xs={12} md={8}>
-                        <Card sx={{ p: 3 }}>
+                        <Card variant="outlined" sx={{ p: 3, borderRadius: 2.5 }}>
                           <Typography variant="h6" fontWeight="bold" gutterBottom>
                             Streak Calendar (Last 30 Days)
                           </Typography>
@@ -1313,11 +1202,15 @@ const UserManager = () => {
                                     width: 36,
                                     height: 36,
                                     borderRadius: 1,
-                                    bgcolor: day.hasStreak ? 'warning.main' : 'grey.200',
+                                    bgcolor: day.hasStreak
+                                      ? 'warning.main'
+                                      : theme.palette.mode === 'dark'
+                                        ? 'background.paper'
+                                        : 'grey.200',
                                     display: 'flex',
                                     alignItems: 'center',
                                     justifyContent: 'center',
-                                    color: day.hasStreak ? 'white' : 'text.disabled',
+                                    color: day.hasStreak ? 'common.white' : 'text.secondary',
                                     fontSize: 12,
                                     fontWeight: 'bold',
                                     cursor: 'pointer',
@@ -1457,38 +1350,27 @@ const UserManager = () => {
                       </Paper>
                     ) : (
                       <>
-                        <Grid container spacing={2} sx={{ mb: 3 }}>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ p: 2 }}>
-                              <Typography variant="body2" color="text.secondary">Total Payments</Typography>
-                              <Typography variant="h5" fontWeight="bold">
-                                {userDetails.payments.length}
-                              </Typography>
-                            </Card>
-                          </Grid>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ p: 2 }}>
-                              <Typography variant="body2" color="text.secondary">Verified Amount</Typography>
-                              <Typography variant="h5" fontWeight="bold" color="success.main">
-                                Birr {userDetails.payments
-                                  .filter(p => p.status === 'verified')
-                                  .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
-                                  .toFixed(2)}
-                              </Typography>
-                            </Card>
-                          </Grid>
-                          <Grid item xs={12} md={4}>
-                            <Card sx={{ p: 2 }}>
-                              <Typography variant="body2" color="text.secondary">Pending Amount</Typography>
-                              <Typography variant="h5" fontWeight="bold" color="warning.main">
-                                Birr {userDetails.payments
-                                  .filter(p => p.status === 'pending')
-                                  .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
-                                  .toFixed(2)}
-                              </Typography>
-                            </Card>
-                          </Grid>
-                        </Grid>
+                        <SummaryStrip
+                          items={[
+                            { label: 'Total Payments', value: userDetails.payments.length, color: 'primary' },
+                            {
+                              label: 'Verified Amount',
+                              value: `Birr ${userDetails.payments
+                                .filter(p => p.status === 'verified')
+                                .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
+                                .toFixed(2)}`,
+                              color: 'success',
+                            },
+                            {
+                              label: 'Pending Amount',
+                              value: `Birr ${userDetails.payments
+                                .filter(p => p.status === 'pending')
+                                .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0)
+                                .toFixed(2)}`,
+                              color: 'warning',
+                            },
+                          ]}
+                        />
 
                         <TableContainer component={Paper}>
                           <Table size="small">
@@ -1508,7 +1390,7 @@ const UserManager = () => {
                                 .slice(paymentsPage * rowsPerPage, paymentsPage * rowsPerPage + rowsPerPage)
                                 .map((payment) => (
                                   <TableRow key={payment.id} hover>
-                                    <TableCell>#{payment.id}</TableCell>
+                                    <TableCell>{payment.id}</TableCell>
                                     <TableCell>{new Date(payment.created_at).toLocaleDateString()}</TableCell>
                                     <TableCell>{payment.category_name}</TableCell>
                                     <TableCell>
@@ -1661,7 +1543,7 @@ const UserManager = () => {
                       <Grid container spacing={2}>
                         {userDetails.achievements.map((achievement, index) => (
                           <Grid item xs={12} md={6} key={index}>
-                            <Card sx={{ display: 'flex', p: 2 }}>
+                            <Card variant="outlined" sx={{ display: 'flex', p: 2, borderRadius: 2.5 }}>
                               <Box
                                 sx={{
                                   width: 60,

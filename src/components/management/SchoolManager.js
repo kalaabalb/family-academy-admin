@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Box,
   Paper,
@@ -27,6 +27,15 @@ import { useUsers } from '../../contexts/UserContext';
 import schoolsApi from '../../api/schools';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import {
+  renderPrimaryCell,
+  renderTableDate,
+  renderTableId,
+} from '../common/tableFormatters';
+import { devError } from '../../utils/devLogger';
 
 const SchoolManager = () => {
   const { isAdmin } = useAuth();
@@ -40,6 +49,7 @@ const SchoolManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedSchool, setSelectedSchool] = useState(null);
   const [formData, setFormData] = useState({ name: '' });
+  const [searchQuery, setSearchQuery] = useState('');
 
   // Cache key
   const schoolsCacheKey = 'schools';
@@ -56,7 +66,7 @@ const SchoolManager = () => {
       
       setSchools(data || []);
     } catch (error) {
-      console.error('Failed to fetch schools:', error);
+      devError('Failed to fetch schools:', error);
       showError('Failed to load schools');
     } finally {
       setLoading(false);
@@ -103,7 +113,7 @@ const SchoolManager = () => {
       resetForm();
       await fetchSchools(true); // Force refresh
     } catch (error) {
-      console.error('Failed to save school:', error);
+      devError('Failed to save school:', error);
       showError(error.response?.data?.message || 'Failed to save school');
     } finally {
       setLoading(false);
@@ -136,7 +146,7 @@ const SchoolManager = () => {
       setDeleteConfirmOpen(false);
       setSelectedSchool(null);
     } catch (error) {
-      console.error('Failed to delete school:', error);
+      devError('Failed to delete school:', error);
       showError(error.response?.data?.message || 'Failed to delete school');
     } finally {
       setLoading(false);
@@ -149,31 +159,38 @@ const SchoolManager = () => {
 
   const columns = [
     {
+      field: 'id',
+      headerName: 'ID',
+      width: 70,
+      render: (value) => renderTableId(value),
+    },
+    {
       field: 'name',
-      headerName: 'School Name',
+      headerName: 'Name',
       flex: 1,
-      render: (value) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <SchoolIcon sx={{ color: 'primary.main', fontSize: 20 }} />
-          <Typography variant="body2" fontWeight="medium">
-            {value}
-          </Typography>
-        </Box>
-      ),
+      render: (value) => renderPrimaryCell({ primary: value }),
     },
     {
       field: 'created_at',
-      headerName: 'Created',
-      type: 'datetime',
+      headerName: 'Created At',
       width: 150,
+      render: (value) => renderTableDate(value),
     },
     {
       field: 'updated_at',
-      headerName: 'Last Updated',
-      type: 'datetime',
+      headerName: 'Updated At',
       width: 150,
+      render: (value) => renderTableDate(value),
     },
   ];
+
+  const filteredSchools = useMemo(() => {
+    if (!searchQuery) return schools;
+    const query = searchQuery.toLowerCase();
+    return schools.filter((school) =>
+      school.name?.toLowerCase().includes(query)
+    );
+  }, [schools, searchQuery]);
 
   if (!isAdmin()) {
     return (
@@ -187,18 +204,11 @@ const SchoolManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            School Management
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Manage schools for student registration
-          </Typography>
-        </Box>
-        
-        <Box sx={{ display: 'flex', gap: 2 }}>
+      <ManagementPageHeader
+        title="School Management"
+        subtitle="Manage schools for student registration"
+        actions={
+          <>
           <Button
             variant="outlined"
             startIcon={<Refresh />}
@@ -220,22 +230,31 @@ const SchoolManager = () => {
           >
             Add School
           </Button>
-        </Box>
-      </Box>
+          </>
+        }
+      />
 
       {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
+      <ManagementSearchToolbar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search schools by name..."
+      />
+
       {/* Schools Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
-        data={schools}
+        data={filteredSchools}
         loading={loading}
         onRefresh={handleRefresh}
         onEdit={handleEdit}
         onDelete={handleDelete}
         title="Schools"
         rowKey="id"
+        searchable={false}
       />
 
       {/* Add/Edit School Dialog */}
@@ -247,13 +266,13 @@ const SchoolManager = () => {
         PaperProps={{ sx: { borderRadius: 2 } }}
       >
         <DialogTitle sx={{ p: 3, pb: 2 }}>
-          <Typography variant="h6" fontWeight="bold">
+          <Typography component="div" variant="h6" fontWeight="bold">
             {editingId ? 'Edit School' : 'Add New School'}
           </Typography>
         </DialogTitle>
         
         <DialogContent sx={{ p: 3 }}>
-          <TextField
+          <FastTextField
             fullWidth
             label="School Name *"
             name="name"

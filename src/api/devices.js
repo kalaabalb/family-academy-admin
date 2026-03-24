@@ -11,7 +11,7 @@ const devicesApi = {
   
   // Force remove device
   forceRemoveDevice: (id, data) => 
-    axiosInstance.delete(`/devices/${id}/force`, { data }),
+    axiosInstance.delete(`/devices/${id}`, { data }),
   
   // Get user devices
   getUserDevices: (userId) => 

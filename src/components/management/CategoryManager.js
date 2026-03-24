@@ -6,6 +6,16 @@ import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import {
+  renderCountChip,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+  renderTableId,
+} from '../common/tableFormatters';
 import {
   Box,
   Typography,
@@ -46,6 +56,7 @@ import {
   Save,
   Search,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
 
 const CategoryManager = () => {
   const { isAdmin } = useAuth();
@@ -114,7 +125,7 @@ const CategoryManager = () => {
       setCategories(enrichedCategories);
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load categories');
       showError('Failed to load categories');
     } finally {
@@ -166,7 +177,7 @@ const CategoryManager = () => {
         showError(response.data?.message || 'Failed to upload image');
       }
     } catch (err) {
-      console.error('Image upload error:', err);
+      devError('Image upload error:', err);
       showError(err.response?.data?.message || 'Failed to upload image');
     } finally {
       setUploadingImage(false);
@@ -231,7 +242,7 @@ const CategoryManager = () => {
       await fetchData(true); // Force refresh
       
     } catch (err) {
-      console.error('Failed to save category:', err);
+      devError('Failed to save category:', err);
       showError(err.response?.data?.message || 'Failed to save category');
     } finally {
       setActionLoading(false);
@@ -278,7 +289,7 @@ const CategoryManager = () => {
       setSelectedCategory(null);
       
     } catch (err) {
-      console.error('Failed to delete category:', err);
+      devError('Failed to delete category:', err);
       showError(err.response?.data?.message || 'Failed to delete category');
     } finally {
       setActionLoading(false);
@@ -309,11 +320,7 @@ const CategoryManager = () => {
       field: 'id',
       headerName: 'ID',
       width: 70,
-      render: (value) => (
-        <Typography variant="body2" color="text.secondary" fontWeight="medium">
-          #{value}
-        </Typography>
-      ),
+      render: (value) => renderTableId(value),
     },
     {
       field: 'image_url',
@@ -331,34 +338,21 @@ const CategoryManager = () => {
     },
     {
       field: 'name',
-      headerName: 'Category Name',
+      headerName: 'Name',
       flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="medium">
-            {value}
-          </Typography>
-          {row.description && (
-            <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-              {row.description.substring(0, 50)}...
-            </Typography>
-          )}
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: value,
+        secondary: row.description ? `${row.description.substring(0, 50)}...` : null,
+      }),
     },
     {
       field: 'status',
       headerName: 'Status',
       width: 120,
-      render: (value) => (
-        <Chip
-          label={value === 'active' ? 'Active' : 'Coming Soon'}
-          size="small"
-          color={value === 'active' ? 'success' : 'warning'}
-          icon={value === 'active' ? <CheckCircle fontSize="small" /> : <Pending fontSize="small" />}
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderTableChip(value === 'active' ? 'Active' : 'Coming Soon', {
+        color: value === 'active' ? 'success' : 'warning',
+        icon: value === 'active' ? <CheckCircle fontSize="small" /> : <Pending fontSize="small" />,
+      }),
     },
     {
       field: 'price',
@@ -375,41 +369,24 @@ const CategoryManager = () => {
     },
     {
       field: 'billing_cycle',
-      headerName: 'Billing',
+      headerName: 'Billing Cycle',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value ? value.charAt(0).toUpperCase() + value.slice(1) : 'Monthly'}
-          size="small"
-          color="info"
-          variant="outlined"
-          icon={<AccessTime fontSize="small" />}
-        />
-      ),
+      render: (value) => renderTableChip(value || 'Monthly', {
+        color: 'info',
+        icon: <AccessTime fontSize="small" />,
+      }),
     },
     {
       field: 'course_count',
       headerName: 'Courses',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color={value > 0 ? 'primary' : 'default'}
-          variant="outlined"
-          icon={<Book fontSize="small" />}
-        />
-      ),
+      render: (value) => renderCountChip(value, { color: 'primary' }),
     },
     {
       field: 'created_at',
-      headerName: 'Created',
+      headerName: 'Created At',
       width: 120,
-      render: (value) => (
-        <Typography variant="caption" color="text.secondary">
-          {value ? new Date(value).toLocaleDateString() : '-'}
-        </Typography>
-      ),
+      render: (value) => renderTableDate(value, { dateOnly: true }),
     },
     {
       field: 'actions',
@@ -467,17 +444,11 @@ const CategoryManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            Category Management
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Create and manage course categories (Grade Levels)
-          </Typography>
-        </Box>
-        <Stack direction="row" spacing={2}>
+      <ManagementPageHeader
+        title="Category Management"
+        subtitle="Create and manage course categories (Grade levels)"
+        actions={
+          <>
           <Button
             variant="outlined"
             startIcon={<Refresh />}
@@ -499,8 +470,9 @@ const CategoryManager = () => {
           >
             Add Category
           </Button>
-        </Stack>
-      </Box>
+          </>
+        }
+      />
 
       {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
@@ -515,39 +487,22 @@ const CategoryManager = () => {
         </Alert>
       )}
 
-      {/* Search Bar */}
-      <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <TextField
-          fullWidth
-          size="small"
-          placeholder="Search categories by name or description..."
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          InputProps={{
-            startAdornment: (
-              <InputAdornment position="start">
-                <Search fontSize="small" />
-              </InputAdornment>
-            ),
-            endAdornment: searchQuery && (
-              <InputAdornment position="end">
-                <IconButton size="small" onClick={() => setSearchQuery('')}>
-                  <Close />
-                </IconButton>
-              </InputAdornment>
-            ),
-          }}
-        />
-      </Paper>
+      <ManagementSearchToolbar
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search categories by name or description..."
+      />
 
       {/* Categories Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredCategories}
         loading={loading}
         onRefresh={handleRefresh}
         title={`Categories `}
         rowKey="id"
+        searchable={false}
       />
 
       {/* Add/Edit Category Dialog */}
@@ -626,12 +581,13 @@ const CategoryManager = () => {
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Category Name *"
                 name="name"
                 value={formData.name}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, name: value }))}
+                delay={80}
                 required
                 placeholder="e.g., Grade 9, Grade 10"
                 disabled={actionLoading}
@@ -698,12 +654,13 @@ const CategoryManager = () => {
             )}
             
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Description (Optional)"
                 name="description"
                 value={formData.description}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, description: value }))}
+                delay={80}
                 multiline
                 rows={3}
                 placeholder="Enter category description..."

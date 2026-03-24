@@ -2,6 +2,8 @@ import React, { createContext, useState, useContext, useEffect, useCallback } fr
 import authApi from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
+import { devError } from '../utils/devLogger';
+import { getNotificationMessage } from '../utils/notificationMessage';
 
 const AuthContext = createContext({});
 
@@ -13,14 +15,15 @@ export const useAuth = () => {
   return context;
 };
 
-// Session timeout in milliseconds (30 minutes)
-const SESSION_TIMEOUT = 30 * 60 * 1000;
+// Session timeout values
+const SESSION_TIMEOUT_SHORT = 30 * 60 * 1000; // 30 minutes
+const SESSION_TIMEOUT_LONG = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Cookie options - FIXED for production
+// Cookie options
 const COOKIE_OPTIONS = {
-  expires: 7, // 7 days
+  expires: 7,
   secure: process.env.NODE_ENV === 'production',
-  sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
+  sameSite: 'lax',
   path: '/'
 };
 
@@ -31,7 +34,13 @@ export const AuthProvider = ({ children }) => {
   const [sessionTimeout, setSessionTimeout] = useState(null);
   const navigate = useNavigate();
 
-  // Load user from cookies ONLY (simplified)
+  const logAuthError = useCallback((message, error) => {
+    if (process.env.NODE_ENV !== 'production') {
+      devError(message, error);
+    }
+  }, []);
+
+  // Load user from cookies
   const loadUserFromCookies = useCallback(() => {
     try {
       const token = Cookies.get('token');
@@ -45,24 +54,28 @@ export const AuthProvider = ({ children }) => {
         };
       }
     } catch (e) {
-      console.error('Error loading user from cookies:', e);
+      logAuthError('Error loading user from cookies:', e);
     }
     return null;
-  }, []);
+  }, [logAuthError]);
 
-  // Save auth data to cookies only
+  // Save auth data to cookies
   const saveAuthData = useCallback((token, user, rememberMe = true) => {
-    // Always set cookies
+    const userToSave = {
+      ...user,
+      assigned_courses: user.assigned_courses || []
+    };
+
     Cookies.set('token', token, { 
       ...COOKIE_OPTIONS,
-      expires: rememberMe ? 7 : undefined // Session cookie if not remember me
+      expires: rememberMe ? 7 : undefined
     });
-    Cookies.set('user', JSON.stringify(user), { 
+    Cookies.set('user', JSON.stringify(userToSave), { 
       ...COOKIE_OPTIONS,
       expires: rememberMe ? 7 : undefined
     });
     
-    // Don't use localStorage/sessionStorage to avoid conflicts
+    // Clear any old storage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
     sessionStorage.removeItem('token');
@@ -76,19 +89,31 @@ export const AuthProvider = ({ children }) => {
     Cookies.remove('refreshToken', { path: '/' });
   }, []);
 
-  // Session management
-  const resetSessionTimeout = useCallback(() => {
+  const logout = useCallback(() => {
+    clearAuthData();
+    setUser(null);
+    setIsAuthenticated(false);
+    
     if (sessionTimeout) {
       clearTimeout(sessionTimeout);
     }
-    const timeout = setTimeout(() => {
-      console.log('Session expired due to inactivity');
-      logout();
-    }, SESSION_TIMEOUT);
-    setSessionTimeout(timeout);
-  }, []);
+    
+    authApi.logout().catch(() => {});
+    navigate('/login');
+  }, [navigate, sessionTimeout, clearAuthData]);
 
-  // Load user from cookies on mount
+  // Session management
+  const resetSessionTimeout = useCallback((rememberMe = true) => {
+    if (sessionTimeout) {
+      clearTimeout(sessionTimeout);
+    }
+    const timeoutValue = rememberMe ? SESSION_TIMEOUT_LONG : SESSION_TIMEOUT_SHORT;
+    const timeout = setTimeout(() => {
+      logout();
+    }, timeoutValue);
+    setSessionTimeout(timeout);
+  }, [sessionTimeout, logout]);
+
   useEffect(() => {
     const initializeAuth = async () => {
       try {
@@ -97,18 +122,17 @@ export const AuthProvider = ({ children }) => {
         if (cookieData) {
           setUser(cookieData.user);
           setIsAuthenticated(true);
-          resetSessionTimeout();
+          const rememberMe = true;
+          resetSessionTimeout(rememberMe);
           
-          // Validate token silently
           try {
             await authApi.validateToken();
           } catch (error) {
-            // Token expired
             logout();
           }
         }
       } catch (error) {
-        console.error('Error loading user:', error);
+        logAuthError('Error loading user:', error);
         clearAuthData();
       } finally {
         setLoading(false);
@@ -117,9 +141,11 @@ export const AuthProvider = ({ children }) => {
 
     initializeAuth();
 
-    // Set up activity listeners for session reset
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    const resetActivity = () => resetSessionTimeout();
+    const resetActivity = () => {
+      const rememberMe = true;
+      resetSessionTimeout(rememberMe);
+    };
     events.forEach(event => document.addEventListener(event, resetActivity));
 
     return () => {
@@ -135,62 +161,36 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const response = await authApi.adminLogin(username, password);
       
-      // Check response structure
       let token, userData;
       
       if (response.data && response.data.data) {
-        // Standard API response
         token = response.data.data.token;
         userData = response.data.data.user;
       } else if (response.data && response.data.token) {
-        // Direct response
         token = response.data.token;
         userData = response.data.user;
       } else {
         throw new Error('Invalid response format');
       }
       
-      // Save auth data
       saveAuthData(token, userData, rememberMe);
       
-      // Update state
       setUser(userData);
       setIsAuthenticated(true);
-      resetSessionTimeout();
+      resetSessionTimeout(rememberMe);
       
       return { success: true, user: userData };
     } catch (error) {
-      console.error('Login error:', error);
+      logAuthError('Login error:', error);
       return {
         success: false,
-        message: error.response?.data?.message || error.message || 'Login failed. Please check your credentials.',
+        message: getNotificationMessage(error, 'error'),
       };
     } finally {
       setLoading(false);
     }
-  }, [resetSessionTimeout, saveAuthData]);
+  }, [logAuthError, resetSessionTimeout, saveAuthData]);
 
-  const logout = useCallback(() => {
-    // Clear cookies
-    clearAuthData();
-    
-    // Clear state
-    setUser(null);
-    setIsAuthenticated(false);
-    
-    // Clear session timeout
-    if (sessionTimeout) {
-      clearTimeout(sessionTimeout);
-    }
-    
-    // Call logout API silently
-    authApi.logout().catch(() => {});
-    
-    // Navigate to login
-    navigate('/login');
-  }, [navigate, sessionTimeout, clearAuthData]);
-
-  // Permission checks
   const isAdmin = useCallback(() => {
     return user?.role === 'admin' || user?.role === 'superadmin';
   }, [user]);

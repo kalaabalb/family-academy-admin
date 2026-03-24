@@ -45,7 +45,7 @@ const notificationsApi = {
   
   // Toggle schedule active status
   toggleSchedule: (id, isActive) => 
-    axiosInstance.patch(`/notifications/schedules/${id}`, { is_active: isActive }),
+    axiosInstance.patch(`/notifications/schedules/${id}/toggle`, { is_active: isActive }),
   
   
   // Get user notification preferences
@@ -90,6 +90,12 @@ const notificationsApi = {
   
   // Send notification using template
   sendNotification: (data) => axiosInstance.post('/notifications/send', data),
+
+  // Send a direct test push to one user
+  sendTestPush: (data) => axiosInstance.post('/notifications/test-push', data),
+
+  // Repair notification delivery and backfill missing rows
+  repairDelivery: (data) => axiosInstance.post('/notifications/repair-delivery', data),
   
   // Get notification history (admin)
   getNotificationHistory: (params) => 

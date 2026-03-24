@@ -42,6 +42,15 @@ const ConfirmDialog = ({
 }) => {
   const theme = useTheme();
 
+  React.useEffect(() => {
+    if (!open) return;
+
+    const activeElement = document.activeElement;
+    if (activeElement && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+  }, [open]);
+
   const getSeverityConfig = () => {
     switch (severity) {
       case 'error':
@@ -102,6 +111,8 @@ const ConfirmDialog = ({
     <Dialog
       open={open}
       onClose={loading ? undefined : onClose}
+      keepMounted
+      disableRestoreFocus
       maxWidth="sm"
       fullWidth
       PaperProps={{

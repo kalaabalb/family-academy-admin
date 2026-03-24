@@ -3,6 +3,14 @@ import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
 import systemLogsApi from '../../api/systemLogs';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
+import {
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+} from '../common/tableFormatters';
 import {
   Box,
   Paper,
@@ -60,6 +68,189 @@ import {
   Storage,
   Close,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
+
+const humanizeLogText = (value) => {
+  if (!value) {
+    return '';
+  }
+
+  return String(value)
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const parseLogDetails = (details) => {
+  if (!details) return {};
+
+  if (typeof details === 'string') {
+    try {
+      return JSON.parse(details);
+    } catch {
+      return {};
+    }
+  }
+
+  if (typeof details === 'object') {
+    return details;
+  }
+
+  return {};
+};
+
+const isMeaningfulLog = (log) => {
+  const action = String(log.action || '').toLowerCase();
+  const description = String(log.description || log.message || '').toLowerCase();
+  const details = parseLogDetails(log.details);
+
+  if (
+    action.includes('admin') ||
+    action.includes('teacher') ||
+    action.includes('audit') ||
+    action.includes('error') ||
+    action.includes('payment') ||
+    action.includes('subscription') ||
+    action.includes('chapter') ||
+    action.includes('video') ||
+    action.includes('note') ||
+    action.includes('question') ||
+    action.includes('exam') ||
+    action.includes('login') ||
+    action.includes('logout') ||
+    action.includes('verified') ||
+    action.includes('created') ||
+    action.includes('updated') ||
+    action.includes('deleted') ||
+    action.includes('scheduled')
+  ) {
+    return true;
+  }
+
+  if (['http_access', 'request', 'response'].includes(action)) {
+    return false;
+  }
+
+  if (details.endpoint || details.url || details.method || details.statusCode) {
+    return false;
+  }
+
+  if (
+    description.includes('get /api/') ||
+    description.includes('post /api/') ||
+    description.includes('put /api/') ||
+    description.includes('delete /api/') ||
+    description.includes('patch /api/') ||
+    description.includes('http/1.1')
+  ) {
+    return false;
+  }
+
+  return true;
+};
+
+const getReadableLogAction = (log) => {
+  const action = String(log.action || '').toLowerCase();
+  const entity = humanizeLogText(log.entity_type || log.resource || '');
+  const details = parseLogDetails(log.details);
+  const actor = details.adminUsername || details.teacherUsername || log.user_name || log.username;
+
+  if (action.includes('login')) return actor ? `${actor} Signed In` : 'User Sign In';
+  if (action.includes('logout')) return actor ? `${actor} Signed Out` : 'User Sign Out';
+  if (action.includes('created') || action.includes('create')) return actor ? `${actor} Created ${entity || 'Record'}` : `${entity || 'Record'} Created`;
+  if (action.includes('updated') || action.includes('update') || action.includes('edit')) return actor ? `${actor} Updated ${entity || 'Record'}` : `${entity || 'Record'} Updated`;
+  if (action.includes('deleted') || action.includes('delete') || action.includes('remove')) return actor ? `${actor} Removed ${entity || 'Record'}` : `${entity || 'Record'} Removed`;
+  if (action.includes('verified')) return actor ? `${actor} Verified a Record` : 'Record Verified';
+  if (action.includes('scheduled')) return actor ? `${actor} Scheduled an Item` : 'Item Scheduled';
+  if (action.includes('payment')) return actor ? `${actor} Payment Activity` : 'Payment Activity';
+  if (action.includes('subscription')) return actor ? `${actor} Subscription Activity` : 'Subscription Activity';
+  if (action.includes('question')) return actor ? `${actor} Question Activity` : 'Question Activity';
+  if (action.includes('exam')) return actor ? `${actor} Exam Activity` : 'Exam Activity';
+  if (action.includes('video')) return actor ? `${actor} Video Activity` : 'Video Activity';
+  if (action.includes('note')) return actor ? `${actor} Note Activity` : 'Note Activity';
+  if (action.includes('chapter')) return actor ? `${actor} Chapter Activity` : 'Chapter Activity';
+  if (action.includes('error')) return entity ? `${entity} Error` : 'System Error';
+
+  return humanizeLogText(log.action) || 'System Activity';
+};
+
+const getReadableLogDescription = (log) => {
+  const details = parseLogDetails(log.details);
+  const action = String(log.action || '').toLowerCase();
+  const endpoint = details.endpoint || details.url;
+  const method = details.method;
+  const statusCode = details.statusCode;
+
+  if (statusCode >= 500) {
+    return `The system failed${endpoint ? ` on ${endpoint}` : ''} with a server error.`;
+  }
+
+  if (statusCode >= 400) {
+    return `The action failed${endpoint ? ` on ${endpoint}` : ''}.`;
+  }
+
+  if ((action.includes('admin') || action.includes('teacher')) && endpoint) {
+    return `${humanizeLogText(method || 'request')} ${endpoint}${statusCode ? ` finished with status ${statusCode}` : ''}.`;
+  }
+
+  if (log.description && typeof log.description === 'string' && !/http\/1\.1|\/api\//i.test(log.description)) {
+    return log.description;
+  }
+
+  if (log.message && typeof log.message === 'string' && !/http\/1\.1|\/api\//i.test(log.message)) {
+    return log.message;
+  }
+
+  const entity = humanizeLogText(log.entity_type || log.resource || 'record').toLowerCase();
+  const level = String(log.level || 'info').toLowerCase();
+
+  if (level === 'error') {
+    return `The system recorded an error related to ${entity}.`;
+  }
+
+  if (level === 'warn' || level === 'warning') {
+    return `The system flagged ${entity} for review.`;
+  }
+
+  return `An update was recorded for ${entity}.`;
+};
+
+const getReadableUser = (log) => {
+  const details = parseLogDetails(log.details);
+  if (details.adminUsername) return details.adminUsername;
+  if (details.teacherUsername) return details.teacherUsername;
+  if (log.user_name) return log.user_name;
+  if (log.username) return log.username;
+  if (log.user_id) return `User ${log.user_id}`;
+  return 'System';
+};
+
+const getLevelChipColor = (level) => {
+  switch (String(level || '').toLowerCase()) {
+    case 'error':
+      return 'error';
+    case 'warn':
+    case 'warning':
+      return 'warning';
+    case 'info':
+      return 'info';
+    default:
+      return 'default';
+  }
+};
+
+const formatLogDetails = (details) => {
+  if (!details) {
+    return 'No extra details were recorded for this activity.';
+  }
+
+  if (typeof details === 'string') {
+    return details;
+  }
+
+  return JSON.stringify(details, null, 2);
+};
 
 const SystemLogsManager = () => {
   const { isAdmin } = useAuth();
@@ -121,7 +312,11 @@ const SystemLogsManager = () => {
       if (filters.user_id) params.user_id = filters.user_id;
       if (filters.search) params.search = filters.search;
       
-      const response = await systemLogsApi.getSystemLogs(params);
+      const response = await getCachedData(
+        logsCacheKey,
+        () => systemLogsApi.getSystemLogs(params),
+        { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+      );
       
       // Handle different response structures
       let logsData = [];
@@ -142,11 +337,19 @@ const SystemLogsManager = () => {
         }
       }
       
-      setLogs(logsData || []);
-      setPagination(prev => ({ ...prev, total: total || logsData.length }));
+      const rawLogs = logsData || [];
+      const meaningfulLogs = rawLogs.filter(isMeaningfulLog);
+      const visibleLogs = meaningfulLogs.length
+        ? meaningfulLogs
+        : rawLogs.filter((log) => {
+            const action = String(log.action || '').toLowerCase();
+            return !['http_access', 'request', 'response'].includes(action);
+          });
+      setLogs(visibleLogs);
+      setPagination(prev => ({ ...prev, total: visibleLogs.length }));
       setError('');
     } catch (err) {
-      console.error('Failed to fetch system logs:', err);
+      devError('Failed to fetch system logs:', err);
       setError(err.response?.data?.message || 'Failed to load system logs');
       setLogs([]);
     } finally {
@@ -156,7 +359,11 @@ const SystemLogsManager = () => {
 
   const fetchLogStats = async (forceRefresh = false) => {
     try {
-      const response = await systemLogsApi.getLogStats();
+      const response = await getCachedData(
+        statsCacheKey,
+        () => systemLogsApi.getLogStats(),
+        { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+      );
       
       if (response.data?.success && response.data?.data) {
         setStats(response.data.data);
@@ -181,7 +388,7 @@ const SystemLogsManager = () => {
         });
       }
     } catch (err) {
-      console.error('Failed to fetch log stats:', err);
+      devError('Failed to fetch log stats:', err);
     }
   };
 
@@ -366,47 +573,70 @@ const SystemLogsManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold" gutterBottom>
-            System Logs
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Monitor system activities, errors, and performance metrics
-          </Typography>
-        </Box>
-        
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            startIcon={<FilterList />}
-            onClick={() => setShowFilters(!showFilters)}
-            sx={{ borderRadius: 2 }}
-          >
-            {showFilters ? 'Hide Filters' : 'Show Filters'}
-          </Button>
-          <Button
-            variant="outlined"
-            startIcon={<Refresh />}
-            onClick={handleRefresh}
-            disabled={loading || actionLoading}
-            sx={{ borderRadius: 2 }}
-          >
-            Refresh
-          </Button>
-          <Button
-            variant="outlined"
-            color="warning"
-            startIcon={<Delete />}
-            onClick={() => setClearDialogOpen(true)}
-            disabled={actionLoading}
-            sx={{ borderRadius: 2 }}
-          >
-            Clear Old Logs
-          </Button>
-        </Stack>
-      </Box>
+      <ManagementPageHeader
+        title="System Logs"
+        subtitle="Review meaningful admin activity, system failures, warnings, and important operational events."
+        actions={
+          <>
+            <Button
+              variant="outlined"
+              startIcon={<FilterList />}
+              onClick={() => setShowFilters(!showFilters)}
+              sx={{ borderRadius: 2 }}
+            >
+              {showFilters ? 'Hide Filters' : 'Show Filters'}
+            </Button>
+            <Button
+              variant="outlined"
+              startIcon={<Refresh />}
+              onClick={handleRefresh}
+              disabled={loading || actionLoading}
+              sx={{ borderRadius: 2 }}
+            >
+              Refresh
+            </Button>
+            <Button
+              variant="outlined"
+              color="warning"
+              startIcon={<Delete />}
+              onClick={() => setClearDialogOpen(true)}
+              disabled={actionLoading}
+              sx={{ borderRadius: 2 }}
+            >
+              Clear Old Activity
+            </Button>
+          </>
+        }
+      />
+
+      <ManagementSearchToolbar
+        value={filters.search}
+        onChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+        placeholder="Search activity by action, user, or summary..."
+        actions={
+          <Stack direction="row" spacing={1}>
+            <FormControl size="small" sx={{ minWidth: 100 }}>
+              <Select
+                value={exportFormat}
+                onChange={(e) => setExportFormat(e.target.value)}
+                displayEmpty
+                disabled={actionLoading}
+              >
+                <MenuItem value="csv">CSV</MenuItem>
+                <MenuItem value="json">JSON</MenuItem>
+              </Select>
+            </FormControl>
+            <Button
+              variant="outlined"
+              startIcon={<Download />}
+              onClick={handleExportLogs}
+              disabled={logs.length === 0 || actionLoading}
+            >
+              Export
+            </Button>
+          </Stack>
+        }
+      />
 
       {/* Loading Indicator */}
       {(loading || actionLoading) && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
@@ -427,73 +657,23 @@ const SystemLogsManager = () => {
         </Alert>
       )}
 
-      {/* Statistics Cards - Now show from logs data */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Total Logs"
-            value={logs.length}
-            icon={<Storage />}
-            color="#1976d2"
-            subtitle={`${logs.length} entries`}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Errors"
-            value={logs.filter(l => l.level === 'error').length}
-            icon={<ErrorIcon />}
-            color="#f44336"
-            subtitle={`${logs.length ? ((logs.filter(l => l.level === 'error').length / logs.length) * 100).toFixed(1) : 0}% of total`}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Warnings"
-            value={logs.filter(l => l.level === 'warn' || l.level === 'warning').length}
-            icon={<Warning />}
-            color="#ff9800"
-            subtitle={`${logs.length ? ((logs.filter(l => l.level === 'warn' || l.level === 'warning').length / logs.length) * 100).toFixed(1) : 0}% of total`}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6} md={3}>
-          <StatCard
-            title="Info"
-            value={logs.filter(l => l.level === 'info' || !l.level).length}
-            icon={<Info />}
-            color="#2196f3"
-            subtitle="Information logs"
-          />
-        </Grid>
-      </Grid>
+      <SummaryStrip
+        items={[
+          { label: 'Visible Activity', value: logs.length, color: 'primary' },
+          { label: 'Issues', value: logs.filter(l => l.level === 'error').length, color: 'error' },
+          { label: 'Needs Review', value: logs.filter(l => l.level === 'warn' || l.level === 'warning').length, color: 'warning' },
+          { label: 'Normal', value: logs.filter(l => l.level === 'info' || !l.level).length, color: 'info' },
+        ]}
+      />
 
       {/* Filters Section */}
       {showFilters && (
         <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
           <Typography variant="h6" fontWeight="medium" gutterBottom>
-            Filter Logs
+            Filter Activity
           </Typography>
           
           <Grid container spacing={2}>
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Search"
-                name="search"
-                value={filters.search}
-                onChange={handleFilterChange}
-                placeholder="Search in logs..."
-                InputProps={{
-                  startAdornment: (
-                    <InputAdornment position="start">
-                      <Search fontSize="small" />
-                    </InputAdornment>
-                  ),
-                }}
-              />
-            </Grid>
-            
             <Grid item xs={12} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Log Level</InputLabel>
@@ -503,7 +683,7 @@ const SystemLogsManager = () => {
                   onChange={handleFilterChange}
                   label="Log Level"
                 >
-                  <MenuItem value="">All Levels</MenuItem>
+                  <MenuItem value="">All Statuses</MenuItem>
                   <MenuItem value="error">Error</MenuItem>
                   <MenuItem value="warn">Warning</MenuItem>
                   <MenuItem value="info">Info</MenuItem>
@@ -520,7 +700,7 @@ const SystemLogsManager = () => {
                 name="action"
                 value={filters.action}
                 onChange={handleFilterChange}
-                placeholder="e.g., user_login"
+                placeholder="e.g., Sign In"
               />
             </Grid>
             
@@ -588,60 +768,39 @@ const SystemLogsManager = () => {
       <Paper sx={{ borderRadius: 2, overflow: 'hidden' }}>
         <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid', borderColor: 'divider' }}>
           <Typography variant="h6" fontWeight="bold">
-            Log Entries ({logs.length})
+            Activity Entries ({logs.length})
           </Typography>
           
-          <Stack direction="row" spacing={1}>
-            <FormControl size="small" sx={{ minWidth: 100 }}>
-              <Select
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value)}
-                displayEmpty
-                disabled={actionLoading}
-              >
-                <MenuItem value="csv">CSV</MenuItem>
-                <MenuItem value="json">JSON</MenuItem>
-              </Select>
-            </FormControl>
-            <Tooltip title="Export Logs">
-              <span>
-                <IconButton 
-                  onClick={handleExportLogs} 
-                  disabled={logs.length === 0 || actionLoading}
-                  color="primary"
-                >
-                  <Download />
-                </IconButton>
-              </span>
-            </Tooltip>
-          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            {logs.length} visible entries
+          </Typography>
         </Box>
 
         {loading && logs.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <CircularProgress />
             <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-              Loading system logs...
+              Loading activity...
             </Typography>
           </Box>
         ) : logs.length === 0 ? (
           <Box sx={{ p: 4, textAlign: 'center' }}>
             <Storage sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
             <Typography variant="body1" color="text.secondary">
-              No system logs found
+              No activity found
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-              {filters.level || filters.action || filters.search ? 'Try adjusting your filters' : 'Logs will appear here as system events occur'}
+              {filters.level || filters.action || filters.search ? 'Try adjusting your filters' : 'Activity will appear here as the platform is used'}
             </Typography>
           </Box>
         ) : (
           <>
             <TableContainer>
-              <Table stickyHeader>
+              <Table stickyHeader size="small" sx={{ '& .MuiTableCell-root': { py: 1, px: 1.5, verticalAlign: 'top' } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell>Time</TableCell>
-                    <TableCell>Level</TableCell>
+                    <TableCell>Status</TableCell>
                     <TableCell>Action</TableCell>
                     <TableCell>Description</TableCell>
                     <TableCell>User</TableCell>
@@ -651,48 +810,28 @@ const SystemLogsManager = () => {
                 <TableBody>
                   {logs.map((log) => (
                     <TableRow key={log.id} hover>
+                      <TableCell>{renderTableDate(log.created_at)}</TableCell>
                       <TableCell>
-                        <Tooltip title={new Date(log.created_at).toLocaleString()}>
-                          <Typography variant="body2">
-                            {new Date(log.created_at).toLocaleString()}
-                          </Typography>
-                        </Tooltip>
+                        {renderTableChip(humanizeLogText(log.level) || 'Info', {
+                          icon: getLevelIcon(log.level),
+                          color: getLevelChipColor(log.level),
+                        })}
                       </TableCell>
                       <TableCell>
-                        <Chip
-                          icon={getLevelIcon(log.level)}
-                          label={log.level?.toUpperCase() || 'INFO'}
-                          size="small"
-                          sx={{
-                            bgcolor: alpha(getLevelColor(log.level), 0.1),
-                            color: getLevelColor(log.level),
-                            border: `1px solid ${alpha(getLevelColor(log.level), 0.3)}`,
-                            fontWeight: 'bold',
-                          }}
-                        />
+                        {renderPrimaryCell({ primary: getReadableLogAction(log) })}
                       </TableCell>
                       <TableCell>
-                        <Typography variant="body2" fontFamily="monospace">
-                          {log.action || '-'}
-                        </Typography>
-                      </TableCell>
-                      <TableCell>
-                        <Typography variant="body2" sx={{ maxWidth: 300 }} noWrap>
-                          {log.description || '-'}
-                        </Typography>
+                        {renderPrimaryCell({
+                          primary: getReadableLogDescription(log),
+                          primaryWeight: 400,
+                        })}
                       </TableCell>
                       <TableCell>
                         {log.user_id ? (
-                          <Box>
-                            <Typography variant="body2">
-                              ID: {log.user_id}
-                            </Typography>
-                            {log.user_role && (
-                              <Typography variant="caption" color="text.secondary">
-                                {log.user_role}
-                              </Typography>
-                            )}
-                          </Box>
+                          renderPrimaryCell({
+                            primary: getReadableUser(log),
+                            secondary: log.user_role ? humanizeLogText(log.user_role) : null,
+                          })
                         ) : (
                           <Typography variant="body2" color="text.secondary">
                             System
@@ -743,7 +882,7 @@ const SystemLogsManager = () => {
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
               <Code />
-              <Typography variant="h6">Log Details</Typography>
+              <Typography variant="h6">Activity Details</Typography>
             </Box>
             <IconButton onClick={() => setDetailsOpen(false)} size="small">
               <Close />
@@ -754,12 +893,12 @@ const SystemLogsManager = () => {
           {selectedLog && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 2.5 }}>
                   <Typography variant="subtitle2" color="text.secondary" gutterBottom>
                     ID: {selectedLog.id}
                   </Typography>
                   <Typography variant="h6" gutterBottom>
-                    {selectedLog.action || 'System Event'}
+                    {getReadableLogAction(selectedLog)}
                   </Typography>
                 </Paper>
               </Grid>
@@ -781,31 +920,36 @@ const SystemLogsManager = () => {
                   icon={getLevelIcon(selectedLog.level)}
                   label={selectedLog.level?.toUpperCase() || 'INFO'}
                   size="small"
-                  sx={{
-                    bgcolor: alpha(getLevelColor(selectedLog.level), 0.1),
-                    color: getLevelColor(selectedLog.level),
-                  }}
+                  color={getLevelChipColor(selectedLog.level)}
+                  variant="outlined"
                 />
               </Grid>
 
               <Grid item xs={12}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Description
+                  Summary
                 </Typography>
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
+                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'background.paper', borderRadius: 2.5 }}>
                   <Typography variant="body1">
-                    {selectedLog.description || 'No description'}
+                    {getReadableLogDescription(selectedLog)}
                   </Typography>
                 </Paper>
               </Grid>
 
               <Grid item xs={12}>
                 <Typography variant="subtitle2" color="text.secondary">
-                  Details
+                  Technical Details
                 </Typography>
-                <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.900' }}>
-                  <pre style={{ margin: 0, color: '#fff', overflow: 'auto' }}>
-                    {JSON.stringify(selectedLog.details || {}, null, 2)}
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    p: 2,
+                    borderRadius: 2.5,
+                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'grey.100',
+                  }}
+                >
+                  <pre style={{ margin: 0, color: 'inherit', overflow: 'auto', whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                    {formatLogDetails(selectedLog.details)}
                   </pre>
                 </Paper>
               </Grid>
@@ -826,7 +970,7 @@ const SystemLogsManager = () => {
                       User Role
                     </Typography>
                     <Typography variant="body1">
-                      {selectedLog.user_role || 'N/A'}
+                      {humanizeLogText(selectedLog.user_role) || 'Not available'}
                     </Typography>
                   </Grid>
                 </>
@@ -841,10 +985,10 @@ const SystemLogsManager = () => {
 
       {/* Clear Logs Confirmation Dialog */}
       <Dialog open={clearDialogOpen} onClose={() => setClearDialogOpen(false)}>
-        <DialogTitle>Clear Old Logs</DialogTitle>
+        <DialogTitle>Clear Old Activity</DialogTitle>
         <DialogContent>
           <Typography variant="body2" color="text.secondary" paragraph>
-            This will permanently delete system logs older than the specified number of days.
+            This will permanently delete activity records older than the specified number of days.
             This action cannot be undone.
           </Typography>
           
@@ -860,13 +1004,13 @@ const SystemLogsManager = () => {
           />
           
           <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-            Logs older than {clearDays} days will be permanently deleted.
+            Activity older than {clearDays} days will be permanently deleted.
           </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setClearDialogOpen(false)} disabled={actionLoading}>Cancel</Button>
           <Button onClick={handleClearLogs} color="error" variant="contained" disabled={actionLoading}>
-            {actionLoading ? <CircularProgress size={20} /> : 'Clear Logs'}
+            {actionLoading ? <CircularProgress size={20} /> : 'Clear Activity'}
           </Button>
         </DialogActions>
       </Dialog>

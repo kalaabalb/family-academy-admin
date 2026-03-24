@@ -7,6 +7,18 @@ import categoriesApi from '../../api/categories';
 import usersApi from '../../api/users';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
+import DetailRow from '../common/DetailRow';
+import {
+  formatLabel,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+  renderTableId,
+} from '../common/tableFormatters';
 import {
   Box,
   Paper,
@@ -53,6 +65,7 @@ import {
   CreditCard,
   Close,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
 
 const PaymentManager = () => {
   const { isAdmin } = useAuth();
@@ -138,7 +151,7 @@ const PaymentManager = () => {
       setStats({ total, pending, verified, rejected, totalAmount });
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load payments');
       showError('Failed to load payments');
     } finally {
@@ -240,7 +253,7 @@ const PaymentManager = () => {
       setAdminNotes('');
       
     } catch (err) {
-      console.error('Failed to verify payment:', err);
+      devError('Failed to verify payment:', err);
       showError(err.response?.data?.message || 'Failed to verify payment');
     } finally {
       setLoading(false);
@@ -271,7 +284,7 @@ const PaymentManager = () => {
       setRejectionReason('');
       
     } catch (err) {
-      console.error('Failed to reject payment:', err);
+      devError('Failed to reject payment:', err);
       showError(err.response?.data?.message || 'Failed to reject payment');
     } finally {
       setLoading(false);
@@ -368,45 +381,25 @@ const PaymentManager = () => {
       field: 'id',
       headerName: 'ID',
       width: 70,
-      render: (value) => (
-        <Typography variant="body2" color="text.secondary" fontWeight="medium">
-          #{value}
-        </Typography>
-      ),
+      render: (value) => renderTableId(value),
     },
     {
       field: 'user_info',
       headerName: 'User',
       flex: 1,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
-          <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.light' }}>
-            {row.user_username?.[0]?.toUpperCase()}
-          </Avatar>
-          <Box>
-            <Typography variant="body2" fontWeight="medium">
-              {row.user_username}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              ID: {row.user_id}
-            </Typography>
-          </Box>
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: row.user_username || 'Unknown User',
+        secondary: row.user_id ? `User ID: ${row.user_id}` : null,
+      }),
     },
     {
       field: 'category_name',
       headerName: 'Category',
       width: 120,
-      render: (value) => (
-        <Chip
-          label={value}
-          size="small"
-          color="primary"
-          variant="outlined"
-          icon={<CategoryIcon fontSize="small" />}
-        />
-      ),
+      render: (value) => renderTableChip(value || 'Not Set', {
+        color: 'primary',
+        icon: <CategoryIcon fontSize="small" />,
+      }),
     },
     {
       field: 'amount',
@@ -420,55 +413,37 @@ const PaymentManager = () => {
     },
     {
       field: 'payment_type',
-      headerName: 'Type',
+      headerName: 'Payment Type',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value.replace('_', ' ')}
-          size="small"
-          color="secondary"
-          variant="outlined"
-        />
-      ),
+      render: (value) => renderTableChip(formatLabel(value), { color: 'secondary' }),
     },
     {
       field: 'payment_method',
-      headerName: 'Method',
+      headerName: 'Payment Method',
       width: 120,
-      render: (value) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {getPaymentMethodIcon(value)}
-          <Typography variant="body2">
-            {value?.replace('_', ' ') || 'Unknown'}
-          </Typography>
-        </Box>
-      ),
+      render: (value) => renderTableChip(formatLabel(value), {
+        icon: getPaymentMethodIcon(value),
+      }),
     },
     {
       field: 'status',
       headerName: 'Status',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value === 'verified' ? 'Verified' : value === 'pending' ? 'Pending' : 'Rejected'}
-          size="small"
-          color={value === 'verified' ? 'success' : value === 'pending' ? 'warning' : 'error'}
-          icon={value === 'verified' ? <CheckCircle fontSize="small" /> : 
-                value === 'pending' ? <AccessTime fontSize="small" /> : 
-                <Cancel fontSize="small" />}
-          variant="outlined"
-        />
+      render: (value) => renderTableChip(
+        value === 'verified' ? 'Verified' : value === 'pending' ? 'Pending' : 'Rejected',
+        {
+          color: value === 'verified' ? 'success' : value === 'pending' ? 'warning' : 'error',
+          icon: value === 'verified' ? <CheckCircle fontSize="small" /> :
+            value === 'pending' ? <AccessTime fontSize="small" /> :
+              <Cancel fontSize="small" />,
+        }
       ),
     },
     {
       field: 'created_at',
-      headerName: 'Submitted',
+      headerName: 'Created At',
       width: 130,
-      render: (value) => (
-        <Typography variant="caption" color="text.secondary">
-          {formatDate(value)}
-        </Typography>
-      ),
+      render: (value) => renderTableDate(value, { dateOnly: true }),
     },
     {
       field: 'actions',
@@ -543,19 +518,13 @@ const PaymentManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
       <Box sx={{ mb: 4 }}>
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-          <Box>
-            <Typography variant="h4" fontWeight="bold" gutterBottom>
-              Payment Management
-            </Typography>
-            <Typography variant="body1" color="text.secondary">
-              Verify and manage user payment submissions
-            </Typography>
-          </Box>
-          
-          <Stack direction="row" spacing={2}>
+        <ManagementPageHeader
+          title="Payment Management"
+          subtitle="Verify and manage user payment submissions"
+          sx={{ mb: 2 }}
+          actions={
+            <>
             <Button
               variant="outlined"
               startIcon={<FilterList />}
@@ -582,73 +551,26 @@ const PaymentManager = () => {
             >
               Refresh
             </Button>
-          </Stack>
-        </Box>
+            </>
+          }
+        />
 
-        {/* Stats Cards */}
-        <Grid container spacing={2} sx={{ mb: 3 }}>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%' }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Total Payments
-                </Typography>
-                <Typography variant="h4" fontWeight="bold" color="primary.main">
-                  {stats.total}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%' }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Pending
-                </Typography>
-                <Typography variant="h4" fontWeight="bold" color="warning.main">
-                  {stats.pending}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%' }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Verified
-                </Typography>
-                <Typography variant="h4" fontWeight="bold" color="success.main">
-                  {stats.verified}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%' }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Rejected
-                </Typography>
-                <Typography variant="h4" fontWeight="bold" color="error.main">
-                  {stats.rejected}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-          <Grid item xs={12} sm={6} md={2.4}>
-            <Card sx={{ borderRadius: 2, height: '100%' }}>
-              <CardContent sx={{ p: 2 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Total Revenue
-                </Typography>
-                <Typography variant="h4" fontWeight="bold" color="info.main">
-                  {formatAmount(stats.totalAmount)}
-                </Typography>
-              </CardContent>
-            </Card>
-          </Grid>
-        </Grid>
+        <SummaryStrip
+          items={[
+            { label: 'Total Payments', value: stats.total, color: 'primary' },
+            { label: 'Pending', value: stats.pending, color: 'warning' },
+            { label: 'Verified', value: stats.verified, color: 'success' },
+            { label: 'Rejected', value: stats.rejected, color: 'error' },
+            { label: 'Verified Revenue', value: formatAmount(stats.totalAmount), color: 'info' },
+          ]}
+        />
       </Box>
+
+      <ManagementSearchToolbar
+        value={filters.search}
+        onChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+        placeholder="Search payments by user, category, account holder, or payment method..."
+      />
 
       {error && (
         <Alert 
@@ -673,18 +595,6 @@ const PaymentManager = () => {
           </Typography>
           
           <Grid container spacing={2}>
-            <Grid item xs={12} sm={6} md={3}>
-              <TextField
-                fullWidth
-                label="Search"
-                name="search"
-                value={filters.search}
-                onChange={handleFilterChange}
-                size="small"
-                placeholder="Search by user, category, method..."
-              />
-            </Grid>
-            
             <Grid item xs={12} sm={6} md={2}>
               <FormControl fullWidth size="small">
                 <InputLabel>Status</InputLabel>
@@ -806,12 +716,14 @@ const PaymentManager = () => {
 
       {/* Payments Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredPayments}
         loading={loading}
         onRefresh={handleRefresh}
         title="Payments"
         rowKey="id"
+        searchable={false}
       />
 
       {/* View Details Dialog */}
@@ -841,57 +753,37 @@ const PaymentManager = () => {
             <Grid container spacing={3}>
               {/* Payment Information */}
               <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Card variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
                   <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                     Payment Information
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Amount:</Typography>
-                      <Typography variant="body2" fontWeight="bold" color="success.main">
-                        {formatAmount(viewingPayment.amount)}
-                      </Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Type:</Typography>
-                      <Chip
-                        label={viewingPayment.payment_type?.replace('_', ' ')}
-                        size="small"
-                        color="secondary"
-                        variant="outlined"
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Method:</Typography>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                        {getPaymentMethodIcon(viewingPayment.payment_method)}
-                        <Typography variant="body2">
-                          {viewingPayment.payment_method?.replace('_', ' ') || 'Unknown'}
-                        </Typography>
-                      </Box>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Status:</Typography>
-                      <Chip
-                        label={viewingPayment.status}
-                        size="small"
-                        color={viewingPayment.status === 'verified' ? 'success' : 
-                               viewingPayment.status === 'pending' ? 'warning' : 'error'}
-                      />
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Submitted:</Typography>
-                      <Typography variant="body2">
-                        {formatDate(viewingPayment.created_at)}
-                      </Typography>
-                    </Box>
+                    <DetailRow
+                      label="Amount"
+                      value={formatAmount(viewingPayment.amount)}
+                      valueColor="success.main"
+                    />
+                    <DetailRow
+                      label="Type"
+                      value={formatLabel(viewingPayment.payment_type)}
+                    />
+                    <DetailRow
+                      label="Method"
+                      value={formatLabel(viewingPayment.payment_method) || 'Unknown'}
+                    />
+                    <DetailRow
+                      label="Status"
+                      value={formatLabel(viewingPayment.status)}
+                    />
+                    <DetailRow
+                      label="Submitted"
+                      value={formatDate(viewingPayment.created_at)}
+                    />
                     {viewingPayment.verified_at && (
-                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                        <Typography variant="body2" color="text.secondary">Verified:</Typography>
-                        <Typography variant="body2">
-                          {formatDate(viewingPayment.verified_at)}
-                        </Typography>
-                      </Box>
+                      <DetailRow
+                        label="Verified"
+                        value={formatDate(viewingPayment.verified_at)}
+                      />
                     )}
                   </Box>
                 </Card>
@@ -899,33 +791,27 @@ const PaymentManager = () => {
               
               {/* User Information */}
               <Grid item xs={12} md={6}>
-                <Card variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                <Card variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
                   <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
                     User Information
                   </Typography>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Avatar sx={{ width: 32, height: 32, bgcolor: 'primary.light' }}>
+                      <Avatar sx={{ width: 32, height: 32 }}>
                         {viewingPayment.user_username?.[0]?.toUpperCase()}
                       </Avatar>
                       <Box>
-                        <Typography variant="body2" fontWeight="medium">
+                        <Typography variant="body2" fontWeight={600}>
                           {viewingPayment.user_username}
                         </Typography>
-                        <Typography variant="caption" color="text.secondary">
+                        <Typography variant="body2" color="text.secondary">
                           User ID: {viewingPayment.user_id}
                         </Typography>
                       </Box>
                     </Box>
                     <Divider />
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Category:</Typography>
-                      <Typography variant="body2">{viewingPayment.category_name}</Typography>
-                    </Box>
-                    <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <Typography variant="body2" color="text.secondary">Account Holder:</Typography>
-                      <Typography variant="body2">{viewingPayment.account_holder_name || '-'}</Typography>
-                    </Box>
+                    <DetailRow label="Category" value={viewingPayment.category_name || '-'} />
+                    <DetailRow label="Account Holder" value={viewingPayment.account_holder_name || '-'} />
                   </Box>
                 </Card>
               </Grid>
@@ -989,11 +875,11 @@ const PaymentManager = () => {
               {/* Rejection Reason */}
               {viewingPayment.rejection_reason && (
                 <Grid item xs={12}>
-                  <Card variant="outlined" sx={{ p: 2, borderRadius: 2, bgcolor: 'error.light' }}>
-                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="error.dark">
+                <Card variant="outlined" sx={{ p: 2.5, borderRadius: 2.5, borderColor: 'error.main' }}>
+                    <Typography variant="subtitle2" fontWeight="bold" gutterBottom color="error.main">
                       Rejection Reason
                     </Typography>
-                    <Typography variant="body2" color="error.dark">
+                    <Typography variant="body2" color="text.primary">
                       {viewingPayment.rejection_reason}
                     </Typography>
                   </Card>
@@ -1107,7 +993,7 @@ const PaymentManager = () => {
                 </Grid>
               </Grid>
               
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Admin Notes (Optional)"
                 value={adminNotes}
@@ -1198,7 +1084,7 @@ const PaymentManager = () => {
                 </Grid>
               </Grid>
               
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Rejection Reason *"
                 value={rejectionReason}

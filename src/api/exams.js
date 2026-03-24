@@ -1,58 +1,63 @@
 import axiosInstance from './axiosConfig';
 
 const examsApi = {
-  // Get all exams
+  // ==================== EXAM MANAGEMENT ====================
+  
   getAllExams: (params) => 
     axiosInstance.get('/exams', { params }),
   
-  // Get exam by ID
   getExamById: (id) => 
     axiosInstance.get(`/exams/${id}`),
   
-  // Get exam questions
-  getExamQuestions: (examId) => 
-    axiosInstance.get(`/exams/${examId}/questions`),
-  
-  // Create exam
   createExam: (data) => axiosInstance.post('/exams', data),
   
-  // Update exam
   updateExam: (id, data) => axiosInstance.put(`/exams/${id}`, data),
   
-  // Delete exam
   deleteExam: (id) => axiosInstance.delete(`/exams/${id}`),
   
-  // Create exam question
+  // ==================== EXAM QUESTIONS - FIXED ENDPOINTS ====================
+  
+  getExamQuestions: (examId) => 
+    axiosInstance.get(`/exam-questions/exam/${examId}`),
+  
   createExamQuestion: (examId, data) => 
-    axiosInstance.post(`/exams/${examId}/questions`, data),
+    axiosInstance.post(`/exam-questions/exam/${examId}/questions`, data),
   
-  // Update exam question
   updateExamQuestion: (examQuestionId, data) => 
-    axiosInstance.put(`/exams/questions/${examQuestionId}`, data),
+    axiosInstance.put(`/exam-questions/${examQuestionId}`, data),
   
-  // Delete exam question
   deleteExamQuestion: (examQuestionId) => 
-    axiosInstance.delete(`/exams/questions/${examQuestionId}`),
+    axiosInstance.delete(`/exam-questions/${examQuestionId}`),
   
-  // Add question to exam
   addQuestionToExam: (examId, questionIds) => 
-    axiosInstance.post('/exams/add-question', { 
+    axiosInstance.post('/exam-questions/add', { 
       exam_id: examId, 
       question_ids: questionIds 
     }),
   
-  // Get available exams for course
+  removeQuestionFromExam: (examId, questionId) => 
+    axiosInstance.delete(`/exam-questions/exam/${examId}/question/${questionId}`),
+  
+  reorderQuestions: (examId, questionOrder) => 
+    axiosInstance.put(`/exam-questions/exam/${examId}/reorder`, { 
+      question_order: questionOrder 
+    }),
+  
+  bulkUpdateMarks: (examId, questions) => 
+    axiosInstance.put(`/exam-questions/exam/${examId}/bulk-marks`, { 
+      questions 
+    }),
+  
+  // ==================== STUDENT EXAM ROUTES ====================
+  
   getAvailableExams: (courseId) => 
     axiosInstance.get('/exams/available', { params: { course_id: courseId } }),
   
-  // Start exam
   startExam: (examId) => axiosInstance.post(`/exams/start/${examId}`),
   
-  // Submit exam
   submitExam: (examResultId, answers) => 
     axiosInstance.post(`/exams/submit/${examResultId}`, { answers }),
   
-  // Get my exam results
   getMyExamResults: () => axiosInstance.get('/exams/my-results'),
 };
 

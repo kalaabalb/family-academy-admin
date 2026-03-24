@@ -19,7 +19,6 @@ import {
   Divider,
   useTheme,
   useMediaQuery,
-  Badge,
   Collapse,
   ListItemButton,
   Chip,
@@ -41,18 +40,23 @@ import {
   Notes,
   Quiz,
   Assessment,
+  AdminPanelSettings,
   Logout,
   ExpandLess,
   ExpandMore,
   Message,
   MenuBook,
   PlayCircle,
+  Brightness4,
+  Brightness7,
 } from '@mui/icons-material';
+import { useThemeMode } from '../../contexts/ThemeModeContext';
 
 const drawerWidth = 300;
 
 const Layout = ({ children }) => {
-  const { user, logout, isAdmin, isTeacher } = useAuth();
+  const { user, logout, isAdmin, isTeacher, isSuperAdmin } = useAuth();
+  const { mode, toggleMode } = useThemeMode();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -65,7 +69,6 @@ const Layout = ({ children }) => {
     userManagement: true,
     contentManagement: true,
     system: true,
-    myCourses: true,
   });
 
   const handleDrawerToggle = () => {
@@ -92,9 +95,6 @@ const Layout = ({ children }) => {
       [section]: !prev[section]
     }));
   };
-
-  // Get user's assigned courses
-  const assignedCourses = user?.assigned_courses || [];
 
   // Admin Menu Items
   const adminMenuItems = [
@@ -137,6 +137,7 @@ const Layout = ({ children }) => {
       subItems: [
         { text: 'Users', path: '/users', icon: <People /> },
         { text: 'Teachers', path: '/teachers', icon: <Person /> },
+        ...(isSuperAdmin() ? [{ text: 'Admins', path: '/admins', icon: <AdminPanelSettings /> }] : []),
       ],
     },
     {
@@ -169,17 +170,6 @@ const Layout = ({ children }) => {
       path: '/dashboard',
     },
     {
-      section: 'myCourses',
-      text: 'My Courses',
-      icon: <MenuBook />,
-      subItems: assignedCourses.map(course => ({
-        text: course.name,
-        path: `/courses/${course.id}`,
-        icon: <MenuBook />,
-        chip: course.category_name,
-      })),
-    },
-    {
       section: 'contentManagement',
       text: 'Content Management',
       icon: <VideoLibrary />,
@@ -191,16 +181,17 @@ const Layout = ({ children }) => {
         { text: 'Exams', path: '/exams', icon: <Assessment /> },
       ],
     },
+
   ];
 
   const menuItems = isAdmin() ? adminMenuItems : teacherMenuItems;
 
-  const renderMenuItem = (item) => {
+  const renderMenuItem = (item, idx) => {
     // Regular menu item with path
     if (item.path) {
       return (
         <ListItemButton
-          key={item.text}
+          key={item.path || `menu-${idx}`}
           component={Link}
           to={item.path}
           selected={location.pathname === item.path}
@@ -209,11 +200,11 @@ const Layout = ({ children }) => {
             borderRadius: 1,
             mb: 0.5,
             '&.Mui-selected': {
-              bgcolor: alpha(theme.palette.primary.main, 0.1),
+              bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.12),
               color: 'primary.main',
               '& .MuiListItemIcon-root': { color: 'primary.main' },
             },
-            '&:hover': { bgcolor: 'action.hover' },
+            '&:hover': { bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.06) },
           }}
         >
           <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
@@ -230,13 +221,13 @@ const Layout = ({ children }) => {
       if (item.subItems.length === 0) return null;
 
       return (
-        <React.Fragment key={item.text}>
+        <React.Fragment key={item.section || `section-${idx}`}>  {/* ensure fragment key unique */}
           <ListItemButton
             onClick={() => toggleSection(item.section)}
             sx={{
               borderRadius: 1,
               mb: 0.5,
-              '&:hover': { bgcolor: 'action.hover' },
+              '&:hover': { bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.06) },
             }}
           >
             <ListItemIcon sx={{ minWidth: 40, color: 'primary.main' }}>
@@ -248,9 +239,9 @@ const Layout = ({ children }) => {
           
           <Collapse in={openSections[item.section]} timeout="auto">
             <List component="div" disablePadding>
-              {item.subItems.map((subItem) => (
+              {item.subItems.map((subItem, subIdx) => (
                 <ListItemButton
-                  key={subItem.text}
+                  key={subItem.key ?? subItem.path ?? `${item.section}-${subIdx}`}
                   component={Link}
                   to={subItem.path}
                   selected={location.pathname === subItem.path}
@@ -260,10 +251,11 @@ const Layout = ({ children }) => {
                     borderRadius: 1,
                     mb: 0.5,
                     '&.Mui-selected': {
-                      bgcolor: alpha(theme.palette.primary.main, 0.1),
+                      bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.18 : 0.12),
                       color: 'primary.main',
                       '& .MuiListItemIcon-root': { color: 'primary.main' },
                     },
+                    '&:hover': { bgcolor: alpha(theme.palette.primary.main, theme.palette.mode === 'dark' ? 0.12 : 0.06) },
                   }}
                 >
                   <ListItemIcon sx={{ minWidth: 40 }}>{subItem.icon}</ListItemIcon>
@@ -297,15 +289,19 @@ const Layout = ({ children }) => {
           alignItems: 'center',
           gap: 2,
           borderBottom: `1px solid ${theme.palette.divider}`,
-          bgcolor: 'primary.main',
-          color: 'white',
+          background: theme.palette.mode === 'dark'
+            ? 'linear-gradient(160deg, rgba(142, 168, 199, 0.18), rgba(27, 33, 40, 0.96))'
+            : 'linear-gradient(160deg, rgba(54, 95, 138, 0.94), rgba(111, 137, 168, 0.82))',
+          color: theme.palette.mode === 'dark'
+            ? 'rgba(245, 247, 250, 0.96)'
+            : theme.palette.primary.contrastText,
         }}
       >
         <Avatar
           sx={{
             width: 48,
             height: 48,
-            bgcolor: 'white',
+            bgcolor: 'rgba(255, 255, 255, 0.92)',
             color: 'primary.main',
             fontWeight: 'bold',
           }}
@@ -313,10 +309,10 @@ const Layout = ({ children }) => {
           FA
         </Avatar>
         <Box>
-          <Typography variant="subtitle1" fontWeight="bold">
+          <Typography variant="subtitle1" fontWeight="bold" sx={{ color: 'inherit' }}>
             Family Academy
           </Typography>
-          <Typography variant="caption" sx={{ opacity: 0.9 }}>
+          <Typography variant="caption" sx={{ color: 'inherit', opacity: 0.9 }}>
             {isAdmin() ? 'Administrator' : 'Teacher'}
           </Typography>
         </Box>
@@ -336,20 +332,12 @@ const Layout = ({ children }) => {
               {user?.role}
             </Typography>
           </Box>
-          {isTeacher() && (
-            <Chip 
-              label={`${assignedCourses.length} Courses`}
-              size="small"
-              color="primary"
-              variant="outlined"
-            />
-          )}
         </Box>
       </Box>
 
       {/* Menu Items */}
       <List sx={{ flex: 1, px: 2, pt: 2, overflow: 'auto' }}>
-        {menuItems.map((item) => renderMenuItem(item))}
+        {menuItems.map((item, idx) => renderMenuItem(item, idx))}
       </List>
 
       {/* Footer */}
@@ -369,15 +357,12 @@ const Layout = ({ children }) => {
           </ListItemIcon>
           <ListItemText primary="Logout" />
         </ListItemButton>
-        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
-          v2.0.0 • {isAdmin() ? 'Admin' : 'Teacher'} Portal
-        </Typography>
       </Box>
     </Box>
   );
 
   return (
-    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'grey.50' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: 'background.default' }}>
       <CssBaseline />
       
       {/* App Bar */}
@@ -402,8 +387,17 @@ const Layout = ({ children }) => {
             <MenuIcon />
           </IconButton>
           
-          <Box sx={{ flexGrow: 1 }}>
-            <Typography variant="h6" noWrap sx={{ fontWeight: 600, color: 'primary.main' }}>
+          <Box sx={{ flexGrow: 1, minWidth: 0, pr: 1 }}>
+            <Typography
+              variant="h6"
+              noWrap={!isMobile}
+              sx={{
+                fontWeight: 600,
+                color: 'primary.main',
+                fontSize: { xs: '1rem', sm: '1.1rem', md: '1.25rem' },
+                lineHeight: 1.2,
+              }}
+            >
               {(() => {
                 // Find current page title
                 const allItems = [...adminMenuItems, ...teacherMenuItems];
@@ -419,14 +413,10 @@ const Layout = ({ children }) => {
             </Typography>
           </Box>
 
-          {isTeacher() && (
-            <IconButton color="inherit" sx={{ mr: 1 }}>
-              <Badge badgeContent={assignedCourses.length} color="primary">
-                <MenuBook />
-              </Badge>
-            </IconButton>
-          )}
-          
+          <IconButton color="inherit" onClick={toggleMode} sx={{ mr: 1 }}>
+            {mode === 'dark' ? <Brightness7 /> : <Brightness4 />}
+          </IconButton>
+
           <IconButton onClick={handleUserMenuOpen}>
             <Avatar sx={{ width: 36, height: 36, bgcolor: 'secondary.main' }}>
               {user?.username?.[0]?.toUpperCase()}
@@ -453,11 +443,6 @@ const Layout = ({ children }) => {
           <Typography variant="caption" color="text.secondary">
             {user?.role}
           </Typography>
-          {isTeacher() && (
-            <Typography variant="caption" color="text.secondary" display="block">
-              {assignedCourses.length} Assigned Course(s)
-            </Typography>
-          )}
         </Box>
         <Divider />
         {isAdmin() && (
@@ -497,11 +482,13 @@ const Layout = ({ children }) => {
         component="main"
         sx={{
           flexGrow: 1,
-          p: { xs: 2, sm: 3 },
+          minWidth: 0,
+          p: { xs: 1.5, sm: 2.5, md: 3 },
           width: { md: `calc(100% - ${drawerWidth}px)` },
           mt: '64px',
           minHeight: 'calc(100vh - 64px)',
-          bgcolor: 'grey.50',
+          bgcolor: 'background.default',
+          overflowX: 'hidden',
         }}
       >
         <Box

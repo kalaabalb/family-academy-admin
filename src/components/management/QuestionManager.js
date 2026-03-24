@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
@@ -28,18 +28,15 @@ import {
   DialogActions,
   Grid,
   Stack,
+  Divider,
   Radio,
   FormControlLabel,
-  FormLabel,
   Card,
   CardContent,
-  Divider,
   InputAdornment,
   CircularProgress,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   LinearProgress,
+  FormHelperText,
 } from '@mui/material';
 import {
   Add,
@@ -47,24 +44,22 @@ import {
   Delete,
   Refresh,
   Quiz,
-  AddCircle,
-  RemoveCircle,
+  Upload,
   Visibility,
   Close,
   Save,
   FilterList,
   Search,
   Clear,
-  ExpandMore,
-  CheckCircle,
-  RadioButtonChecked,
-  RadioButtonUnchecked,
   Category as CategoryIcon,
   Book,
   MenuBook,
-  Upload,
-  Download,
 } from '@mui/icons-material';
+import ContentAssignmentFields from '../common/ContentAssignmentFields';
+import FastTextField from '../common/FastTextField';
+import DetailRow from '../common/DetailRow';
+import { renderTableChip } from '../common/tableFormatters';
+import { devError } from '../../utils/devLogger';
 
 const QuestionManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
@@ -84,14 +79,13 @@ const QuestionManager = () => {
   const [batchDialogOpen, setBatchDialogOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedQuestion, setSelectedQuestion] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   
-  // For cascading dropdowns
   const [filteredCourses, setFilteredCourses] = useState([]);
   const [filteredChapters, setFilteredChapters] = useState([]);
   
-  // Filters
   const [filters, setFilters] = useState({
     category_id: '',
     course_id: '',
@@ -99,12 +93,13 @@ const QuestionManager = () => {
     difficulty: '',
   });
   
-  // Filtered lists for filters
   const [filterCoursesForFilter, setFilterCoursesForFilter] = useState([]);
   const [filterChaptersForFilter, setFilterChaptersForFilter] = useState([]);
   
   const [formData, setFormData] = useState({
     question_text: '',
+    category_id: '',
+    course_id: '',
     chapter_id: '',
     option_a: '',
     option_b: '',
@@ -117,8 +112,9 @@ const QuestionManager = () => {
     difficulty: 'medium',
   });
 
-  // Batch questions state
   const [batchForm, setBatchForm] = useState({
+    category_id: '',
+    course_id: '',
     chapter_id: '',
     questions: [{
       question_text: '',
@@ -134,51 +130,68 @@ const QuestionManager = () => {
     }]
   });
 
-  // Cache keys
-  const questionsCacheKey = 'questions';
-  const categoriesCacheKey = 'categories';
-  const coursesCacheKey = 'courses';
-  const chaptersCacheKey = 'chapters';
-
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
       setError('');
       
       const categoriesData = await getCachedData(
-        categoriesCacheKey,
+        'categories',
         () => categoriesApi.getAllCategories(),
         { forceRefresh }
       );
       
       const coursesData = await getCachedData(
-        coursesCacheKey,
+        'courses',
         () => coursesApi.getAllCourses(),
         { forceRefresh }
       );
       
       const chaptersData = await getCachedData(
-        chaptersCacheKey,
+        'chapters',
         () => chaptersApi.getAllChapters(),
         { forceRefresh }
       );
       
-      setCategories(categoriesData || []);
-      setCourses(coursesData || []);
+      // FIX: Filter courses for teachers based on assigned_courses
+      let filteredCoursesData = coursesData || [];
+      let filteredCategoriesData = categoriesData || [];
+      
+      if (isTeacher()) {
+        const assignedCourseIds = user?.assigned_courses || [];
+        
+        filteredCoursesData = coursesData.filter(course => 
+          assignedCourseIds.includes(course.id)
+        );
+        
+        const accessibleCategoryIds = new Set(
+          filteredCoursesData.map(c => c.category_id)
+        );
+        filteredCategoriesData = categoriesData.filter(cat => 
+          accessibleCategoryIds.has(cat.id)
+        );
+      }
+      
+      setCategories(filteredCategoriesData || []);
+      setCourses(filteredCoursesData || []);
       setChapters(chaptersData || []);
       
-      await fetchQuestions(forceRefresh);
+      await fetchQuestions(forceRefresh, {
+        chaptersData: chaptersData || [],
+        coursesData: filteredCoursesData || [],
+        categoriesData: filteredCategoriesData || [],
+      });
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load data');
       showError('Failed to load questions');
     } finally {
       setLoading(false);
     }
-  }, [getCachedData, showError]);
+  }, [isTeacher, user, getCachedData, showError]);
 
-  const fetchQuestions = useCallback(async (forceRefresh = false) => {
+  const fetchQuestions = useCallback(async (forceRefresh = false, lookupData = null) => {
     try {
       const params = {
         question_type: 'practice',
@@ -197,26 +210,36 @@ const QuestionManager = () => {
         { forceRefresh }
       );
       
-      // Enrich questions with chapter, course, and category names
+      const availableChapters = lookupData?.chaptersData || chapters;
+      const availableCourses = lookupData?.coursesData || courses;
+      const availableCategories = lookupData?.categoriesData || categories;
+
       const enrichedQuestions = (questionsData || []).map(question => {
-        const chapter = chapters.find(ch => ch.id === question.chapter_id);
-        const course = chapter ? courses.find(c => c.id === chapter.course_id) : null;
-        const category = course ? categories.find(c => c.id === course.category_id) : null;
+        const chapter = availableChapters.find(ch => ch.id === question.chapter_id);
+        const course =
+          availableCourses.find(c => c.id === question.course_id) ||
+          (chapter ? availableCourses.find(c => c.id === chapter.course_id) : null);
+        const category = course ? availableCategories.find(c => c.id === course.category_id) : null;
         return {
           ...question,
-          chapter_name: chapter?.name || 'Unknown Chapter',
-          course_name: course?.name || 'Unknown Course',
-          category_name: category?.name || 'Unknown Category',
+          chapter_name: question.chapter_name || chapter?.name || 'Unknown Chapter',
+          course_name: question.course_name || course?.name || 'Unknown Course',
+          category_name: question.category_name || category?.name || 'Unknown Category',
         };
       });
       
       setQuestions(enrichedQuestions);
       
     } catch (err) {
-      console.error('Failed to fetch questions:', err);
+      devError('Failed to fetch questions:', err);
       showError('Failed to fetch questions');
     }
   }, [filters, chapters, courses, categories, getCachedData, getCacheKey, showError]);
+
+  const handlePreview = (question) => {
+    setSelectedQuestion(question);
+    setPreviewOpen(true);
+  };
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -224,17 +247,26 @@ const QuestionManager = () => {
     }
   }, [isAdmin, isTeacher, fetchData]);
 
-  // Update filter dropdowns
   useEffect(() => {
+    // FIX: Use filtered courses based on teacher's assignments
+    let availableCourses = courses;
+    
+    if (isTeacher()) {
+      const assignedCourseIds = user?.assigned_courses || [];
+      availableCourses = courses.filter(course => 
+        assignedCourseIds.includes(course.id)
+      );
+    }
+    
     if (filters.category_id) {
-      const filtered = courses.filter(course => 
+      const filtered = availableCourses.filter(course => 
         course.category_id === parseInt(filters.category_id)
       );
       setFilterCoursesForFilter(filtered);
     } else {
       setFilterCoursesForFilter([]);
     }
-  }, [filters.category_id, courses]);
+  }, [filters.category_id, courses, isTeacher, user]);
 
   useEffect(() => {
     if (filters.course_id) {
@@ -283,7 +315,10 @@ const QuestionManager = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  // Batch question handlers
+  const handleAssignmentChange = (updates) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
+  };
+
   const handleBatchInputChange = (index, field, value) => {
     const updatedQuestions = [...batchForm.questions];
     updatedQuestions[index] = { ...updatedQuestions[index], [field]: value };
@@ -317,13 +352,15 @@ const QuestionManager = () => {
     setBatchForm(prev => ({ ...prev, questions: updatedQuestions }));
   };
 
-  const handleBatchChapterChange = (chapterId) => {
-    setBatchForm(prev => ({ ...prev, chapter_id: chapterId }));
+  const handleBatchAssignmentChange = (updates) => {
+    setBatchForm((prev) => ({ ...prev, ...updates }));
   };
 
   const resetForm = () => {
     setFormData({
       question_text: '',
+      category_id: '',
+      course_id: '',
       chapter_id: '',
       option_a: '',
       option_b: '',
@@ -341,6 +378,8 @@ const QuestionManager = () => {
 
   const resetBatchForm = () => {
     setBatchForm({
+      category_id: '',
+      course_id: '',
       chapter_id: '',
       questions: [{
         question_text: '',
@@ -428,16 +467,12 @@ const QuestionManager = () => {
         await questionsApi.updateQuestion(selectedQuestion.id, questionData);
         showSuccess('Practice question updated successfully');
         
-        // Invalidate caches
         invalidateCache(/^questions/);
-        invalidateCache(chaptersCacheKey);
       } else {
         await questionsApi.createQuestion(questionData);
         showSuccess('Practice question created successfully');
         
-        // Invalidate caches
         invalidateCache(/^questions/);
-        invalidateCache(chaptersCacheKey);
       }
       
       setFormOpen(false);
@@ -445,7 +480,7 @@ const QuestionManager = () => {
       await fetchQuestions(true);
       
     } catch (err) {
-      console.error('Failed to save question:', err);
+      devError('Failed to save question:', err);
       showError(err.response?.data?.message || 'Failed to save question');
     } finally {
       setActionLoading(false);
@@ -477,16 +512,14 @@ const QuestionManager = () => {
       await questionsApi.createBatchQuestions(batchData.chapter_id, batchData.questions);
       showSuccess(`Successfully created ${batchData.questions.length} practice questions!`);
       
-      // Invalidate caches
       invalidateCache(/^questions/);
-      invalidateCache(chaptersCacheKey);
       
       setBatchDialogOpen(false);
       resetBatchForm();
       await fetchQuestions(true);
       
     } catch (err) {
-      console.error('Failed to create batch questions:', err);
+      devError('Failed to create batch questions:', err);
       showError(err.response?.data?.message || 'Failed to create batch questions');
     } finally {
       setActionLoading(false);
@@ -499,11 +532,16 @@ const QuestionManager = () => {
       return;
     }
 
+    const chapter = chapters.find((item) => item.id === question.chapter_id);
+    const course = chapter ? courses.find((item) => item.id === chapter.course_id) : null;
+
     setSelectedQuestion(question);
     setIsEditing(true);
     
     setFormData({
       question_text: question.question_text || '',
+      category_id: course?.category_id?.toString() || '',
+      course_id: course?.id?.toString() || '',
       chapter_id: question.chapter_id?.toString() || '',
       option_a: question.option_a || '',
       option_b: question.option_b || '',
@@ -537,9 +575,7 @@ const QuestionManager = () => {
     try {
       await questionsApi.deleteQuestion(selectedQuestion.id);
       
-      // Invalidate caches
       invalidateCache(/^questions/);
-      invalidateCache(chaptersCacheKey);
       
       setQuestions(prev => prev.filter(q => q.id !== selectedQuestion.id));
       showSuccess('Practice question deleted successfully');
@@ -547,19 +583,18 @@ const QuestionManager = () => {
       setSelectedQuestion(null);
       
     } catch (err) {
-      console.error('Failed to delete question:', err);
+      devError('Failed to delete question:', err);
       showError(err.response?.data?.message || 'Failed to delete question');
     } finally {
       setActionLoading(false);
     }
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     fetchData(true);
-  };
+  }, [fetchData]);
 
-  // Filter questions based on search
-  const filteredQuestions = questions.filter(question => {
+  const filteredQuestions = useMemo(() => questions.filter(question => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -567,32 +602,47 @@ const QuestionManager = () => {
       (question.chapter_name && question.chapter_name.toLowerCase().includes(query)) ||
       (question.course_name && question.course_name.toLowerCase().includes(query))
     );
-  });
+  }), [questions, searchQuery]);
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
       render: (value) => (
         <Typography variant="body2" color="text.secondary">
-          #{value}
+          {value}
         </Typography>
       ),
     },
     {
       field: 'question_text',
-      headerName: 'Question',
+      headerName: 'Question Text',
       flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="500">
-            {value && value.length > 80 ? value.substring(0, 80) + '...' : value}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.chapter_name || 'No Chapter'} • {row.course_name || 'No Course'}
-          </Typography>
-        </Box>
+      render: (value) => (
+        <Typography variant="body2" fontWeight="500">
+          {value && value.length > 80 ? value.substring(0, 80) + '...' : value}
+        </Typography>
+      ),
+    },
+    {
+      field: 'chapter_name',
+      headerName: 'Chapter',
+      width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Chapter'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'course_name',
+      headerName: 'Course',
+      width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Course'}
+        </Typography>
       ),
     },
     {
@@ -613,7 +663,7 @@ const QuestionManager = () => {
     },
     {
       field: 'correct_option',
-      headerName: 'Correct',
+      headerName: 'Correct Option',
       width: 90,
       render: (value) => (
         <Chip
@@ -625,18 +675,25 @@ const QuestionManager = () => {
       ),
     },
     {
-      field: 'creator_role',
+      field: 'created_by_name',
       headerName: 'Created By',
-      width: 120,
-      render: (value, row) => (
+      width: 170,
+      render: (value) => (
         <Box>
-          <Typography variant="caption" display="block">
+          <Typography variant="body2" fontWeight="medium">
             {value || 'Unknown'}
           </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.created_by === user?.id && '(You)'}
-          </Typography>
         </Box>
+      ),
+    },
+    {
+      field: 'created_at',
+      headerName: 'Created At',
+      width: 120,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value ? new Date(value).toLocaleDateString() : '-'}
+        </Typography>
       ),
     },
     {
@@ -648,6 +705,18 @@ const QuestionManager = () => {
         
         return (
           <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title="View Question">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => handlePreview(row)}
+                  color="info"
+                  disabled={actionLoading}
+                >
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
             {canEdit && (
               <>
                 <Tooltip title="Edit Question">
@@ -657,10 +726,6 @@ const QuestionManager = () => {
                       onClick={() => handleEdit(row)}
                       color="primary"
                       disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
                     >
                       <Edit fontSize="small" />
                     </IconButton>
@@ -673,10 +738,6 @@ const QuestionManager = () => {
                       onClick={() => handleDelete(row)}
                       color="error"
                       disabled={actionLoading}
-                      sx={{
-                        opacity: actionLoading ? 0.5 : 1,
-                        transition: 'opacity 0.2s',
-                      }}
                     >
                       <Delete fontSize="small" />
                     </IconButton>
@@ -688,7 +749,7 @@ const QuestionManager = () => {
         );
       },
     },
-  ];
+  ], [actionLoading, handleDelete, handleEdit, handlePreview, isAdmin, isTeacher, user?.id]);
 
   if (!isAdmin() && !isTeacher()) {
     return (
@@ -702,7 +763,6 @@ const QuestionManager = () => {
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Box>
           <Typography variant="h4" fontWeight="bold" gutterBottom>
@@ -763,10 +823,8 @@ const QuestionManager = () => {
         </Stack>
       </Box>
 
-      {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
-      {/* Error Alert */}
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
           {error}
@@ -776,14 +834,14 @@ const QuestionManager = () => {
         </Alert>
       )}
 
-      {/* Search Bar */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <TextField
+        <FastTextField
           fullWidth
           size="small"
           placeholder="Search questions by text..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onDebouncedChange={(value) => setSearchQuery(value)}
+          delay={120}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -801,7 +859,6 @@ const QuestionManager = () => {
         />
       </Paper>
 
-      {/* Filters Section */}
       {showFilters && (
         <Paper sx={{ p: 3, mb: 3, borderRadius: 2 }}>
           <Typography variant="h6" fontWeight="medium" gutterBottom>
@@ -908,8 +965,8 @@ const QuestionManager = () => {
         </Paper>
       )}
 
-      {/* Questions Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredQuestions}
         loading={loading}
@@ -918,10 +975,11 @@ const QuestionManager = () => {
         rowKey="id"
       />
 
-      {/* Add/Edit Question Dialog */}
       <Dialog
         open={formOpen}
         onClose={() => !actionLoading && setFormOpen(false)}
+        keepMounted
+        disableRestoreFocus
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -949,12 +1007,13 @@ const QuestionManager = () => {
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Question Text *"
                 name="question_text"
                 value={formData.question_text}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, question_text: value }))}
+                delay={80}
                 multiline
                 rows={3}
                 required
@@ -962,25 +1021,17 @@ const QuestionManager = () => {
               />
             </Grid>
 
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Chapter *</InputLabel>
-                <Select
-                  name="chapter_id"
-                  value={formData.chapter_id}
-                  onChange={handleInputChange}
-                  label="Chapter *"
-                  disabled={actionLoading}
-                >
-                  <MenuItem value="">Select Chapter</MenuItem>
-                  {chapters.map(chapter => (
-                    <MenuItem key={chapter.id} value={chapter.id}>
-                      {chapter.name} ({chapter.course_name})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <ContentAssignmentFields
+              categories={categories}
+              courses={courses}
+              chapters={chapters}
+              values={formData}
+              onChange={handleAssignmentChange}
+              disabled={actionLoading}
+              showCategory
+              showCourse
+              showChapter
+            />
 
             <Grid item xs={12}>
               <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
@@ -992,12 +1043,15 @@ const QuestionManager = () => {
                   return (
                     <Grid item xs={12} md={6} key={letter}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        <TextField
+                        <FastTextField
                           fullWidth
                           label={`Option ${letter} ${letter <= 'B' ? '*' : ''}`}
                           name={fieldName}
                           value={formData[fieldName]}
-                          onChange={handleInputChange}
+                          onDebouncedChange={(value) =>
+                            setFormData((prev) => ({ ...prev, [fieldName]: value }))
+                          }
+                          delay={80}
                           required={letter <= 'B'}
                           disabled={actionLoading}
                           size="small"
@@ -1037,12 +1091,13 @@ const QuestionManager = () => {
             </Grid>
 
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Explanation (Optional)"
                 name="explanation"
                 value={formData.explanation}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, explanation: value }))}
+                delay={80}
                 multiline
                 rows={2}
                 disabled={actionLoading}
@@ -1081,13 +1136,14 @@ const QuestionManager = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Batch Upload Dialog */}
       <Dialog
         open={batchDialogOpen}
         onClose={() => !actionLoading && setBatchDialogOpen(false)}
+        keepMounted
+        disableRestoreFocus
         maxWidth="lg"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
+        PaperProps={{ sx: { borderRadius: 2.5, maxHeight: '90vh' } }}
       >
         <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -1117,24 +1173,17 @@ const QuestionManager = () => {
           </Alert>
 
           <Grid container spacing={3}>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Chapter *</InputLabel>
-                <Select
-                  value={batchForm.chapter_id}
-                  onChange={(e) => handleBatchChapterChange(e.target.value)}
-                  label="Chapter *"
-                  disabled={actionLoading}
-                >
-                  <MenuItem value="">Select Chapter</MenuItem>
-                  {chapters.map(chapter => (
-                    <MenuItem key={chapter.id} value={chapter.id}>
-                      {chapter.name} ({chapter.course_name})
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <ContentAssignmentFields
+              categories={categories}
+              courses={courses}
+              chapters={chapters}
+              values={batchForm}
+              onChange={handleBatchAssignmentChange}
+              disabled={actionLoading}
+              showCategory
+              showCourse
+              showChapter
+            />
 
             <Grid item xs={12}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
@@ -1156,7 +1205,7 @@ const QuestionManager = () => {
                   <Paper
                     key={index}
                     variant="outlined"
-                    sx={{ p: 2, mb: 2, position: 'relative', borderRadius: 2 }}
+                    sx={{ p: 2.5, mb: 2, position: 'relative', borderRadius: 2.5 }}
                   >
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
                       <Typography variant="subtitle2" fontWeight="bold">
@@ -1272,7 +1321,97 @@ const QuestionManager = () => {
         </DialogActions>
       </Dialog>
 
-      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        maxWidth="md"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2.5 } }}
+      >
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" fontWeight="bold">View Practice Question</Typography>
+            <IconButton onClick={() => setPreviewOpen(false)} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+              <Typography variant="body2">{selectedQuestion?.question_text || '-'}</Typography>
+            </Paper>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
+              <Stack spacing={1.25}>
+                <DetailRow label="Chapter" value={selectedQuestion?.chapter_name || 'Unknown Chapter'} />
+                <DetailRow label="Course" value={selectedQuestion?.course_name || 'Unknown Course'} />
+                <DetailRow
+                  label="Difficulty"
+                  value={selectedQuestion?.difficulty ? renderTableChip(selectedQuestion.difficulty, {
+                    color:
+                      selectedQuestion.difficulty === 'easy' ? 'success' :
+                      selectedQuestion.difficulty === 'medium' ? 'warning' : 'error',
+                  }) : '-'}
+                />
+                <DetailRow label="Correct Option" value={selectedQuestion?.correct_option?.toUpperCase() || '-'} />
+                <DetailRow label="Created By" value={selectedQuestion?.created_by_name || 'Unknown'} />
+              </Stack>
+            </Paper>
+            <Divider />
+            <Typography variant="subtitle2" color="text.secondary">Answer Options</Typography>
+            <Stack spacing={1}>
+              {['a', 'b', 'c', 'd', 'e', 'f']
+                .filter((option) => selectedQuestion?.[`option_${option}`])
+                .map((option) => (
+                  <Paper
+                    key={option}
+                    variant="outlined"
+                    sx={{
+                      p: 1.5,
+                      borderRadius: 2,
+                      borderColor:
+                        selectedQuestion?.correct_option === option ? 'success.main' : 'divider',
+                      bgcolor: (theme) =>
+                        selectedQuestion?.correct_option === option
+                          ? theme.palette.mode === 'dark'
+                            ? 'rgba(46, 125, 50, 0.18)'
+                            : 'rgba(46, 125, 50, 0.08)'
+                          : 'transparent',
+                    }}
+                  >
+                    <Typography variant="body2">
+                      <strong>{option.toUpperCase()}.</strong> {selectedQuestion?.[`option_${option}`]}
+                    </Typography>
+                  </Paper>
+                ))}
+            </Stack>
+            {selectedQuestion?.explanation ? (
+              <>
+                <Divider />
+                <Typography variant="subtitle2" color="text.secondary">Explanation</Typography>
+                <Paper variant="outlined" sx={{ p: 2, borderRadius: 2 }}>
+                  <Typography variant="body2">{selectedQuestion.explanation}</Typography>
+                </Paper>
+              </>
+            ) : null}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setPreviewOpen(false);
+              handleEdit(selectedQuestion);
+            }}
+            disabled={!selectedQuestion}
+            sx={{ borderRadius: 2 }}
+          >
+            Edit Question
+          </Button>
+          <Button variant="outlined" onClick={() => setPreviewOpen(false)} sx={{ borderRadius: 2 }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       <ConfirmDialog
         open={deleteConfirmOpen}
         onClose={() => setDeleteConfirmOpen(false)}

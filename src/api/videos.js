@@ -1,4 +1,5 @@
 import axiosInstance from './axiosConfig';
+import { devLog } from '../utils/devLogger';
 
 const videosApi = {
   /**
@@ -19,13 +20,14 @@ const videosApi = {
    * @param {Function} onProgress - Progress callback
    */
   createVideo: (formData, onProgress) => {
-    // Log FormData contents for debugging
-    console.log('📤 Sending video upload request:');
-    for (let pair of formData.entries()) {
+    devLog('Sending video upload request');
+    for (const pair of formData.entries()) {
       if (pair[0] === 'video') {
-        console.log(`  - ${pair[0]}: [FILE: ${pair[1].name}, ${(pair[1].size / 1024 / 1024).toFixed(2)}MB, ${pair[1].type}]`);
+        devLog(
+          `  - ${pair[0]}: [FILE: ${pair[1].name}, ${(pair[1].size / 1024 / 1024).toFixed(2)}MB, ${pair[1].type}]`
+        );
       } else {
-        console.log(`  - ${pair[0]}: ${pair[1]}`);
+        devLog(`  - ${pair[0]}: ${pair[1]}`);
       }
     }
     

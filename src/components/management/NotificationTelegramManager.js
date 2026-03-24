@@ -6,6 +6,16 @@ import telegramApi from '../../api/telegram';
 import usersApi from '../../api/users';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import ManagementPageHeader from '../common/ManagementPageHeader';
+import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
+import {
+  formatLabel,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+} from '../common/tableFormatters';
 import {
   Box,
   Paper,
@@ -40,6 +50,9 @@ import {
   DialogActions,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import SchedulePicker from '../common/SchedulePicker';
 import {
   Send,
   Schedule,
@@ -72,6 +85,34 @@ import {
   AutoAwesome,
   FormatQuote,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
+
+const getNotificationTypeColor = (value) => {
+  switch (value) {
+    case 'success':
+      return 'success';
+    case 'warning':
+      return 'warning';
+    case 'error':
+      return 'error';
+    case 'academic':
+      return 'secondary';
+    case 'payment':
+      return 'warning';
+    case 'info':
+    default:
+      return 'info';
+  }
+};
+
+const getPushReadiness = (user) => {
+  const hasToken = Boolean(user?.fcm_token && String(user.fcm_token).trim().length > 10);
+  return {
+    hasToken,
+    label: hasToken ? 'Push ready' : 'No token',
+    color: hasToken ? 'success' : 'default',
+  };
+};
 
 // ==================== CONSTANTS ====================
 
@@ -107,12 +148,17 @@ const TRIGGER_EVENTS = [
   { value: 'subscription_expiring', label: 'Subscription Expiring', category: 'payment' },
   { value: 'subscription_expired', label: 'Subscription Expired', category: 'payment' },
   { value: 'chapter_released', label: 'Chapter Released', category: 'academic' },
+  { value: 'video_scheduled', label: 'Video Scheduled', category: 'academic' },
   { value: 'video_released', label: 'Video Released', category: 'academic' },
+  { value: 'note_scheduled', label: 'Note Scheduled', category: 'academic' },
   { value: 'note_released', label: 'Note Released', category: 'academic' },
   { value: 'exam_scheduled', label: 'Exam Scheduled', category: 'academic' },
   { value: 'exam_available', label: 'Exam Available', category: 'academic' },
   { value: 'exam_result', label: 'Exam Result', category: 'academic' },
   { value: 'exam_reminder', label: 'Exam Reminder', category: 'academic' },
+  { value: 'daily_motivation', label: 'Daily Motivation', category: 'academic' },
+  { value: 'study_reminder', label: 'Study Reminder', category: 'academic' },
+  { value: 'weekly_progress_nudge', label: 'Weekly Progress Nudge', category: 'academic' },
   { value: 'streak_milestone', label: 'Streak Milestone', category: 'academic' },
   { value: 'achievement_unlocked', label: 'Achievement Unlocked', category: 'academic' },
   { value: 'parent_weekly_report', label: 'Parent Weekly Report', category: 'parent' },
@@ -126,7 +172,16 @@ const VARIABLE_TYPES = {
   'payment_pending': ['amount', 'category_name', 'submitted_date'],
   'subscription_expiring': ['category_name', 'days_remaining'],
   'chapter_released': ['chapter_name', 'course_name', 'category_name'],
+  'video_scheduled': ['video_title', 'chapter_name', 'course_name', 'category_name', 'release_date', 'release_time', 'video_id'],
   'video_released': ['video_title', 'chapter_name', 'course_name'],
+  'note_scheduled': ['note_title', 'chapter_name', 'course_name', 'category_name', 'release_date', 'release_time', 'note_id'],
+  'note_released': ['note_title', 'chapter_name', 'course_name', 'category_name'],
+  'exam_scheduled': ['exam_title', 'course_name', 'category_name', 'start_date', 'end_date', 'exam_id'],
+  'exam_available': ['exam_title', 'course_name', 'end_date', 'exam_id'],
+  'exam_reminder': ['exam_title', 'course_name', 'hours_remaining', 'start_date', 'exam_id'],
+  'daily_motivation': [],
+  'study_reminder': [],
+  'weekly_progress_nudge': [],
   'exam_result': ['exam_title', 'course_name', 'score', 'passed'],
   'streak_milestone': ['streak_count'],
   'achievement_unlocked': ['achievement_title'],
@@ -163,6 +218,8 @@ const NotificationTelegramManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedItem, setSelectedItem] = useState(null);
   const [deleteType, setDeleteType] = useState('notification');
+  const [repairingDelivery, setRepairingDelivery] = useState(false);
+  const [testPushOpen, setTestPushOpen] = useState(false);
   
   // Form states
   const [templateFormOpen, setTemplateFormOpen] = useState(false);
@@ -176,6 +233,7 @@ const NotificationTelegramManager = () => {
     scheduled_time: '',
     send_now: true,
   });
+  const [notificationScheduleEnabled, setNotificationScheduleEnabled] = useState(false);
   
   const [scheduleForm, setScheduleForm] = useState({
     name: '',
@@ -200,6 +258,11 @@ const NotificationTelegramManager = () => {
     category: 'general',
     variables: [],
     is_active: true,
+  });
+  const [testPushForm, setTestPushForm] = useState({
+    user_id: '',
+    title: 'Family Academy test push',
+    message: 'This is a test notification to confirm cloud push is working on this device.',
   });
 
   // ==================== API CALLS ====================
@@ -363,8 +426,6 @@ const NotificationTelegramManager = () => {
         variables: {} // Add empty variables object as required by backend
       };
 
-      console.log('Sending notification:', payload);
-
       const response = await notificationsApi.sendNotification(payload);
       showSuccess(response.data?.message || 'Notification sent successfully');
       resetNotificationForm();
@@ -372,7 +433,7 @@ const NotificationTelegramManager = () => {
       await fetchAllData();
       setActiveTab(3); // Switch to history tab
     } catch (error) {
-      console.error('Send notification error:', error.response?.data || error);
+      devError('Send notification error:', error.response?.data || error);
       showError(error.response?.data?.message || 'Failed to send notification');
     } finally {
       setActionLoading(false);
@@ -426,6 +487,44 @@ const NotificationTelegramManager = () => {
     }
   };
 
+  const handleRepairDelivery = async () => {
+    setRepairingDelivery(true);
+    try {
+      const response = await notificationsApi.repairDelivery({ dry_run: false });
+      const result = response?.data?.data || {};
+      showSuccess(
+        `Repair completed: ${result.repaired_log_rows || 0} logs fixed, ${result.created_payment_notifications || 0} payment notifications created.`
+      );
+      await fetchAllData();
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to repair notification delivery');
+    } finally {
+      setRepairingDelivery(false);
+    }
+  };
+
+  const handleSendTestPush = async () => {
+    if (!testPushForm.user_id || !testPushForm.title || !testPushForm.message) {
+      showError('User, title, and message are required');
+      return;
+    }
+
+    setActionLoading(true);
+    try {
+      const response = await notificationsApi.sendTestPush(testPushForm);
+      const userLabel = users.find((user) => String(user.id) === String(testPushForm.user_id));
+      showSuccess(
+        response.data?.message ||
+          `Test push sent to ${userLabel?.full_name || userLabel?.username || `User #${testPushForm.user_id}`}`
+      );
+      setTestPushOpen(false);
+    } catch (error) {
+      showError(error.response?.data?.message || 'Failed to send test push');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // ==================== FORM RESETS ====================
   
   const resetTemplateForm = () => {
@@ -468,6 +567,7 @@ const NotificationTelegramManager = () => {
       scheduled_time: '',
       send_now: true,
     });
+    setNotificationScheduleEnabled(false);
   };
 
   // ==================== UTILITIES ====================
@@ -532,88 +632,148 @@ const NotificationTelegramManager = () => {
     else handleDeleteNotification();
   };
 
+  const selectedNotificationUser = users.find(
+    (user) => String(user.id) === String(notificationForm.target_id)
+  );
+  const selectedTestPushUser = users.find(
+    (user) => String(user.id) === String(testPushForm.user_id)
+  );
+
   // ==================== FILTERS ====================
   
   const filteredNotifications = notifications.filter(n => {
     if (statusFilter !== 'all' && n.status !== statusFilter) return false;
     if (searchQuery) {
       const q = searchQuery.toLowerCase();
-      return n.title?.toLowerCase().includes(q) || n.message?.toLowerCase().includes(q);
+      return (
+        n.title?.toLowerCase().includes(q) ||
+        n.message?.toLowerCase().includes(q) ||
+        n.trigger_event?.toLowerCase().includes(q) ||
+        n.template_name?.toLowerCase().includes(q) ||
+        n.target_type?.toLowerCase().includes(q)
+      );
     }
     return true;
   });
 
   // ==================== COLUMNS ====================
+
+  const renderContentIdSummary = (row) => {
+    const ids = [];
+    if (row.id != null) ids.push(`Notification #${row.id}`);
+    if (row.template_id != null) ids.push(`Template #${row.template_id}`);
+    if (row.target_id != null) ids.push(`Target #${row.target_id}`);
+
+    const templateData = row.template_data && typeof row.template_data === 'object'
+      ? row.template_data
+      : {};
+
+    ['video_id', 'note_id', 'exam_id', 'chapter_id', 'course_id', 'category_id'].forEach((key) => {
+      if (templateData[key] != null && templateData[key] !== '') {
+        ids.push(`${formatLabel(key)}: ${templateData[key]}`);
+      }
+    });
+
+    return ids.length > 0 ? ids.join(' • ') : '-';
+  };
   
   const notificationColumns = [
     {
+      field: 'id',
+      headerName: 'ID',
+      width: 96,
+      minWidth: 96,
+      render: (value) => renderTableChip(`#${value}`, { color: 'default' }),
+    },
+    {
       field: 'title',
-      headerName: 'Title',
-      flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="500">{value}</Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.message?.substring(0, 50)}...
-          </Typography>
-        </Box>
-      ),
+      headerName: 'Notification',
+      minWidth: 320,
+      render: (value, row) => renderPrimaryCell({
+        primary: value,
+        secondary: [
+          row.template_name ? `Template: ${row.template_name}` : null,
+          row.message ? `${row.message.substring(0, 70)}...` : null,
+          row.app_failure_detail ? `App push: ${row.app_failure_detail}` : null,
+        ].filter(Boolean).join(' • '),
+      }),
+    },
+    {
+      field: 'trigger_event',
+      headerName: 'Trigger',
+      width: 170,
+      minWidth: 170,
+      render: (value) => renderTableChip(formatLabel(value), { color: 'secondary' }),
     },
     {
       field: 'notification_type',
       headerName: 'Type',
       width: 100,
+      minWidth: 100,
       render: (value) => {
         const type = NOTIFICATION_TYPES.find(t => t.value === value);
-        return (
-          <Chip
-            label={type?.label || value}
-            size="small"
-            sx={{
-              bgcolor: alpha(type?.color || '#757575', 0.1),
-              color: type?.color,
-            }}
-          />
-        );
+        return renderTableChip(type?.label || formatLabel(value), {
+          color: getNotificationTypeColor(value),
+        });
       },
     },
     {
       field: 'target_type',
       headerName: 'Target',
-      width: 120,
-      render: (value) => {
+      minWidth: 170,
+      render: (value, row) => {
         const target = TARGET_TYPES.find(t => t.value === value);
-        return (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-            {target?.icon}
-            <Typography variant="caption">{target?.label || value}</Typography>
-          </Box>
-        );
+        const label = row.target_id ? `${target?.label || formatLabel(value)} #${row.target_id}` : (target?.label || formatLabel(value));
+        return renderTableChip(label, { color: 'primary' });
       },
+    },
+    {
+      field: 'content_ids',
+      headerName: 'Content / IDs',
+      minWidth: 320,
+      sortable: false,
+      searchable: false,
+      render: (value, row) => renderPrimaryCell({
+        primary: renderContentIdSummary(row),
+      }),
+    },
+    {
+      field: 'total_recipients',
+      headerName: 'Recipients',
+      width: 160,
+      minWidth: 180,
+      render: (value, row) => renderPrimaryCell({
+        primary: `${value || 0} total`,
+        secondary: [
+          row.app_delivered_count ? `${row.app_delivered_count} app delivered` : null,
+          row.app_failed_count ? `${row.app_failed_count} app failed` : null,
+        ].filter(Boolean).join(' • ') || null,
+      }),
     },
     {
       field: 'status',
       headerName: 'Status',
       width: 100,
+      minWidth: 100,
       render: (value) => {
         const colors = { sent: 'success', scheduled: 'warning', failed: 'error' };
-        return <Chip label={value} size="small" color={colors[value] || 'default'} />;
+        return renderTableChip(formatLabel(value), { color: colors[value] || 'default' });
       },
     },
     {
       field: 'created_at',
       headerName: 'Created',
-      width: 120,
-      render: (value) => (
-        <Typography variant="caption">
-          {value ? new Date(value).toLocaleDateString() : '-'}
-        </Typography>
-      ),
+      width: 170,
+      minWidth: 170,
+      render: (value) => renderTableDate(value),
     },
     {
       field: 'actions',
       headerName: 'Actions',
       width: 100,
+      minWidth: 100,
+      sortable: false,
+      searchable: false,
       render: (value, row) => (
         <Box>
           <IconButton size="small" onClick={() => handleResendNotification(row)}>
@@ -628,34 +788,52 @@ const NotificationTelegramManager = () => {
   ];
 
   const templateColumns = [
-    { field: 'name', headerName: 'Name', width: 200 },
+    {
+      field: 'id',
+      headerName: 'ID',
+      width: 88,
+      minWidth: 88,
+      render: (value) => renderTableChip(`#${value}`, { color: 'default' }),
+    },
+    {
+      field: 'name',
+      headerName: 'Name',
+      width: 200,
+      minWidth: 220,
+      render: (value) => renderPrimaryCell({ primary: value }),
+    },
     {
       field: 'trigger_event',
       headerName: 'Trigger',
       width: 150,
-      render: (value) => <Chip label={value?.replace(/_/g, ' ')} size="small" />,
+      minWidth: 170,
+      render: (value) => renderTableChip(formatLabel(value)),
     },
     {
       field: 'notification_type',
       headerName: 'Type',
       width: 100,
-      render: (value) => {
-        const colors = { info: 'info', success: 'success', warning: 'warning', error: 'error' };
-        return <Chip label={value} size="small" color={colors[value] || 'default'} />;
-      },
+      minWidth: 100,
+      render: (value) => renderTableChip(formatLabel(value), {
+        color: getNotificationTypeColor(value),
+      }),
     },
     {
       field: 'is_active',
       headerName: 'Status',
       width: 100,
-      render: (value) => (
-        <Chip label={value ? 'Active' : 'Inactive'} size="small" color={value ? 'success' : 'default'} />
-      ),
+      minWidth: 100,
+      render: (value) => renderTableChip(value ? 'Active' : 'Inactive', {
+        color: value ? 'success' : 'default',
+      }),
     },
     {
       field: 'actions',
       headerName: 'Actions',
       width: 150,
+      minWidth: 150,
+      sortable: false,
+      searchable: false,
       render: (value, row) => (
         <Box>
           <IconButton size="small" onClick={() => handleEditTemplate(row)}>
@@ -673,32 +851,62 @@ const NotificationTelegramManager = () => {
   ];
 
   const scheduleColumns = [
-    { field: 'name', headerName: 'Name', width: 200 },
+    {
+      field: 'id',
+      headerName: 'ID',
+      width: 88,
+      minWidth: 88,
+      render: (value) => renderTableChip(`#${value}`, { color: 'default' }),
+    },
+    {
+      field: 'name',
+      headerName: 'Name',
+      width: 200,
+      minWidth: 220,
+      render: (value) => renderPrimaryCell({ primary: value }),
+    },
     {
       field: 'template_name',
       headerName: 'Template',
       width: 150,
+      minWidth: 180,
       render: (value, row) => {
         const template = templates.find(t => t.id === row.template_id);
-        return template?.name || '-';
+        return renderPrimaryCell({ primary: template?.name || '-' });
       },
+    },
+    {
+      field: 'target_ids',
+      headerName: 'Target / IDs',
+      minWidth: 180,
+      sortable: false,
+      searchable: false,
+      render: (value, row) => renderPrimaryCell({
+        primary: row.target_type === 'specific_user'
+          ? `User #${row.target_ids?.[0] || row.target_id || '-'}`
+          : formatLabel(row.target_type),
+        secondary: row.template_id ? `Template #${row.template_id}` : null,
+      }),
     },
     {
       field: 'schedule_type',
       headerName: 'Type',
       width: 100,
-      render: (value) => <Chip label={value} size="small" />,
+      minWidth: 100,
+      render: (value) => renderTableChip(formatLabel(value)),
     },
     {
       field: 'next_run',
       headerName: 'Next Run',
       width: 150,
-      render: (value) => (value ? new Date(value).toLocaleString() : '-'),
+      minWidth: 170,
+      render: (value) => renderTableDate(value),
     },
     {
       field: 'is_active',
       headerName: 'Status',
       width: 100,
+      minWidth: 100,
       render: (value, row) => (
         <Switch
           checked={value}
@@ -711,6 +919,9 @@ const NotificationTelegramManager = () => {
       field: 'actions',
       headerName: 'Actions',
       width: 80,
+      minWidth: 80,
+      sortable: false,
+      searchable: false,
       render: (value, row) => (
         <IconButton size="small" color="error" onClick={() => handleDeleteClick(row, 'schedule')}>
           <Delete fontSize="small" />
@@ -730,67 +941,53 @@ const NotificationTelegramManager = () => {
   }
 
   return (
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
     <Box sx={{ p: 3 }}>
-      {/* Header */}
-      <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <Box>
-          <Typography variant="h4" fontWeight="bold">Communications Manager</Typography>
-          <Typography variant="body1" color="text.secondary">
-            Manage notifications, templates, and Telegram bot
-          </Typography>
-        </Box>
-        <Button variant="outlined" startIcon={<Refresh />} onClick={handleRefresh} disabled={loading}>
-          Refresh
-        </Button>
-      </Box>
+      <ManagementPageHeader
+        title="Communications Manager"
+        subtitle="Manage notifications, templates, schedules, delivery history, and Telegram connectivity."
+        actions={
+          <Button variant="outlined" startIcon={<Refresh />} onClick={handleRefresh} disabled={loading}>
+            Refresh
+          </Button>
+        }
+      />
 
       {/* Loading */}
       {(loading || actionLoading) && <LinearProgress sx={{ mb: 3 }} />}
 
-      {/* Stats Cards */}
-      <Grid container spacing={3} sx={{ mb: 4 }}>
-        <Grid item xs={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h4">{stats.total || notifications.length}</Typography>
-              <Typography variant="caption">Total Notifications</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h4">{templates.length}</Typography>
-              <Typography variant="caption">Templates</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Card>
-            <CardContent>
-              <Typography variant="h4">{schedules.length}</Typography>
-              <Typography variant="caption">Schedules</Typography>
-            </CardContent>
-          </Card>
-        </Grid>
-        <Grid item xs={6} md={3}>
-          <Card>
-            <CardContent>
-              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                <Badge color={telegramStatus?.initialized ? 'success' : 'error'} variant="dot">
-                  <Telegram />
-                </Badge>
-                <Typography variant="body2">
-                  {telegramStatus?.initialized ? 'Bot Active' : 'Bot Offline'}
-                </Typography>
-              </Box>
-              <Button size="small" onClick={handleTestTelegram} sx={{ mt: 1 }}>
-                Test Connection
-              </Button>
-            </CardContent>
-          </Card>
-        </Grid>
-      </Grid>
+      <SummaryStrip
+        items={[
+          { label: 'Notifications', value: stats.total || notifications.length, color: 'primary' },
+          { label: 'Templates', value: templates.length, color: 'secondary' },
+          { label: 'Schedules', value: schedules.length, color: 'info' },
+          { label: 'Telegram Bot', value: telegramStatus?.initialized ? 'Active' : 'Offline', color: telegramStatus?.initialized ? 'success' : 'error' },
+        ]}
+        sx={{
+          '& .MuiStack-root': {
+            alignItems: { xs: 'stretch', md: 'center' },
+          },
+        }}
+      />
+      <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 3 }}>
+        <Stack direction="row" spacing={1}>
+          <Button size="small" variant="outlined" startIcon={<NotificationsIcon />} onClick={() => setTestPushOpen(true)}>
+            Test Push
+          </Button>
+          <Button size="small" onClick={handleTestTelegram}>
+            Test Connection
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<Bolt />}
+            onClick={handleRepairDelivery}
+            disabled={repairingDelivery}
+          >
+            {repairingDelivery ? 'Repairing...' : 'Repair Delivery'}
+          </Button>
+        </Stack>
+      </Box>
 
       {/* Tabs */}
       <Paper sx={{ mb: 3 }}>
@@ -817,12 +1014,12 @@ const NotificationTelegramManager = () => {
           
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <TextField fullWidth label="Title" name="title" value={notificationForm.title}
+              <FastTextField fullWidth label="Title" name="title" value={notificationForm.title}
                 onChange={(e) => setNotificationForm({...notificationForm, title: e.target.value})} 
                 disabled={!selectedItem} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Message" name="message" value={notificationForm.message}
+              <FastTextField fullWidth label="Message" name="message" value={notificationForm.message}
                 onChange={(e) => setNotificationForm({...notificationForm, message: e.target.value})}
                 multiline rows={4} disabled={!selectedItem} />
             </Grid>
@@ -852,23 +1049,59 @@ const NotificationTelegramManager = () => {
                   <InputLabel>Select User</InputLabel>
                   <Select value={notificationForm.target_id} onChange={(e) => setNotificationForm({...notificationForm, target_id: e.target.value})}>
                     {users.map(u => (
-                      <MenuItem key={u.id} value={u.id}>{u.username}</MenuItem>
+                      <MenuItem key={u.id} value={u.id}>
+                        <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5 }}>
+                          <Box sx={{ minWidth: 0 }}>
+                            <Typography variant="body2" noWrap>
+                              {u.full_name || u.username}
+                            </Typography>
+                            <Typography variant="caption" color="text.secondary" noWrap>
+                              @{u.username} • #{u.id}
+                            </Typography>
+                          </Box>
+                          <Chip
+                            size="small"
+                            label={getPushReadiness(u).label}
+                            color={getPushReadiness(u).color}
+                            variant={getPushReadiness(u).hasToken ? 'filled' : 'outlined'}
+                          />
+                        </Box>
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
+                {selectedNotificationUser && (
+                  <Alert severity={getPushReadiness(selectedNotificationUser).hasToken ? 'success' : 'warning'} sx={{ mt: 1.5 }}>
+                    {getPushReadiness(selectedNotificationUser).hasToken
+                      ? 'This user has a saved device push token, so app delivery should be possible.'
+                      : 'This user does not have a valid device push token yet, so app push may not arrive until they open the app online and sign in again.'}
+                  </Alert>
+                )}
               </Grid>
             )}
             <Grid item xs={12}>
-              <FormControlLabel
-                control={<Switch checked={notificationForm.send_now} onChange={(e) => setNotificationForm({...notificationForm, send_now: e.target.checked})} disabled={!selectedItem} />}
-                label="Send now"
+              <SchedulePicker
+                enabled={notificationScheduleEnabled}
+                onEnabledChange={(enabled) => {
+                  setNotificationScheduleEnabled(enabled);
+                  setNotificationForm({
+                    ...notificationForm,
+                    send_now: !enabled,
+                    scheduled_time: enabled ? notificationForm.scheduled_time : '',
+                  });
+                }}
+                value={notificationForm.scheduled_time ? new Date(notificationForm.scheduled_time) : null}
+                onChange={(date) =>
+                  setNotificationForm({
+                    ...notificationForm,
+                    scheduled_time: date ? date.toISOString() : '',
+                    send_now: !date,
+                  })
+                }
+                label="Notification Schedule"
+                helperText="Use the same datetime picker style used for content scheduling"
+                disabled={!selectedItem}
               />
-              {!notificationForm.send_now && (
-                <TextField fullWidth type="datetime-local" label="Schedule"
-                  value={notificationForm.scheduled_time}
-                  onChange={(e) => setNotificationForm({...notificationForm, scheduled_time: e.target.value})}
-                  sx={{ mt: 2 }} disabled={!selectedItem} />
-              )}
             </Grid>
             <Grid item xs={12}>
               <Button variant="contained" onClick={handleSendNotification}
@@ -929,7 +1162,7 @@ const NotificationTelegramManager = () => {
               New Template
             </Button>
           </Box>
-          <DataTable columns={templateColumns} data={templates} loading={loading} />
+          <DataTable showToolbar={false} columns={templateColumns} data={templates} loading={loading} />
         </Box>
       )}
 
@@ -945,21 +1178,22 @@ const NotificationTelegramManager = () => {
               New Schedule
             </Button>
           </Box>
-          <DataTable columns={scheduleColumns} data={schedules} loading={loading} />
+          <DataTable showToolbar={false} columns={scheduleColumns} data={schedules} loading={loading} />
         </Box>
       )}
 
       {/* Tab 3: History */}
       {activeTab === 3 && (
         <Box>
-          <Paper sx={{ p: 2, mb: 3 }}>
-            <Grid container spacing={2} alignItems="center">
-              <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" placeholder="Search..." value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  InputProps={{ startAdornment: <InputAdornment position="start"><Search /></InputAdornment> }} />
-              </Grid>
-              <Grid item xs={12} md={3}>
+          <Alert severity="info" sx={{ mb: 2 }}>
+            History now shows trigger events, target audience, and recipient counts so you can audit delivery more easily.
+          </Alert>
+          <ManagementSearchToolbar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            placeholder="Search communication history..."
+            actions={
+              <>
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
                   <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
@@ -969,28 +1203,26 @@ const NotificationTelegramManager = () => {
                     <MenuItem value="failed">Failed</MenuItem>
                   </Select>
                 </FormControl>
-              </Grid>
-              <Grid item xs={12} md={5} sx={{ textAlign: 'right' }}>
                 <Button startIcon={<Download />} size="small">Export</Button>
-              </Grid>
-            </Grid>
-          </Paper>
-          <DataTable columns={notificationColumns} data={filteredNotifications} loading={loading} />
+              </>
+            }
+          />
+          <DataTable showToolbar={false} columns={notificationColumns} data={filteredNotifications} loading={loading} />
         </Box>
       )}
 
       {/* Template Form Dialog */}
       <Dialog open={templateFormOpen} onClose={() => setTemplateFormOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="h6">{selectedItem ? 'Edit' : 'New'} Template</Typography>
-            <IconButton onClick={() => setTemplateFormOpen(false)}><Close /></IconButton>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight="bold">{selectedItem ? 'Edit' : 'New'} Template</Typography>
+            <IconButton onClick={() => setTemplateFormOpen(false)} size="small"><Close /></IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              <TextField fullWidth label="Name" value={templateForm.name}
+              <FastTextField fullWidth label="Name" value={templateForm.name}
                 onChange={(e) => setTemplateForm({...templateForm, name: e.target.value})} required />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -1008,7 +1240,7 @@ const NotificationTelegramManager = () => {
               </FormControl>
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Description" multiline rows={2} value={templateForm.description}
+              <FastTextField fullWidth label="Description" multiline rows={2} value={templateForm.description}
                 onChange={(e) => setTemplateForm({...templateForm, description: e.target.value})} />
             </Grid>
             <Grid item xs={6}>
@@ -1022,29 +1254,33 @@ const NotificationTelegramManager = () => {
               </FormControl>
             </Grid>
             <Grid item xs={6}>
-              <TextField fullWidth label="Category" value={templateForm.category}
+              <FastTextField fullWidth label="Category" value={templateForm.category}
                 onChange={(e) => setTemplateForm({...templateForm, category: e.target.value})} />
             </Grid>
             <Grid item xs={12}>
               <Typography variant="subtitle2">Variables</Typography>
-              <Paper variant="outlined" sx={{ p: 2, bgcolor: 'grey.50' }}>
-                {templateForm.variables.map(v => (
+              <Paper variant="outlined" sx={{ p: 2, borderRadius: 2.5 }}>
+                {templateForm.variables.length > 0 ? templateForm.variables.map(v => (
                   <Chip key={v} label={`{{${v}}}`} size="small" sx={{ m: 0.5 }} />
-                ))}
+                )) : (
+                  <Typography variant="body2" color="text.secondary">
+                    This template does not require dynamic variables.
+                  </Typography>
+                )}
               </Paper>
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Title Template" value={templateForm.title_template}
+              <FastTextField fullWidth label="Title Template" value={templateForm.title_template}
                 onChange={(e) => setTemplateForm({...templateForm, title_template: e.target.value})}
                 required multiline InputProps={{ sx: { fontFamily: 'monospace' } }} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Message Template" value={templateForm.message_template}
+              <FastTextField fullWidth label="Message Template" value={templateForm.message_template}
                 onChange={(e) => setTemplateForm({...templateForm, message_template: e.target.value})}
                 required multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
             </Grid>
             <Grid item xs={12}>
-              <TextField fullWidth label="Telegram Template (Optional)" value={templateForm.telegram_template}
+              <FastTextField fullWidth label="Telegram Template (Optional)" value={templateForm.telegram_template}
                 onChange={(e) => setTemplateForm({...templateForm, telegram_template: e.target.value})}
                 multiline rows={3} InputProps={{ sx: { fontFamily: 'monospace' } }} />
             </Grid>
@@ -1056,10 +1292,11 @@ const NotificationTelegramManager = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setTemplateFormOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button variant="outlined" onClick={() => setTemplateFormOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={selectedItem ? handleUpdateTemplate : handleCreateTemplate}
-            disabled={!templateForm.name || !templateForm.title_template || !templateForm.message_template}>
+            disabled={!templateForm.name || !templateForm.title_template || !templateForm.message_template}
+            sx={{ borderRadius: 2 }}>
             {selectedItem ? 'Update' : 'Create'}
           </Button>
         </DialogActions>
@@ -1067,16 +1304,16 @@ const NotificationTelegramManager = () => {
 
       {/* Schedule Form Dialog */}
       <Dialog open={scheduleFormOpen} onClose={() => setScheduleFormOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>
-          <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-            <Typography variant="h6">New Schedule</Typography>
-            <IconButton onClick={() => setScheduleFormOpen(false)}><Close /></IconButton>
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <Typography variant="h6" fontWeight="bold">New Schedule</Typography>
+            <IconButton onClick={() => setScheduleFormOpen(false)} size="small"><Close /></IconButton>
           </Box>
         </DialogTitle>
-        <DialogContent dividers>
+        <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12}>
-              <TextField fullWidth label="Schedule Name" value={scheduleForm.name}
+              <FastTextField fullWidth label="Schedule Name" value={scheduleForm.name}
                 onChange={(e) => setScheduleForm({...scheduleForm, name: e.target.value})} required />
             </Grid>
             <Grid item xs={12} md={6}>
@@ -1084,7 +1321,9 @@ const NotificationTelegramManager = () => {
                 <InputLabel>Template</InputLabel>
                 <Select value={scheduleForm.template_id} onChange={(e) => setScheduleForm({...scheduleForm, template_id: e.target.value})}>
                   {templates.map(t => (
-                    <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
+                    <MenuItem key={t.id} value={t.id}>
+                      {t.name} {t.trigger_event ? `(${formatLabel(t.trigger_event)})` : ''}
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -1092,13 +1331,38 @@ const NotificationTelegramManager = () => {
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Schedule Type</InputLabel>
-                <Select value={scheduleForm.schedule_type} onChange={(e) => setScheduleForm({...scheduleForm, schedule_type: e.target.value})}>
+                <Select
+                  value={scheduleForm.schedule_type}
+                  onChange={(e) => setScheduleForm({
+                    ...scheduleForm,
+                    schedule_type: e.target.value,
+                    schedule_value: e.target.value === 'monthly' ? scheduleForm.schedule_value : '',
+                    scheduled_time: e.target.value === 'one_time' ? '' : (scheduleForm.scheduled_time || '09:00'),
+                    scheduled_day: e.target.value === 'weekly' ? scheduleForm.scheduled_day : 'monday',
+                  })}
+                >
                   {SCHEDULE_TYPES.map(t => (
                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
             </Grid>
+            {scheduleForm.schedule_type === 'one_time' && (
+              <Grid item xs={12}>
+                <SchedulePicker
+                  enabled
+                  onEnabledChange={() => {}}
+                  value={scheduleForm.schedule_value ? new Date(scheduleForm.schedule_value) : null}
+                  onChange={(value) => setScheduleForm({
+                    ...scheduleForm,
+                    schedule_value: value ? value.toISOString() : '',
+                  })}
+                  label="Send At"
+                  helperText="Choose the exact date and time for this one-time schedule."
+                  disabled={actionLoading}
+                />
+              </Grid>
+            )}
             {scheduleForm.schedule_type === 'weekly' && (
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth>
@@ -1123,21 +1387,46 @@ const NotificationTelegramManager = () => {
                   inputProps={{ min: 1, max: 31 }} />
               </Grid>
             )}
-            <Grid item xs={12} md={6}>
-              <TextField fullWidth type="time" label="Time" 
-                value={scheduleForm.scheduled_time}
-                onChange={(e) => setScheduleForm({...scheduleForm, scheduled_time: e.target.value})}
-                InputLabelProps={{ shrink: true }} />
-            </Grid>
+            {scheduleForm.schedule_type !== 'one_time' && (
+              <Grid item xs={12} md={6}>
+                <TextField fullWidth type="time" label="Time" 
+                  value={scheduleForm.scheduled_time}
+                  onChange={(e) => setScheduleForm({...scheduleForm, scheduled_time: e.target.value})}
+                  InputLabelProps={{ shrink: true }} />
+              </Grid>
+            )}
             <Grid item xs={12} md={6}>
               <FormControl fullWidth>
                 <InputLabel>Target Audience</InputLabel>
                 <Select value={scheduleForm.target_type} onChange={(e) => setScheduleForm({...scheduleForm, target_type: e.target.value})}>
-                  {TARGET_TYPES.map(t => (
+                  {TARGET_TYPES.filter(t => ['all', 'paid_users', 'specific_user'].includes(t.value)).map(t => (
                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
+            </Grid>
+            {scheduleForm.target_type === 'specific_user' && (
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth>
+                  <InputLabel>Select User</InputLabel>
+                  <Select
+                    value={scheduleForm.target_ids?.[0] || ''}
+                    onChange={(e) => setScheduleForm({
+                      ...scheduleForm,
+                      target_ids: e.target.value ? [e.target.value] : [],
+                    })}
+                  >
+                    {users.map(u => (
+                      <MenuItem key={u.id} value={u.id}>{u.username}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            <Grid item xs={12}>
+              <Alert severity="info">
+                Recurring schedules currently support all users, paid users, or one specific user.
+              </Alert>
             </Grid>
             <Grid item xs={12}>
               <FormControlLabel
@@ -1147,10 +1436,11 @@ const NotificationTelegramManager = () => {
             </Grid>
           </Grid>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setScheduleFormOpen(false)}>Cancel</Button>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button variant="outlined" onClick={() => setScheduleFormOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleCreateSchedule}
-            disabled={!scheduleForm.name || !scheduleForm.template_id}>
+            disabled={!scheduleForm.name || !scheduleForm.template_id}
+            sx={{ borderRadius: 2 }}>
             Create Schedule
           </Button>
         </DialogActions>
@@ -1167,7 +1457,77 @@ const NotificationTelegramManager = () => {
         severity="error"
         loading={actionLoading}
       />
+
+      <Dialog open={testPushOpen} onClose={() => !actionLoading && setTestPushOpen(false)} fullWidth maxWidth="sm">
+        <DialogTitle>Send Test Push</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ pt: 1 }}>
+            <Alert severity="info">
+              This sends a real app push to one user, so it is the fastest way to verify Firebase delivery.
+            </Alert>
+            <FormControl fullWidth>
+              <InputLabel>User</InputLabel>
+              <Select
+                value={testPushForm.user_id}
+                label="User"
+                onChange={(e) => setTestPushForm({ ...testPushForm, user_id: e.target.value })}
+              >
+                {users.map((user) => (
+                  <MenuItem key={user.id} value={String(user.id)}>
+                    <Box sx={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1.5 }}>
+                      <Box sx={{ minWidth: 0 }}>
+                        <Typography variant="body2" noWrap>
+                          {user.full_name || user.username || `User #${user.id}`}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary" noWrap>
+                          @{user.username || `user_${user.id}`} • #{user.id}
+                        </Typography>
+                      </Box>
+                      <Chip
+                        size="small"
+                        label={getPushReadiness(user).label}
+                        color={getPushReadiness(user).color}
+                        variant={getPushReadiness(user).hasToken ? 'filled' : 'outlined'}
+                      />
+                    </Box>
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+            {selectedTestPushUser && (
+              <Alert severity={getPushReadiness(selectedTestPushUser).hasToken ? 'success' : 'warning'}>
+                {getPushReadiness(selectedTestPushUser).hasToken
+                  ? 'This user looks ready for cloud push delivery.'
+                  : 'This user does not currently have a valid push token saved, so the test push will likely fail until they open the app online and sign in again.'}
+              </Alert>
+            )}
+            <FastTextField
+              fullWidth
+              label="Title"
+              name="testPushTitle"
+              value={testPushForm.title}
+              onChange={(e) => setTestPushForm({ ...testPushForm, title: e.target.value })}
+            />
+            <FastTextField
+              fullWidth
+              label="Message"
+              name="testPushMessage"
+              multiline
+              rows={3}
+              value={testPushForm.message}
+              onChange={(e) => setTestPushForm({ ...testPushForm, message: e.target.value })}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setTestPushOpen(false)} disabled={actionLoading}>Cancel</Button>
+          <Button onClick={handleSendTestPush} variant="contained" disabled={actionLoading}>
+            Send Test Push
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
+    </LocalizationProvider>
   );
 };
 

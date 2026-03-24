@@ -6,6 +6,14 @@ import teachersApi from '../../api/teachers';
 import coursesApi from '../../api/courses';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
+import FastTextField from '../common/FastTextField';
+import {
+  renderCountChip,
+  renderPrimaryCell,
+  renderTableChip,
+  renderTableDate,
+  renderTableId,
+} from '../common/tableFormatters';
 import {
   Box,
   Paper,
@@ -54,6 +62,7 @@ import {
   Assignment,
   Search,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
 
 const TeacherManager = () => {
   const { isAdmin, user } = useAuth();
@@ -136,7 +145,7 @@ const TeacherManager = () => {
       setCourses(coursesList);
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load data');
       showError('Failed to load teachers');
     } finally {
@@ -269,7 +278,7 @@ const TeacherManager = () => {
       await fetchData(true);
       
     } catch (err) {
-      console.error('Failed to save teacher:', err);
+      devError('Failed to save teacher:', err);
       showError(err.response?.data?.message || 'Failed to save teacher');
     } finally {
       setActionLoading(false);
@@ -328,7 +337,7 @@ const TeacherManager = () => {
       setSelectedTeacher(null);
       
     } catch (err) {
-      console.error('Failed to reset password:', err);
+      devError('Failed to reset password:', err);
       showError(err.response?.data?.message || 'Failed to reset password');
     } finally {
       setActionLoading(false);
@@ -358,7 +367,7 @@ const TeacherManager = () => {
       setSelectedTeacher(null);
       
     } catch (err) {
-      console.error('Failed to delete teacher:', err);
+      devError('Failed to delete teacher:', err);
       showError(err.response?.data?.message || 'Failed to delete teacher');
     } finally {
       setActionLoading(false);
@@ -385,89 +394,52 @@ const TeacherManager = () => {
       field: 'id',
       headerName: 'ID',
       width: 70,
-      render: (value) => (
-        <Typography variant="body2" color="text.secondary">
-          #{value}
-        </Typography>
-      ),
+      render: (value) => renderTableId(value),
     },
     {
       field: 'name',
-      headerName: 'Teacher Name',
+      headerName: 'Name',
       flex: 1,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Avatar sx={{ bgcolor: 'primary.main', width: 32, height: 32 }}>
-            {value?.[0]?.toUpperCase()}
-          </Avatar>
-          <Box>
-            <Typography variant="body2" fontWeight="medium">
-              {value}
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              @{row.username}
-            </Typography>
-          </Box>
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: value,
+        secondary: row.username ? `@${row.username}` : null,
+      }),
     },
     {
       field: 'status',
       headerName: 'Status',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value === 'active' ? 'Active' : 'Inactive'}
-          size="small"
-          color={value === 'active' ? 'success' : 'default'}
-          variant="outlined"
-          icon={value === 'active' ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />}
-        />
-      ),
+      render: (value) => renderTableChip(value === 'active' ? 'Active' : 'Inactive', {
+        color: value === 'active' ? 'success' : 'default',
+        icon: value === 'active' ? <CheckCircle fontSize="small" /> : <Cancel fontSize="small" />,
+      }),
     },
     {
       field: 'course_count',
-      headerName: 'Courses',
+      headerName: 'Course Count',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value || 0}
-          size="small"
-          color={value > 0 ? 'primary' : 'default'}
-          variant="outlined"
-          icon={<Book fontSize="small" />}
-        />
-      ),
+      render: (value) => renderCountChip(value, { color: 'primary' }),
     },
     {
       field: 'assigned_course_names',
       headerName: 'Assigned Courses',
       flex: 1,
-      render: (value) => (
-        <Typography variant="caption" color="text.secondary">
-          {value || 'No courses assigned'}
-        </Typography>
-      ),
+      render: (value) => renderPrimaryCell({
+        primary: value || 'No courses assigned',
+        primaryWeight: 400,
+      }),
     },
     {
       field: 'last_active',
       headerName: 'Last Active',
       width: 130,
-      render: (value) => (
-        <Typography variant="caption" color="text.secondary">
-          {value ? new Date(value).toLocaleDateString() : 'Never'}
-        </Typography>
-      ),
+      render: (value) => renderTableDate(value, { dateOnly: true, fallback: 'Never' }),
     },
     {
       field: 'created_at',
-      headerName: 'Created',
+      headerName: 'Created At',
       width: 120,
-      render: (value) => (
-        <Typography variant="caption" color="text.secondary">
-          {value ? new Date(value).toLocaleDateString() : '-'}
-        </Typography>
-      ),
+      render: (value) => renderTableDate(value, { dateOnly: true }),
     },
     {
       field: 'actions',
@@ -618,6 +590,7 @@ const TeacherManager = () => {
 
       {/* Teachers Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredTeachers}
         loading={loading}
@@ -657,12 +630,13 @@ const TeacherManager = () => {
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Full Name *"
                 name="name"
                 value={formData.name}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, name: value }))}
+                delay={80}
                 required
                 disabled={actionLoading}
                 InputProps={{
@@ -676,12 +650,13 @@ const TeacherManager = () => {
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Username *"
                 name="username"
                 value={formData.username}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, username: value }))}
+                delay={80}
                 required
                 disabled={actionLoading || isEditing}
                 helperText={isEditing ? "Username cannot be changed" : "Letters, numbers, underscores"}
@@ -697,13 +672,14 @@ const TeacherManager = () => {
 
             {!isEditing && (
               <Grid item xs={12}>
-                <TextField
+                <FastTextField
                   fullWidth
                   label="Password *"
                   name="password"
                   type={showPassword ? 'text' : 'password'}
                   value={formData.password}
-                  onChange={handleInputChange}
+                  onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, password: value }))}
+                  delay={80}
                   required
                   disabled={actionLoading}
                   helperText="Minimum 6 characters"

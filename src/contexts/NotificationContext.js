@@ -1,5 +1,6 @@
 import React, { createContext, useState, useContext, useCallback } from 'react';
-import { Alert, Snackbar } from '@mui/material';
+import NotificationToast from '../components/common/NotificationToast';
+import { getNotificationMessage } from '../utils/notificationMessage';
 
 const NotificationContext = createContext({});
 
@@ -14,11 +15,17 @@ export const useNotification = () => {
 export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
 
-  const showNotification = useCallback((message, severity = 'info', duration = 6000) => {
-    const id = Date.now();
+  const showNotification = useCallback((message, severity = 'info', duration = 3200) => {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     setNotifications((prev) => [
       ...prev,
-      { id, message, severity, open: true, duration },
+      {
+        id,
+        message: getNotificationMessage(message, severity),
+        severity,
+        open: true,
+        duration: typeof duration === 'number' ? duration : 3200,
+      },
     ]);
     return id;
   }, []);
@@ -52,7 +59,10 @@ export const NotificationProvider = ({ children }) => {
     return showNotification(message, 'info', duration);
   }, [showNotification]);
 
-  const handleClose = (id) => {
+  const handleClose = (id, reason) => {
+    if (reason === 'clickaway') {
+      return;
+    }
     hideNotification(id);
   };
 
@@ -71,23 +81,14 @@ export const NotificationProvider = ({ children }) => {
       
       {/* Render all notifications */}
       {notifications.map((notification) => (
-        <Snackbar
+        <NotificationToast
           key={notification.id}
-          anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
           open={notification.open}
-          autoHideDuration={notification.duration}
-          onClose={() => handleClose(notification.id)}
-          sx={{ mt: 6 }}
-        >
-          <Alert
-            onClose={() => handleClose(notification.id)}
-            severity={notification.severity}
-            variant="filled"
-            sx={{ width: '100%', borderRadius: 1 }}
-          >
-            {notification.message}
-          </Alert>
-        </Snackbar>
+          message={notification.message}
+          severity={notification.severity}
+          duration={notification.duration}
+          onClose={(_, reason) => handleClose(notification.id, reason)}
+        />
       ))}
     </NotificationContext.Provider>
   );

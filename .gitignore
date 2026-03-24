@@ -36,13 +36,10 @@ pnpm-debug.log*
 node_modules/.cache/
 
 # build outputs
-index.html
-asset-manifest.json
-*.css
-*.css.map
-*.js
-*.js.map
-*.LICENSE.txt
+/build/index.html
+/build/asset-manifest.json
+/build/*.txt
+/build/static/
 
 # backups
 *.bak
@@ -59,5 +56,4 @@ $RECYCLE.BIN/
 .DS_Store?
 ._*
 .Spotlight-V100
-.Trashespublic/favicon.ico
-public/logo192.png
+.Trashes

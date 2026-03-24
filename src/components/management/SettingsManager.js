@@ -35,6 +35,11 @@ import {
   Tabs,
   LinearProgress,
 } from '@mui/material';
+import FastTextField from '../common/FastTextField';
+import {
+  renderPrimaryCell,
+  renderTableChip,
+} from '../common/tableFormatters';
 import {
   Add,
   Edit,
@@ -60,6 +65,7 @@ import {
   LockOpen,
   Search,
 } from '@mui/icons-material';
+import { devError } from '../../utils/devLogger';
 
 const SettingsManager = () => {
   const { isAdmin } = useAuth();
@@ -106,6 +112,10 @@ const SettingsManager = () => {
     { value: 'payment', label: 'Payment', icon: <Payment />, color: 'success' },
     { value: 'security', label: 'Security', icon: <Security />, color: 'error' },
     { value: 'academic', label: 'Academic', icon: <School />, color: 'info' },
+    { value: 'chatbot', label: 'Chatbot', icon: <Code />, color: 'secondary' },
+    { value: 'telegram', label: 'Telegram', icon: <ContactMail />, color: 'info' },
+    { value: 'parent_link', label: 'Parent Link', icon: <DeviceHub />, color: 'warning' },
+    { value: 'support', label: 'Support', icon: <Info />, color: 'primary' },
     { value: 'system', label: 'System', icon: <DeviceHub />, color: 'secondary' },
     { value: 'contact', label: 'Contact', icon: <ContactMail />, color: 'primary' },
     { value: 'upload', label: 'Upload', icon: <CloudUpload />, color: 'success' },
@@ -120,7 +130,7 @@ const SettingsManager = () => {
       setSettings(response.data?.data || []);
       
     } catch (err) {
-      console.error('Failed to fetch settings:', err);
+      devError('Failed to fetch settings:', err);
       setError(err.response?.data?.message || 'Failed to load settings');
       showError('Failed to load settings');
     } finally {
@@ -214,12 +224,20 @@ const SettingsManager = () => {
             return;
           }
           break;
+        default:
+          // For string and other types, no additional validation
+          break;
       }
 
       setActionLoading(true);
 
+      const normalizedDataType = ['text', 'email', 'url', 'password', 'color'].includes(formData.data_type)
+        ? 'string'
+        : formData.data_type;
+
       const settingData = {
         ...formData,
+        data_type: normalizedDataType,
         setting_value: validatedValue,
         setting_key: formData.setting_key.toLowerCase().trim(),
       };
@@ -232,7 +250,7 @@ const SettingsManager = () => {
       await fetchSettings(true);
       
     } catch (err) {
-      console.error('Failed to save setting:', err);
+      devError('Failed to save setting:', err);
       showError(err.response?.data?.message || 'Failed to save setting');
     } finally {
       setActionLoading(false);
@@ -276,7 +294,7 @@ const SettingsManager = () => {
       setSelectedSetting(null);
       
     } catch (err) {
-      console.error('Failed to delete setting:', err);
+      devError('Failed to delete setting:', err);
       showError(err.response?.data?.message || 'Failed to delete setting');
     } finally {
       setActionLoading(false);
@@ -293,7 +311,7 @@ const SettingsManager = () => {
       
       await fetchSettings(true);
     } catch (err) {
-      console.error('Failed to initialize defaults:', err);
+      devError('Failed to initialize defaults:', err);
       showError(err.response?.data?.message || 'Failed to initialize default settings');
     } finally {
       setActionLoading(false);
@@ -327,16 +345,10 @@ const SettingsManager = () => {
       field: 'setting_key',
       headerName: 'Key',
       width: 200,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="medium" sx={{ mb: 0.5 }}>
-            {row.display_name}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {value}
-          </Typography>
-        </Box>
-      ),
+      render: (value, row) => renderPrimaryCell({
+        primary: row.display_name,
+        secondary: value,
+      }),
     },
     {
       field: 'category',
@@ -344,15 +356,10 @@ const SettingsManager = () => {
       width: 120,
       render: (value) => {
         const category = categoryOptions.find(cat => cat.value === value) || { label: value, icon: <Settings />, color: 'default' };
-        return (
-          <Chip
-            label={category.label}
-            size="small"
-            icon={category.icon}
-            color={category.color}
-            variant="outlined"
-          />
-        );
+        return renderTableChip(category.label, {
+          icon: category.icon,
+          color: category.color,
+        });
       },
     },
     {
@@ -361,14 +368,7 @@ const SettingsManager = () => {
       width: 100,
       render: (value) => {
         const dataType = dataTypeOptions.find(opt => opt.value === value) || dataTypeOptions[0];
-        return (
-          <Chip
-            label={dataType.label}
-            size="small"
-            variant="outlined"
-            sx={{ fontSize: '0.7rem' }}
-          />
-        );
+        return renderTableChip(dataType.label);
       },
     },
     {
@@ -388,14 +388,9 @@ const SettingsManager = () => {
         }
         
         if (row.data_type === 'boolean') {
-          return (
-            <Chip
-              label={value === true || value === 'true' ? 'Yes' : 'No'}
-              size="small"
-              color={value === true || value === 'true' ? 'success' : 'default'}
-              variant="outlined"
-            />
-          );
+          return renderTableChip(value === true || value === 'true' ? 'Yes' : 'No', {
+            color: value === true || value === 'true' ? 'success' : 'default',
+          });
         }
         
         if (row.data_type === 'json') {
@@ -417,15 +412,10 @@ const SettingsManager = () => {
       field: 'is_public',
       headerName: 'Visibility',
       width: 100,
-      render: (value) => (
-        <Chip
-          label={value ? 'Public' : 'Private'}
-          size="small"
-          color={value ? 'success' : 'default'}
-          variant="outlined"
-          icon={value ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />}
-        />
-      ),
+      render: (value) => renderTableChip(value ? 'Public' : 'Private', {
+        color: value ? 'success' : 'default',
+        icon: value ? <Visibility fontSize="small" /> : <VisibilityOff fontSize="small" />,
+      }),
     },
     {
       field: 'actions',
@@ -546,12 +536,13 @@ const SettingsManager = () => {
 
       {/* Search Bar */}
       <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-        <TextField
+        <FastTextField
           fullWidth
           size="small"
           placeholder="Search settings by key, name, or description..."
           value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
+          onDebouncedChange={(v) => setSearchQuery(v)}
+          delay={120}
           InputProps={{
             startAdornment: (
               <InputAdornment position="start">
@@ -598,6 +589,7 @@ const SettingsManager = () => {
 
       {/* Settings Table */}
       <DataTable
+        showToolbar={false}
         columns={columns}
         data={filteredSettings}
         loading={loading}
@@ -612,7 +604,7 @@ const SettingsManager = () => {
         onClose={() => !actionLoading && setFormOpen(false)}
         maxWidth="md"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 2 } }}
+        PaperProps={{ sx: { borderRadius: 2.5 } }}
       >
         <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -632,7 +624,7 @@ const SettingsManager = () => {
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
             <Grid item xs={12} md={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Setting Key *"
                 name="setting_key"
@@ -647,7 +639,7 @@ const SettingsManager = () => {
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Display Name *"
                 name="display_name"
@@ -728,7 +720,7 @@ const SettingsManager = () => {
                   label={formData.setting_value === true || formData.setting_value === 'true' ? 'Enabled (Yes)' : 'Disabled (No)'}
                 />
               ) : formData.data_type === 'json' ? (
-                <TextField
+                <FastTextField
                   fullWidth
                   multiline
                   rows={4}
@@ -743,7 +735,7 @@ const SettingsManager = () => {
                   helperText="Enter valid JSON data"
                 />
               ) : formData.data_type === 'password' ? (
-                <TextField
+                <FastTextField
                   fullWidth
                   type="password"
                   value={formData.setting_value}
@@ -755,7 +747,7 @@ const SettingsManager = () => {
                   helperText="Password will be stored securely"
                 />
               ) : (
-                <TextField
+                <FastTextField
                   fullWidth
                   type={formData.data_type === 'number' ? 'number' : 'text'}
                   value={formData.setting_value}
@@ -770,7 +762,7 @@ const SettingsManager = () => {
             </Grid>
             
             <Grid item xs={12}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Description (Optional)"
                 name="description"
@@ -786,7 +778,7 @@ const SettingsManager = () => {
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Display Order"
                 name="display_order"
@@ -828,7 +820,7 @@ const SettingsManager = () => {
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button 
             onClick={() => setFormOpen(false)} 
-            variant="outlined"
+            variant="outlined" 
             disabled={actionLoading}
             sx={{ borderRadius: 2 }}
           >

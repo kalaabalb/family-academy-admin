@@ -1,4 +1,5 @@
 import axiosInstance from './axiosConfig';
+import { devError } from '../utils/devLogger';
 
 const systemLogsApi = {
   // Get system logs with filters
@@ -7,7 +8,7 @@ const systemLogsApi = {
       const response = await axiosInstance.get('/system-logs', { params });
       return response;
     } catch (error) {
-      console.error('Error fetching system logs:', error);
+      devError('Error fetching system logs:', error);
       throw error;
     }
   },
@@ -18,7 +19,7 @@ const systemLogsApi = {
       const response = await axiosInstance.get('/system-logs/stats');
       return response;
     } catch (error) {
-      console.error('Error fetching log stats:', error);
+      devError('Error fetching log stats:', error);
       // Return default stats object instead of throwing
       return {
         data: {
@@ -49,7 +50,7 @@ const systemLogsApi = {
       });
       return response;
     } catch (error) {
-      console.error('Error clearing old logs:', error);
+      devError('Error clearing old logs:', error);
       throw error;
     }
   },
@@ -63,7 +64,7 @@ const systemLogsApi = {
       });
       return response;
     } catch (error) {
-      console.error('Error exporting logs:', error);
+      devError('Error exporting logs:', error);
       throw error;
     }
   },
@@ -74,7 +75,7 @@ const systemLogsApi = {
       const response = await axiosInstance.get(`/system-logs/${id}`);
       return response;
     } catch (error) {
-      console.error('Error fetching log details:', error);
+      devError('Error fetching log details:', error);
       throw error;
     }
   }

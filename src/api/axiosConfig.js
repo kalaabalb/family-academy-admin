@@ -1,8 +1,62 @@
 import axios from 'axios';
 import Cookies from 'js-cookie';
+import { devError } from '../utils/devLogger';
 
-// Base URL from environment variable or default
-const API_BASE_URL = process.env.REACT_APP_API_URL || 'https://family-academy-backend-a12l.onrender.com/api/v1';
+const isProduction = process.env.NODE_ENV === 'production';
+const envApiBaseUrl = process.env.REACT_APP_API_URL?.trim();
+const API_BASE_URL = envApiBaseUrl || (isProduction ? '/api/v1' : 'http://localhost:3000/api/v1');
+
+const logDevError = (message, payload) => {
+  if (!isProduction) {
+    devError(message, payload);
+  }
+};
+
+const FRIENDLY_STATUS_MESSAGES = {
+  400: 'We could not complete that request. Please review the information and try again.',
+  401: 'Your session has expired. Please sign in again.',
+  403: 'You do not have permission to perform this action.',
+  404: 'We could not find what you were looking for.',
+  409: 'This action could not be completed because the data has changed. Please refresh and try again.',
+  422: 'Please review the form details and try again.',
+  429: 'Too many requests. Please wait a moment and try again.',
+};
+
+const getFriendlyApiErrorMessage = (error) => {
+  const status = error?.response?.status;
+  const backendMessage = error?.response?.data?.message;
+
+  if (status && FRIENDLY_STATUS_MESSAGES[status]) {
+    return FRIENDLY_STATUS_MESSAGES[status];
+  }
+
+  if (typeof backendMessage === 'string') {
+    const trimmed = backendMessage.trim();
+    if (/route not found/i.test(trimmed)) {
+      return 'That page or action is not available right now.';
+    }
+    if (/network|socket|connection|failed to fetch/i.test(trimmed)) {
+      return 'Unable to connect right now. Please check the connection and try again.';
+    }
+    if (/validation failed|invalid input/i.test(trimmed)) {
+      return 'Please review the information and try again.';
+    }
+  }
+
+  if (error?.code === 'ECONNABORTED') {
+    return 'Request timeout. Please check your connection and try again.';
+  }
+
+  if (!error?.response) {
+    return 'Unable to connect right now. Please check the connection and try again.';
+  }
+
+  if (status >= 500) {
+    return 'A server error occurred. Please try again in a moment.';
+  }
+
+  return 'Something went wrong. Please try again.';
+};
 
 const axiosInstance = axios.create({
   baseURL: API_BASE_URL,
@@ -100,7 +154,7 @@ axiosInstance.interceptors.response.use(
         // Update token in cookies only
         Cookies.set('token', token, { 
           expires: 7, 
-          secure: process.env.NODE_ENV === 'production', 
+          secure: isProduction, 
           sameSite: 'lax', 
           path: '/' 
         });
@@ -108,7 +162,7 @@ axiosInstance.interceptors.response.use(
         if (newRefreshToken) {
           Cookies.set('refreshToken', newRefreshToken, { 
             expires: 7, 
-            secure: process.env.NODE_ENV === 'production', 
+            secure: isProduction, 
             sameSite: 'lax', 
             path: '/' 
           });
@@ -136,19 +190,19 @@ axiosInstance.interceptors.response.use(
 
     // Handle 403 Forbidden
     if (error.response?.status === 403) {
-      console.error('Access forbidden:', error.response.data);
+      logDevError('Access forbidden:', error.response.data);
       return Promise.reject({
         ...error,
-        userMessage: 'You do not have permission to perform this action.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
     // Handle 404 Not Found
     if (error.response?.status === 404) {
-      console.error('Resource not found:', error.config?.url);
+      logDevError('Resource not found:', error.config?.url);
       return Promise.reject({
         ...error,
-        userMessage: 'The requested resource was not found.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
@@ -156,20 +210,20 @@ axiosInstance.interceptors.response.use(
     if (error.response?.status === 429) {
       return Promise.reject({
         ...error,
-        userMessage: 'Too many requests. Please try again later.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
     // Handle 500+ Server Errors
     if (error.response?.status >= 500) {
-      console.error('Server error:', {
+      logDevError('Server error:', {
         status: error.response.status,
         url: error.config?.url,
         data: error.response.data
       });
       return Promise.reject({
         ...error,
-        userMessage: 'A server error occurred. Please try again later.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
@@ -177,26 +231,28 @@ axiosInstance.interceptors.response.use(
     if (error.code === 'ECONNABORTED') {
       return Promise.reject({
         ...error,
-        userMessage: 'Request timeout. Please check your connection.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
     if (!error.response) {
       return Promise.reject({
         ...error,
-        userMessage: 'Network error. Please check your internet connection.'
+        userMessage: getFriendlyApiErrorMessage(error)
       });
     }
 
-    // Log error details
-    console.error('API Error:', {
+    logDevError('API Error:', {
       message: error.message,
       url: error.config?.url,
       status: error.response?.status,
       data: error.response?.data
     });
 
-    return Promise.reject(error);
+    return Promise.reject({
+      ...error,
+      userMessage: getFriendlyApiErrorMessage(error)
+    });
   }
 );
 

@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
 import examsApi from '../../api/exams';
 import questionsApi from '../../api/questions';
 import coursesApi from '../../api/courses';
+import categoriesApi from '../../api/categories';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
 import {
@@ -38,10 +39,19 @@ import {
   LinearProgress,
 
 } from '@mui/material';
+import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import ContentAssignmentFields from '../common/ContentAssignmentFields';
+import FastTextField from '../common/FastTextField';
+import DetailRow from '../common/DetailRow';
+import { renderTableChip } from '../common/tableFormatters';
+import { devError } from '../../utils/devLogger';
 import {
   Add,
   Edit,
   Delete,
+  Visibility,
   Refresh,
   Quiz,
   QuestionAnswer,
@@ -64,6 +74,7 @@ const ExamManager = () => {
   
   // Main states
   const [exams, setExams] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [courses, setCourses] = useState([]);
   const [availableQuestions, setAvailableQuestions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -76,6 +87,7 @@ const ExamManager = () => {
   const [formOpen, setFormOpen] = useState(false);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [selectedExam, setSelectedExam] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   
@@ -127,6 +139,7 @@ const ExamManager = () => {
   // Exam form data
   const [formData, setFormData] = useState({
     title: '',
+    category_id: '',
     course_id: '',
     exam_type: 'weekly',
     start_date: '',
@@ -142,6 +155,13 @@ const ExamManager = () => {
   // Cache keys
   const coursesCacheKey = 'courses';
 
+  const blurActiveElement = useCallback(() => {
+    const activeElement = document.activeElement;
+    if (activeElement && typeof activeElement.blur === 'function') {
+      activeElement.blur();
+    }
+  }, []);
+
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
@@ -150,6 +170,12 @@ const ExamManager = () => {
       const coursesData = await getCachedData(
         coursesCacheKey,
         () => coursesApi.getAllCourses(),
+        { forceRefresh }
+      );
+
+      const categoriesData = await getCachedData(
+        'categories',
+        () => categoriesApi.getAllCategories(),
         { forceRefresh }
       );
       
@@ -162,11 +188,13 @@ const ExamManager = () => {
         );
       }
       
+      const availableCategoryIds = new Set(coursesList.map((course) => course.category_id));
+      setCategories((categoriesData || []).filter((category) => availableCategoryIds.has(category.id)));
       setCourses(coursesList);
       await fetchExams(forceRefresh);
       
     } catch (err) {
-      console.error('Failed to fetch data:', err);
+      devError('Failed to fetch data:', err);
       setError(err.response?.data?.message || 'Failed to load data');
       showError('Failed to load exams');
     } finally {
@@ -190,9 +218,11 @@ const ExamManager = () => {
       // Enrich exams with course names
       const enrichedExams = (examsData || []).map(exam => {
         const course = courses.find(c => c.id === exam.course_id);
+        const category = course ? categories.find(c => c.id === course.category_id) : null;
         return {
           ...exam,
-          course_name: course?.name || 'Unknown Course',
+          course_name: exam.course_name || course?.name || 'Unknown Course',
+          category_name: exam.category_name || category?.name || 'Unknown Category',
           status: getExamStatus(exam),
         };
       });
@@ -200,10 +230,16 @@ const ExamManager = () => {
       setExams(enrichedExams);
       
     } catch (err) {
-      console.error('Failed to fetch exams:', err);
+      devError('Failed to fetch exams:', err);
       showError('Failed to fetch exams');
     }
   }, [isTeacher, user, courses, getCachedData, getCacheKey, showError]);
+
+  const handlePreview = (exam) => {
+    setSelectedExam(exam);
+    fetchExamQuestions(exam.id, true);
+    setPreviewOpen(true);
+  };
 
   const fetchExamQuestions = useCallback(async (examId, forceRefresh = false) => {
     if (!examId) return;
@@ -216,7 +252,7 @@ const ExamManager = () => {
       );
       setExamQuestions(data || []);
     } catch (err) {
-      console.error('Failed to fetch exam questions:', err);
+      devError('Failed to fetch exam questions:', err);
       showError('Failed to fetch exam questions');
     }
   }, [getCachedData, showError]);
@@ -246,7 +282,7 @@ const ExamManager = () => {
       setAvailableQuestions(data || []);
       
     } catch (err) {
-      console.error('Failed to fetch available questions:', err);
+      devError('Failed to fetch available questions:', err);
       showError('Failed to fetch available questions');
     }
   }, [questionFilters, formData.course_id, getCachedData, getCacheKey, showError]);
@@ -275,6 +311,10 @@ const ExamManager = () => {
   const handleQuestionFormChange = (e) => {
     const { name, value } = e.target;
     setQuestionForm(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAssignmentChange = (updates) => {
+    setFormData((prev) => ({ ...prev, ...updates }));
   };
 
   const handleBatchQuestionChange = (index, field, value) => {
@@ -308,6 +348,7 @@ const ExamManager = () => {
   const resetForm = () => {
     setFormData({
       title: '',
+      category_id: '',
       course_id: '',
       exam_type: 'weekly',
       start_date: '',
@@ -462,7 +503,7 @@ const ExamManager = () => {
       setActiveTab(0);
       
     } catch (err) {
-      console.error('Failed to save exam:', err);
+      devError('Failed to save exam:', err);
       showError(err.response?.data?.message || 'Failed to save exam');
     } finally {
       setActionLoading(false);
@@ -502,7 +543,7 @@ const ExamManager = () => {
       await fetchExams(true);
       
     } catch (err) {
-      console.error('Failed to create exam question:', err);
+      devError('Failed to create exam question:', err);
       showError(err.response?.data?.message || 'Failed to create exam question');
     } finally {
       setActionLoading(false);
@@ -554,7 +595,7 @@ const ExamManager = () => {
       }
       
       if (errors.length > 0) {
-        console.error('Batch upload errors:', errors);
+        devError('Batch upload errors:', errors);
         setError(errors.join('; '));
       }
       
@@ -562,7 +603,7 @@ const ExamManager = () => {
       resetBatchQuestions();
       
     } catch (err) {
-      console.error('Failed to create batch exam questions:', err);
+      devError('Failed to create batch exam questions:', err);
       showError(err.response?.data?.message || 'Failed to create batch exam questions');
     } finally {
       setActionLoading(false);
@@ -571,11 +612,14 @@ const ExamManager = () => {
 
   // FIXED: Edit navigation now works properly
   const handleEdit = (exam) => {
+    blurActiveElement();
     setSelectedExam(exam);
     setIsEditing(true);
+    const course = courses.find((item) => item.id === exam.course_id);
     
     setFormData({
       title: exam.title || '',
+      category_id: course?.category_id?.toString() || '',
       course_id: exam.course_id?.toString() || '',
       exam_type: exam.exam_type || 'weekly',
       start_date: exam.start_date ? exam.start_date.slice(0, 16) : '',
@@ -594,6 +638,7 @@ const ExamManager = () => {
   };
 
   const handleManageQuestions = (exam) => {
+    blurActiveElement();
     setSelectedExam(exam);
     fetchExamQuestions(exam.id);
     setActiveTab(2); // Switch to questions tab
@@ -627,7 +672,7 @@ const ExamManager = () => {
       }
       
     } catch (err) {
-      console.error('Failed to delete exam:', err);
+      devError('Failed to delete exam:', err);
       showError(err.response?.data?.message || 'Failed to delete exam');
     } finally {
       setActionLoading(false);
@@ -653,7 +698,7 @@ const ExamManager = () => {
       await fetchExams(true);
       
     } catch (err) {
-      console.error('Failed to add questions:', err);
+      devError('Failed to add questions:', err);
       showError(err.response?.data?.message || 'Failed to add questions');
     } finally {
       setActionLoading(false);
@@ -677,7 +722,7 @@ const ExamManager = () => {
       showSuccess('Question removed from exam');
       
     } catch (err) {
-      console.error('Failed to remove question:', err);
+      devError('Failed to remove question:', err);
       showError(err.response?.data?.message || 'Failed to remove question');
     } finally {
       setActionLoading(false);
@@ -721,9 +766,9 @@ const ExamManager = () => {
     });
   };
 
-  const handleRefresh = () => {
+  const handleRefresh = useCallback(() => {
     fetchData(true);
-  };
+  }, [fetchData]);
 
   const getExamStatus = (exam) => {
     const now = new Date();
@@ -736,7 +781,7 @@ const ExamManager = () => {
   };
 
   // Filter exams based on search
-  const filteredExams = exams.filter(exam => {
+  const filteredExams = useMemo(() => exams.filter(exam => {
     if (!searchQuery) return true;
     const query = searchQuery.toLowerCase();
     return (
@@ -744,42 +789,52 @@ const ExamManager = () => {
       (exam.course_name && exam.course_name.toLowerCase().includes(query)) ||
       exam.exam_type.toLowerCase().includes(query)
     );
-  });
+  }), [exams, searchQuery]);
 
-  const columns = [
+  const columns = useMemo(() => [
     {
       field: 'id',
       headerName: 'ID',
       width: 70,
       render: (value) => (
         <Typography variant="body2" color="text.secondary">
-          #{value}
+          {value}
         </Typography>
       ),
     },
     {
       field: 'title',
-      headerName: 'Exam Title',
+      headerName: 'Title',
       flex: 1,
-      render: (value, row) => (
-        <Box>
-          <Typography variant="body2" fontWeight="500">
-            {value}
-          </Typography>
-          <Typography variant="caption" color="text.secondary">
-            {row.exam_type} • {row.question_count || 0} questions • {row.duration} mins
-          </Typography>
-        </Box>
+      render: (value) => (
+        <Typography variant="body2" fontWeight="500">
+          {value}
+        </Typography>
       ),
     },
     {
       field: 'course_name',
       headerName: 'Course',
       width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Course'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'category_name',
+      headerName: 'Category',
+      width: 150,
+      render: (value) => (
+        <Typography variant="body2" color="text.secondary">
+          {value || 'Unknown Category'}
+        </Typography>
+      ),
     },
     {
       field: 'exam_type',
-      headerName: 'Type',
+      headerName: 'Exam Type',
       width: 100,
       render: (value) => (
         <Chip
@@ -805,7 +860,7 @@ const ExamManager = () => {
     },
     {
       field: 'question_count',
-      headerName: 'Questions',
+      headerName: 'Question Count',
       width: 100,
       render: (value) => (
         <Chip
@@ -821,7 +876,7 @@ const ExamManager = () => {
       headerName: 'Start Date',
       width: 120,
       render: (value) => (
-        <Typography variant="caption">
+        <Typography variant="body2" color="text.secondary">
           {value ? new Date(value).toLocaleDateString() : '-'}
         </Typography>
       ),
@@ -831,8 +886,18 @@ const ExamManager = () => {
       headerName: 'End Date',
       width: 120,
       render: (value) => (
-        <Typography variant="caption">
+        <Typography variant="body2" color="text.secondary">
           {value ? new Date(value).toLocaleDateString() : '-'}
+        </Typography>
+      ),
+    },
+    {
+      field: 'created_by_name',
+      headerName: 'Created By',
+      width: 170,
+      render: (value) => (
+        <Typography variant="body2" color="text.primary">
+          {value || 'Unknown'}
         </Typography>
       ),
     },
@@ -845,6 +910,22 @@ const ExamManager = () => {
         
         return (
           <Box sx={{ display: 'flex', gap: 1 }}>
+            <Tooltip title="View Exam">
+              <span>
+                <IconButton
+                  size="small"
+                  onClick={() => handlePreview(row)}
+                  color="info"
+                  disabled={actionLoading}
+                  sx={{
+                    opacity: actionLoading ? 0.5 : 1,
+                    transition: 'opacity 0.2s',
+                  }}
+                >
+                  <Visibility fontSize="small" />
+                </IconButton>
+              </span>
+            </Tooltip>
             <Tooltip title="Manage Questions">
               <span>
                 <Button
@@ -902,9 +983,9 @@ const ExamManager = () => {
         );
       },
     },
-  ];
+  ], [actionLoading, examQuestions.length, handleDelete, handleEdit, handleManageQuestions, handlePreview, isAdmin, isTeacher, user.id]);
 
-  const questionColumns = [
+  const questionColumns = useMemo(() => [
     {
       field: 'id',
       headerName: 'ID',
@@ -968,7 +1049,7 @@ const ExamManager = () => {
         </Tooltip>
       ),
     },
-  ];
+  ], [actionLoading, handleRemoveQuestion]);
 
   if (!isAdmin() && !isTeacher()) {
     return (
@@ -981,6 +1062,7 @@ const ExamManager = () => {
   }
 
   return (
+    <LocalizationProvider dateAdapter={AdapterDateFns}>
     <Box sx={{ p: 3 }}>
       {/* Header */}
       <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -1054,12 +1136,13 @@ const ExamManager = () => {
       {/* Search Bar (only in list tab) */}
       {activeTab === 0 && (
         <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
-          <TextField
+          <FastTextField
             fullWidth
             size="small"
             placeholder="Search exams by title or course..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onDebouncedChange={(value) => setSearchQuery(value)}
+            delay={120}
             InputProps={{
               startAdornment: (
                 <InputAdornment position="start">
@@ -1081,6 +1164,7 @@ const ExamManager = () => {
       {/* Tab 0: Exams List */}
       {activeTab === 0 && (
         <DataTable
+          showToolbar={false}
           columns={columns}
           data={filteredExams}
           loading={loading}
@@ -1099,12 +1183,13 @@ const ExamManager = () => {
           
           <Grid container spacing={3} sx={{ mt: 1 }}>
             <Grid item xs={12} md={8}>
-              <TextField
+              <FastTextField
                 fullWidth
                 label="Exam Title *"
                 name="title"
                 value={formData.title}
-                onChange={handleInputChange}
+                onDebouncedChange={(value) => setFormData((prev) => ({ ...prev, title: value }))}
+                delay={80}
                 required
                 disabled={actionLoading}
               />
@@ -1127,49 +1212,57 @@ const ExamManager = () => {
               </FormControl>
             </Grid>
 
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Course *</InputLabel>
-                <Select
-                  name="course_id"
-                  value={formData.course_id}
-                  onChange={handleInputChange}
-                  label="Course *"
-                  disabled={actionLoading}
-                >
-                  <MenuItem value="">Select Course</MenuItem>
-                  {courses.map(course => (
-                    <MenuItem key={course.id} value={course.id}>
-                      {course.name}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
+            <ContentAssignmentFields
+              categories={categories}
+              courses={courses}
+              chapters={[]}
+              values={formData}
+              onChange={handleAssignmentChange}
+              disabled={actionLoading}
+              showCategory
+              showCourse
+              showChapter={false}
+              categoryLabel="Category *"
+              courseLabel="Course *"
+            />
 
             <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
+              <DateTimePicker
                 label="Start Date & Time"
-                name="start_date"
-                type="datetime-local"
-                value={formData.start_date}
-                onChange={handleInputChange}
-                InputLabelProps={{ shrink: true }}
+                value={formData.start_date ? new Date(formData.start_date) : null}
+                onChange={(date) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    start_date: date ? date.toISOString() : '',
+                  }))
+                }
                 disabled={actionLoading}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    helperText: 'This uses the same scheduler picker style as content releases',
+                  },
+                }}
               />
             </Grid>
             
             <Grid item xs={12} md={6}>
-              <TextField
-                fullWidth
+              <DateTimePicker
                 label="End Date & Time"
-                name="end_date"
-                type="datetime-local"
-                value={formData.end_date}
-                onChange={handleInputChange}
-                InputLabelProps={{ shrink: true }}
+                value={formData.end_date ? new Date(formData.end_date) : null}
+                onChange={(date) =>
+                  setFormData((prev) => ({
+                    ...prev,
+                    end_date: date ? date.toISOString() : '',
+                  }))
+                }
                 disabled={actionLoading}
+                slotProps={{
+                  textField: {
+                    fullWidth: true,
+                    helperText: 'Leave empty to let the backend default it from the start time',
+                  },
+                }}
               />
             </Grid>
 
@@ -1260,6 +1353,7 @@ const ExamManager = () => {
                 <Button
                   variant="outlined"
                   onClick={() => {
+                    blurActiveElement();
                     setActiveTab(0);
                     resetForm();
                   }}
@@ -1312,7 +1406,10 @@ const ExamManager = () => {
                   <Button
                     size="small"
                     variant="outlined"
-                    onClick={() => setActiveTab(1)}
+                    onClick={() => {
+                      blurActiveElement();
+                      setActiveTab(1);
+                    }}
                     disabled={actionLoading}
                   >
                     Edit Exam
@@ -1371,6 +1468,7 @@ const ExamManager = () => {
             </Paper>
           ) : (
             <DataTable
+              showToolbar={false}
               columns={questionColumns}
               data={examQuestions}
               loading={loading || actionLoading}
@@ -1386,13 +1484,15 @@ const ExamManager = () => {
       <Dialog
         open={questionCreateDialogOpen}
         onClose={() => !actionLoading && setQuestionCreateDialogOpen(false)}
+        keepMounted
+        disableRestoreFocus
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
       >
         <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6" fontWeight="bold">
+            <Typography component="div" variant="h6" fontWeight="bold">
               Add Exam Question
             </Typography>
             <IconButton
@@ -1685,13 +1785,15 @@ const ExamManager = () => {
       <Dialog
         open={questionDialogOpen}
         onClose={() => !actionLoading && setQuestionDialogOpen(false)}
+        keepMounted
+        disableRestoreFocus
         maxWidth="lg"
         fullWidth
-        PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
+        PaperProps={{ sx: { borderRadius: 2.5, maxHeight: '90vh' } }}
       >
         <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <Typography variant="h6" fontWeight="bold">
+            <Typography component="div" variant="h6" fontWeight="bold">
               Import Questions to Exam
             </Typography>
             <IconButton
@@ -1711,7 +1813,7 @@ const ExamManager = () => {
         
         <DialogContent dividers sx={{ p: 3 }}>
           {/* Question Filters */}
-          <Paper sx={{ p: 2, mb: 3, borderRadius: 2 }}>
+          <Paper sx={{ p: 2.5, mb: 3, borderRadius: 2.5 }}>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
                 <TextField
@@ -1786,7 +1888,7 @@ const ExamManager = () => {
           </Paper>
 
           {/* Select All Bar */}
-          <Paper sx={{ p: 1.5, mb: 2, bgcolor: 'grey.50', borderRadius: 2 }}>
+          <Paper sx={{ p: 1.5, mb: 2, bgcolor: 'background.paper', borderRadius: 2.5, border: 1, borderColor: 'divider' }}>
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
                 <Checkbox
@@ -1893,6 +1995,134 @@ const ExamManager = () => {
         </DialogActions>
       </Dialog>
 
+      <Dialog
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        maxWidth="sm"
+        fullWidth
+        PaperProps={{ sx: { borderRadius: 2.5 } }}
+      >
+        <DialogTitle sx={{ p: 3, pb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="h6" fontWeight="bold">View Exam</Typography>
+            <IconButton onClick={() => setPreviewOpen(false)} size="small">
+              <Close />
+            </IconButton>
+          </Box>
+        </DialogTitle>
+        <DialogContent dividers sx={{ p: 3 }}>
+          <Stack spacing={2}>
+            <Paper variant="outlined" sx={{ p: 2.5, borderRadius: 2.5 }}>
+              <Typography variant="h6" fontWeight="bold" sx={{ mb: 2 }}>
+                {selectedExam?.title || '-'}
+              </Typography>
+              <Stack spacing={1.25}>
+                <DetailRow label="Course" value={selectedExam?.course_name || 'Unknown Course'} />
+                <DetailRow label="Category" value={selectedExam?.category_name || 'Unknown Category'} />
+                <DetailRow label="Exam Type" value={selectedExam?.exam_type || '-'} />
+                <DetailRow
+                  label="Status"
+                  value={selectedExam?.status ? renderTableChip(selectedExam.status, {
+                    color: selectedExam.status === 'published' ? 'success' : 'warning',
+                  }) : '-'}
+                />
+                <DetailRow label="Question Count" value={selectedExam?.question_count || 0} />
+                <DetailRow label="Created By" value={selectedExam?.created_by_name || 'Unknown'} />
+              </Stack>
+            </Paper>
+            <Divider />
+            <Typography variant="subtitle2" color="text.secondary">Exam Questions</Typography>
+            {examQuestions.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                No questions found for this exam.
+              </Typography>
+            ) : (
+              <Stack spacing={1}>
+                {examQuestions.map((question, index) => (
+                  <Paper key={question.id || index} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+                    <Typography variant="body2" fontWeight="medium" sx={{ mb: 0.5 }}>
+                      {index + 1}. {question.question_text || 'Untitled question'}
+                    </Typography>
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap" sx={{ mb: 1.25 }}>
+                      <Chip
+                        label={question.chapter_name || 'No Chapter'}
+                        size="small"
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={question.difficulty || 'medium'}
+                        size="small"
+                        color={
+                          question.difficulty === 'easy' ? 'success' :
+                          question.difficulty === 'medium' ? 'warning' : 'error'
+                        }
+                        variant="outlined"
+                      />
+                      <Chip
+                        label={`Answer: ${(question.correct_option || '-').toUpperCase()}`}
+                        size="small"
+                        color="success"
+                        variant="outlined"
+                      />
+                    </Stack>
+                    <Stack spacing={0.75}>
+                      {['a', 'b', 'c', 'd', 'e', 'f']
+                        .filter((option) => question[`option_${option}`])
+                        .map((option) => (
+                          <Paper
+                            key={option}
+                            variant="outlined"
+                            sx={{
+                              p: 1,
+                              borderRadius: 1.5,
+                              borderColor:
+                                question.correct_option === option ? 'success.main' : 'divider',
+                              bgcolor: (theme) =>
+                                question.correct_option === option
+                                  ? theme.palette.mode === 'dark'
+                                    ? 'rgba(46, 125, 50, 0.18)'
+                                    : 'rgba(46, 125, 50, 0.08)'
+                                  : 'transparent',
+                            }}
+                          >
+                            <Typography variant="body2">
+                              <strong>{option.toUpperCase()}.</strong> {question[`option_${option}`]}
+                            </Typography>
+                          </Paper>
+                        ))}
+                    </Stack>
+                    {question.explanation ? (
+                      <Box sx={{ mt: 1.25 }}>
+                        <Typography variant="body2" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+                          Explanation
+                        </Typography>
+                        <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1.5 }}>
+                          <Typography variant="body2">{question.explanation}</Typography>
+                        </Paper>
+                      </Box>
+                    ) : null}
+                  </Paper>
+                ))}
+              </Stack>
+            )}
+          </Stack>
+        </DialogContent>
+        <DialogActions sx={{ p: 3, pt: 2 }}>
+          <Button
+            variant="contained"
+            onClick={() => {
+              setPreviewOpen(false);
+              handleEdit(selectedExam);
+            }}
+            disabled={!selectedExam}
+            sx={{ borderRadius: 2 }}
+          >
+            Edit Exam
+          </Button>
+          <Button variant="outlined" onClick={() => setPreviewOpen(false)} sx={{ borderRadius: 2 }}>Close</Button>
+        </DialogActions>
+      </Dialog>
+
       {/* Delete Confirmation Dialog */}
       <ConfirmDialog
         open={deleteConfirmOpen}
@@ -1906,6 +2136,7 @@ const ExamManager = () => {
         loading={actionLoading}
       />
     </Box>
+    </LocalizationProvider>
   );
 };
 

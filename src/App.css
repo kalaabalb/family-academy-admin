@@ -12,8 +12,7 @@ html {
 
 body {
   font-family: 'Roboto', 'Helvetica', 'Arial', sans-serif;
-  background-color: #f5f5f5;
-  color: #333;
+  /* Background & text are controlled by MUI theme via CssBaseline */
   line-height: 1.6;
 }
 
@@ -24,17 +23,17 @@ body {
 }
 
 ::-webkit-scrollbar-track {
-  background: #f1f1f1;
+  background: rgba(145, 154, 163, 0.12);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #888;
+  background: linear-gradient(180deg, rgba(99, 124, 149, 0.72), rgba(141, 110, 99, 0.72));
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #555;
+  background: linear-gradient(180deg, rgba(79, 107, 136, 0.88), rgba(122, 91, 81, 0.88));
 }
 
 /* Utility classes */
@@ -64,10 +63,10 @@ body {
 
 /* Loading states */
 .loading-shimmer {
-  background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+  background: linear-gradient(90deg, rgba(233, 228, 220, 0.9) 25%, rgba(243, 239, 232, 1) 50%, rgba(233, 228, 220, 0.9) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: 4px;
+  border-radius: 10px;
 }
 
 @keyframes shimmer {
@@ -82,7 +81,7 @@ body {
 
 .card-hover:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 14px 28px rgba(37, 46, 55, 0.12);
 }
 
 /* Status colors */
