@@ -71,40 +71,33 @@ const TEMPLATES_TO_TEST = [
 
 async function loginAsAdmin() {
   log.step('Logging in as admin');
-  
-  try {
-    // First try with superadmin credentials from your database
-    const response = await axios.post(`${API_URL}/auth/admin-login`, {
-      username: 'superadmin',
-      password: 'superadmin'  // Try this first
-    });
-    
-    if (response.data.success) {
-      ADMIN_TOKEN = response.data.data.token;
-      log.success('Admin login successful with superadmin/superadmin');
-      return true;
+
+  const preferredUsername = process.env.ADMIN_TEST_USERNAME;
+  const preferredPassword = process.env.ADMIN_TEST_PASSWORD;
+
+  if (preferredUsername && preferredPassword) {
+    try {
+      const response = await axios.post(`${API_URL}/auth/admin-login`, {
+        username: preferredUsername,
+        password: preferredPassword
+      });
+
+      if (response.data.success) {
+        ADMIN_TOKEN = response.data.data.token;
+        log.success(`Admin login successful with ${preferredUsername}`);
+        return true;
+      }
+    } catch (error) {
+      log.warn('Environment-provided admin credentials failed, falling back to manual prompt');
     }
-  } catch (error) {
-    log.warn('First login attempt failed, trying with admin credentials...');
   }
-  
+
   try {
-    // Try with admin credentials
-    const response = await axios.post(`${API_URL}/auth/admin-login`, {
-      username: 'admin',
-      password: 'admin123'
-    });
-    
-    if (response.data.success) {
-      ADMIN_TOKEN = response.data.data.token;
-      log.success('Admin login successful with admin/admin123');
-      return true;
-    }
+    log.info('No admin test credentials configured. Please enter them manually.');
   } catch (error) {
-    log.warn('Second attempt failed, please enter your credentials manually');
+    log.warn('Falling back to manual admin login');
   }
-  
-  // If both fail, ask for credentials
+
   return new Promise((resolve) => {
     rl.question('Enter admin username: ', (username) => {
       rl.question('Enter admin password: ', async (password) => {
