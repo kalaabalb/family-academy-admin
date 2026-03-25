@@ -63,6 +63,7 @@ const axiosInstance = axios.create({
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
+    'X-Admin-Client': 'true',
   },
   withCredentials: true, // Important for cookies!
 });
@@ -104,6 +105,7 @@ const getRefreshToken = () => {
 // Request interceptor
 axiosInstance.interceptors.request.use(
   (config) => {
+    config.headers['X-Admin-Client'] = 'true';
     const token = getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
