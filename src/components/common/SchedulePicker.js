@@ -12,6 +12,8 @@ const SchedulePicker = ({
   disabled = false,
   fullWidth = true,
 }) => {
+  const now = new Date();
+
   return (
     <Grid container spacing={2}>
       <Grid item xs={12}>
@@ -32,11 +34,14 @@ const SchedulePicker = ({
             label={label}
             value={value}
             onChange={onChange}
+            minDateTime={now}
             disabled={disabled}
             slotProps={{
               textField: {
                 fullWidth,
-                helperText,
+                helperText: enabled
+                  ? `${helperText} Choose a future date and time.`
+                  : helperText,
                 disabled,
               },
             }}

@@ -410,6 +410,17 @@ const ExamManager = () => {
     
     const startDate = formData.start_date ? new Date(formData.start_date) : null;
     const endDate = formData.end_date ? new Date(formData.end_date) : null;
+    const now = new Date();
+
+    if (startDate && startDate <= now) {
+      showError('Start date must be in the future');
+      return false;
+    }
+
+    if (endDate && endDate <= now) {
+      showError('End date must be in the future');
+      return false;
+    }
     
     if (startDate && endDate && endDate <= startDate) {
       showError('End date must be after start date');
@@ -1230,6 +1241,7 @@ const ExamManager = () => {
               <DateTimePicker
                 label="Start Date & Time"
                 value={formData.start_date ? new Date(formData.start_date) : null}
+                minDateTime={new Date()}
                 onChange={(date) =>
                   setFormData((prev) => ({
                     ...prev,
@@ -1250,6 +1262,9 @@ const ExamManager = () => {
               <DateTimePicker
                 label="End Date & Time"
                 value={formData.end_date ? new Date(formData.end_date) : null}
+                minDateTime={
+                  formData.start_date ? new Date(formData.start_date) : new Date()
+                }
                 onChange={(date) =>
                   setFormData((prev) => ({
                     ...prev,
