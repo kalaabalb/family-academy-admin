@@ -134,6 +134,20 @@ const TARGET_TYPES = [
   { value: 'parents', label: 'Parents Only', icon: <People /> },
 ];
 
+const MANUAL_TARGET_TYPES = ['all', 'paid_users', 'unpaid_users', 'specific_user'];
+const SCHEDULE_TARGET_TYPES = ['all', 'paid_users', 'specific_user'];
+
+const toSafeDate = (value) => {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
+};
+
+const toSafeIsoString = (value) => {
+  const date = toSafeDate(value);
+  return date ? date.toISOString() : '';
+};
+
 const SCHEDULE_TYPES = [
   { value: 'one_time', label: 'One Time' },
   { value: 'daily', label: 'Daily' },
@@ -358,9 +372,46 @@ const NotificationTelegramManager = () => {
       return;
     }
 
+    if (scheduleForm.schedule_type === 'one_time' && !toSafeDate(scheduleForm.schedule_value)) {
+      showError('Choose a valid date and time for the one-time schedule');
+      return;
+    }
+
+    if (scheduleForm.schedule_type === 'monthly') {
+      const dayOfMonth = Number(scheduleForm.schedule_value);
+      if (!Number.isInteger(dayOfMonth) || dayOfMonth < 1 || dayOfMonth > 31) {
+        showError('Choose a valid day of the month between 1 and 31');
+        return;
+      }
+    }
+
+    if (scheduleForm.target_type === 'specific_user' && (!scheduleForm.target_ids || scheduleForm.target_ids.length === 0)) {
+      showError('Choose at least one user for this schedule');
+      return;
+    }
+
     setActionLoading(true);
     try {
-      await notificationsApi.createSchedule(scheduleForm);
+      const payload = {
+        ...scheduleForm,
+        template_id: Number(scheduleForm.template_id),
+        schedule_value: scheduleForm.schedule_type === 'one_time'
+          ? toSafeIsoString(scheduleForm.schedule_value)
+          : scheduleForm.schedule_type === 'monthly'
+            ? String(scheduleForm.schedule_value || '')
+            : null,
+        scheduled_time: scheduleForm.schedule_type === 'one_time'
+          ? null
+          : (scheduleForm.scheduled_time || null),
+        scheduled_day: scheduleForm.schedule_type === 'weekly'
+          ? scheduleForm.scheduled_day
+          : null,
+        target_ids: scheduleForm.target_type === 'specific_user'
+          ? (scheduleForm.target_ids || []).map((id) => Number(id)).filter(Boolean)
+          : [],
+      };
+
+      await notificationsApi.createSchedule(payload);
       showSuccess('Schedule created');
       setScheduleFormOpen(false);
       resetScheduleForm();
@@ -413,6 +464,16 @@ const NotificationTelegramManager = () => {
       return;
     }
 
+    if (notificationForm.target_type === 'specific_user' && !notificationForm.target_id) {
+      showError('Choose a user to receive this notification');
+      return;
+    }
+
+    if (!notificationForm.send_now && !toSafeDate(notificationForm.scheduled_time)) {
+      showError('Choose a valid date and time for the scheduled notification');
+      return;
+    }
+
     setActionLoading(true);
     try {
       const payload = {
@@ -421,8 +482,12 @@ const NotificationTelegramManager = () => {
         message: notificationForm.message,
         notification_type: notificationForm.type,
         target_type: notificationForm.target_type,
-        target_id: notificationForm.target_id || null,
-        scheduled_time: notificationForm.send_now ? null : notificationForm.scheduled_time,
+        target_id: notificationForm.target_type === 'specific_user'
+          ? Number(notificationForm.target_id)
+          : null,
+        scheduled_time: notificationForm.send_now
+          ? null
+          : toSafeIsoString(notificationForm.scheduled_time),
         variables: {} // Add empty variables object as required by backend
       };
 
@@ -1037,7 +1102,7 @@ const NotificationTelegramManager = () => {
               <FormControl fullWidth disabled={!selectedItem}>
                 <InputLabel>Target</InputLabel>
                 <Select value={notificationForm.target_type} onChange={(e) => setNotificationForm({...notificationForm, target_type: e.target.value})}>
-                  {TARGET_TYPES.map(t => (
+                  {TARGET_TYPES.filter((t) => MANUAL_TARGET_TYPES.includes(t.value)).map(t => (
                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
                 </Select>
@@ -1090,11 +1155,11 @@ const NotificationTelegramManager = () => {
                     scheduled_time: enabled ? notificationForm.scheduled_time : '',
                   });
                 }}
-                value={notificationForm.scheduled_time ? new Date(notificationForm.scheduled_time) : null}
+                value={toSafeDate(notificationForm.scheduled_time)}
                 onChange={(date) =>
                   setNotificationForm({
                     ...notificationForm,
-                    scheduled_time: date ? date.toISOString() : '',
+                    scheduled_time: toSafeIsoString(date),
                     send_now: !date,
                   })
                 }
@@ -1352,10 +1417,10 @@ const NotificationTelegramManager = () => {
                 <SchedulePicker
                   enabled
                   onEnabledChange={() => {}}
-                  value={scheduleForm.schedule_value ? new Date(scheduleForm.schedule_value) : null}
+                  value={toSafeDate(scheduleForm.schedule_value)}
                   onChange={(value) => setScheduleForm({
                     ...scheduleForm,
-                    schedule_value: value ? value.toISOString() : '',
+                    schedule_value: toSafeIsoString(value),
                   })}
                   label="Send At"
                   helperText="Choose the exact date and time for this one-time schedule."
@@ -1399,7 +1464,7 @@ const NotificationTelegramManager = () => {
               <FormControl fullWidth>
                 <InputLabel>Target Audience</InputLabel>
                 <Select value={scheduleForm.target_type} onChange={(e) => setScheduleForm({...scheduleForm, target_type: e.target.value})}>
-                  {TARGET_TYPES.filter(t => ['all', 'paid_users', 'specific_user'].includes(t.value)).map(t => (
+                  {TARGET_TYPES.filter(t => SCHEDULE_TARGET_TYPES.includes(t.value)).map(t => (
                     <MenuItem key={t.value} value={t.value}>{t.label}</MenuItem>
                   ))}
                 </Select>
