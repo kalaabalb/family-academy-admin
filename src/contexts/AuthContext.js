@@ -1,4 +1,4 @@
-import React, { createContext, useState, useContext, useEffect, useCallback } from 'react';
+import React, { createContext, useState, useContext, useEffect, useCallback, useRef } from 'react';
 import authApi from '../api/auth';
 import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
@@ -36,7 +36,8 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [sessionTimeout, setSessionTimeout] = useState(null);
+  const sessionTimeoutRef = useRef(null);
+  const hasInitializedRef = useRef(false);
   const navigate = useNavigate();
 
   const logAuthError = useCallback((message, error) => {
@@ -141,27 +142,32 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
     setIsAuthenticated(false);
     
-    if (sessionTimeout) {
-      clearTimeout(sessionTimeout);
+    if (sessionTimeoutRef.current) {
+      clearTimeout(sessionTimeoutRef.current);
+      sessionTimeoutRef.current = null;
     }
     
     authApi.logout().catch(() => {});
     navigate('/login');
-  }, [navigate, sessionTimeout, clearAuthData]);
+  }, [navigate, clearAuthData]);
 
   // Session management
   const resetSessionTimeout = useCallback((rememberMe = true) => {
-    if (sessionTimeout) {
-      clearTimeout(sessionTimeout);
+    if (sessionTimeoutRef.current) {
+      clearTimeout(sessionTimeoutRef.current);
     }
     const timeoutValue = rememberMe ? SESSION_TIMEOUT_LONG : SESSION_TIMEOUT_SHORT;
-    const timeout = setTimeout(() => {
+    sessionTimeoutRef.current = setTimeout(() => {
       logout();
     }, timeoutValue);
-    setSessionTimeout(timeout);
-  }, [sessionTimeout, logout]);
+  }, [logout]);
 
   useEffect(() => {
+    if (hasInitializedRef.current) {
+      return undefined;
+    }
+    hasInitializedRef.current = true;
+
     const initializeAuth = async () => {
       try {
         const cookieData = loadUserFromCookies();
@@ -199,8 +205,9 @@ export const AuthProvider = ({ children }) => {
 
     return () => {
       events.forEach(event => document.removeEventListener(event, resetActivity));
-      if (sessionTimeout) {
-        clearTimeout(sessionTimeout);
+      if (sessionTimeoutRef.current) {
+        clearTimeout(sessionTimeoutRef.current);
+        sessionTimeoutRef.current = null;
       }
     };
   }, [clearAuthData, loadUserFromCookies, logAuthError, resetSessionTimeout]);
