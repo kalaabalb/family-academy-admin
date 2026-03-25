@@ -384,7 +384,7 @@ const AdminManager = () => {
             </Grid>
             {!isEditing && (
               <Grid item xs={12}>
-                <FastTextField
+                <TextField
                   fullWidth
                   type={showPassword ? 'text' : 'password'}
                   label="Password"
@@ -468,7 +468,7 @@ const AdminManager = () => {
                 ),
               }}
             />
-            <FastTextField
+            <TextField
               fullWidth
               label="Confirm Password"
               type={showResetPassword ? 'text' : 'password'}

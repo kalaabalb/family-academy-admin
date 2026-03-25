@@ -60,7 +60,7 @@ export const AuthProvider = ({ children }) => {
   }, [logAuthError]);
 
   // Save auth data to cookies
-  const saveAuthData = useCallback((token, user, rememberMe = true) => {
+  const saveAuthData = useCallback((token, user, rememberMe = true, refreshToken = null) => {
     const userToSave = {
       ...user,
       assigned_courses: user.assigned_courses || []
@@ -74,6 +74,15 @@ export const AuthProvider = ({ children }) => {
       ...COOKIE_OPTIONS,
       expires: rememberMe ? 7 : undefined
     });
+
+    if (refreshToken) {
+      Cookies.set('refreshToken', refreshToken, {
+        ...COOKIE_OPTIONS,
+        expires: rememberMe ? 7 : undefined
+      });
+    } else {
+      Cookies.remove('refreshToken', { path: '/' });
+    }
     
     // Clear any old storage
     localStorage.removeItem('token');
@@ -161,19 +170,25 @@ export const AuthProvider = ({ children }) => {
       setLoading(true);
       const response = await authApi.adminLogin(username, password);
       
-      let token, userData;
+      let token, userData, refreshToken;
       
       if (response.data && response.data.data) {
         token = response.data.data.token;
         userData = response.data.data.user;
+        refreshToken = response.data.data.refreshToken || null;
       } else if (response.data && response.data.token) {
         token = response.data.token;
         userData = response.data.user;
+        refreshToken = response.data.refreshToken || null;
       } else {
         throw new Error('Invalid response format');
       }
+
+      if (!token || !userData) {
+        throw new Error('Login response did not include the required session data');
+      }
       
-      saveAuthData(token, userData, rememberMe);
+      saveAuthData(token, userData, rememberMe, refreshToken);
       
       setUser(userData);
       setIsAuthenticated(true);
