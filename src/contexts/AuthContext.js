@@ -18,6 +18,11 @@ export const useAuth = () => {
 // Session timeout values
 const SESSION_TIMEOUT_SHORT = 30 * 60 * 1000; // 30 minutes
 const SESSION_TIMEOUT_LONG = 7 * 24 * 60 * 60 * 1000; // 7 days
+const STORAGE_KEYS = {
+  token: 'fa_admin_token',
+  user: 'fa_admin_user',
+  refreshToken: 'fa_admin_refresh_token',
+};
 
 // Cookie options
 const COOKIE_OPTIONS = {
@@ -40,24 +45,36 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  const readStorage = useCallback((key) => {
+    try {
+      return localStorage.getItem(key) || sessionStorage.getItem(key);
+    } catch (error) {
+      logAuthError(`Error reading storage key ${key}:`, error);
+      return null;
+    }
+  }, [logAuthError]);
+
   // Load user from cookies
   const loadUserFromCookies = useCallback(() => {
     try {
-      const token = Cookies.get('token');
-      const userStr = Cookies.get('user');
+      const token = Cookies.get('token') || readStorage(STORAGE_KEYS.token);
+      const userStr = Cookies.get('user') || readStorage(STORAGE_KEYS.user);
+      const refreshToken =
+        Cookies.get('refreshToken') || readStorage(STORAGE_KEYS.refreshToken);
       
       if (token && userStr) {
         const parsedUser = JSON.parse(userStr);
         return {
           token,
-          user: parsedUser
+          user: parsedUser,
+          refreshToken,
         };
       }
     } catch (e) {
       logAuthError('Error loading user from cookies:', e);
     }
     return null;
-  }, [logAuthError]);
+  }, [logAuthError, readStorage]);
 
   // Save auth data to cookies
   const saveAuthData = useCallback((token, user, rememberMe = true, refreshToken = null) => {
@@ -74,6 +91,21 @@ export const AuthProvider = ({ children }) => {
       ...COOKIE_OPTIONS,
       expires: rememberMe ? 7 : undefined
     });
+
+    const storageTarget = rememberMe ? localStorage : sessionStorage;
+    const storageToClear = rememberMe ? sessionStorage : localStorage;
+
+    storageTarget.setItem(STORAGE_KEYS.token, token);
+    storageTarget.setItem(STORAGE_KEYS.user, JSON.stringify(userToSave));
+    if (refreshToken) {
+      storageTarget.setItem(STORAGE_KEYS.refreshToken, refreshToken);
+    } else {
+      storageTarget.removeItem(STORAGE_KEYS.refreshToken);
+    }
+
+    storageToClear.removeItem(STORAGE_KEYS.token);
+    storageToClear.removeItem(STORAGE_KEYS.user);
+    storageToClear.removeItem(STORAGE_KEYS.refreshToken);
 
     if (refreshToken) {
       Cookies.set('refreshToken', refreshToken, {
@@ -96,6 +128,12 @@ export const AuthProvider = ({ children }) => {
     Cookies.remove('token', { path: '/' });
     Cookies.remove('user', { path: '/' });
     Cookies.remove('refreshToken', { path: '/' });
+    localStorage.removeItem(STORAGE_KEYS.token);
+    localStorage.removeItem(STORAGE_KEYS.user);
+    localStorage.removeItem(STORAGE_KEYS.refreshToken);
+    sessionStorage.removeItem(STORAGE_KEYS.token);
+    sessionStorage.removeItem(STORAGE_KEYS.user);
+    sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
   }, []);
 
   const logout = useCallback(() => {
@@ -137,7 +175,9 @@ export const AuthProvider = ({ children }) => {
           try {
             await authApi.validateToken();
           } catch (error) {
-            logout();
+            clearAuthData();
+            setUser(null);
+            setIsAuthenticated(false);
           }
         }
       } catch (error) {
@@ -163,7 +203,7 @@ export const AuthProvider = ({ children }) => {
         clearTimeout(sessionTimeout);
       }
     };
-  }, []);
+  }, [clearAuthData, loadUserFromCookies, logAuthError, resetSessionTimeout]);
 
   const login = useCallback(async (username, password, rememberMe = true) => {
     try {

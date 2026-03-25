@@ -9,7 +9,7 @@ const authApi = {
   logout: () => axiosInstance.post('/auth/logout'),
   
   // Validate token
-  validateToken: () => axiosInstance.get('/auth/validate'),
+  validateToken: () => axiosInstance.get('/auth/admin/validate'),
   
   // Refresh token
   refreshToken: (refreshToken) => 

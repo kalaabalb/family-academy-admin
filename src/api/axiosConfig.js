@@ -70,6 +70,11 @@ const axiosInstance = axios.create({
 // Token refresh state
 let isRefreshing = false;
 let failedQueue = [];
+const STORAGE_KEYS = {
+  token: 'fa_admin_token',
+  user: 'fa_admin_user',
+  refreshToken: 'fa_admin_refresh_token',
+};
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach(prom => {
@@ -84,12 +89,16 @@ const processQueue = (error, token = null) => {
 
 // Get token from cookies only (simplified)
 const getToken = () => {
-  return Cookies.get('token');
+  return Cookies.get('token') ||
+    localStorage.getItem(STORAGE_KEYS.token) ||
+    sessionStorage.getItem(STORAGE_KEYS.token);
 };
 
 // Get refresh token from cookies only
 const getRefreshToken = () => {
-  return Cookies.get('refreshToken');
+  return Cookies.get('refreshToken') ||
+    localStorage.getItem(STORAGE_KEYS.refreshToken) ||
+    sessionStorage.getItem(STORAGE_KEYS.refreshToken);
 };
 
 // Request interceptor
@@ -121,6 +130,12 @@ axiosInstance.interceptors.response.use(
         Cookies.remove('token', { path: '/' });
         Cookies.remove('user', { path: '/' });
         Cookies.remove('refreshToken', { path: '/' });
+        localStorage.removeItem(STORAGE_KEYS.token);
+        localStorage.removeItem(STORAGE_KEYS.user);
+        localStorage.removeItem(STORAGE_KEYS.refreshToken);
+        sessionStorage.removeItem(STORAGE_KEYS.token);
+        sessionStorage.removeItem(STORAGE_KEYS.user);
+        sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
         window.location.href = '/login';
         return Promise.reject(error);
       }
@@ -167,6 +182,18 @@ axiosInstance.interceptors.response.use(
             path: '/' 
           });
         }
+
+        if (localStorage.getItem(STORAGE_KEYS.token)) {
+          localStorage.setItem(STORAGE_KEYS.token, token);
+          if (newRefreshToken) {
+            localStorage.setItem(STORAGE_KEYS.refreshToken, newRefreshToken);
+          }
+        } else if (sessionStorage.getItem(STORAGE_KEYS.token)) {
+          sessionStorage.setItem(STORAGE_KEYS.token, token);
+          if (newRefreshToken) {
+            sessionStorage.setItem(STORAGE_KEYS.refreshToken, newRefreshToken);
+          }
+        }
         
         axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         originalRequest.headers.Authorization = `Bearer ${token}`;
@@ -180,6 +207,12 @@ axiosInstance.interceptors.response.use(
         Cookies.remove('token', { path: '/' });
         Cookies.remove('user', { path: '/' });
         Cookies.remove('refreshToken', { path: '/' });
+        localStorage.removeItem(STORAGE_KEYS.token);
+        localStorage.removeItem(STORAGE_KEYS.user);
+        localStorage.removeItem(STORAGE_KEYS.refreshToken);
+        sessionStorage.removeItem(STORAGE_KEYS.token);
+        sessionStorage.removeItem(STORAGE_KEYS.user);
+        sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
         
         window.location.href = '/login';
         return Promise.reject(refreshError);
