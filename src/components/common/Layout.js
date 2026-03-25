@@ -185,6 +185,11 @@ const Layout = ({ children }) => {
   ];
 
   const menuItems = isAdmin() ? adminMenuItems : teacherMenuItems;
+  const roleLabel = isSuperAdmin()
+    ? 'Superadmin'
+    : isAdmin()
+        ? 'Administrator'
+        : 'Teacher';
 
   const renderMenuItem = (item, idx) => {
     // Regular menu item with path
@@ -313,7 +318,7 @@ const Layout = ({ children }) => {
             Family Academy
           </Typography>
           <Typography variant="caption" sx={{ color: 'inherit', opacity: 0.9 }}>
-            {isAdmin() ? 'Administrator' : 'Teacher'}
+            {roleLabel}
           </Typography>
         </Box>
       </Box>
@@ -328,9 +333,9 @@ const Layout = ({ children }) => {
             <Typography variant="body2" fontWeight="medium" noWrap>
               {user?.name || user?.username}
             </Typography>
-            <Typography variant="caption" color="text.secondary" noWrap>
-              {user?.role}
-            </Typography>
+          <Typography variant="caption" color="text.secondary" noWrap>
+              {roleLabel}
+          </Typography>
           </Box>
         </Box>
       </Box>
@@ -441,7 +446,7 @@ const Layout = ({ children }) => {
             {user?.name || user?.username}
           </Typography>
           <Typography variant="caption" color="text.secondary">
-            {user?.role}
+            {roleLabel}
           </Typography>
         </Box>
         <Divider />

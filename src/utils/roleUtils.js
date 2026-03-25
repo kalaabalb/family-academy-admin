@@ -1,7 +1,7 @@
 // Role-based utility functions
 export const roleUtils = {
-  isSuperAdmin: (user) => user?.role === 'admin' || user?.role === 'superadmin',
-  isAdmin: (user) => user?.role === 'admin',
+  isSuperAdmin: (user) => user?.role === 'superadmin',
+  isAdmin: (user) => user?.role === 'admin' || user?.role === 'superadmin',
   isTeacher: (user) => user?.role === 'teacher',
   isStudent: (user) => user?.role === 'student',
   
