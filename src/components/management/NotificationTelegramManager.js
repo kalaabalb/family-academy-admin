@@ -544,9 +544,17 @@ const NotificationTelegramManager = () => {
     setActionLoading(true);
     try {
       const res = await telegramApi.testBotConnection();
-      showSuccess(res.data.message || 'Telegram connection OK');
+      const message =
+        res?.data?.message ||
+        res?.data?.data?.message ||
+        'Telegram connection OK';
+      showSuccess(message);
     } catch (error) {
-      showError('Telegram test failed');
+      showError(
+        error?.userMessage ||
+        error?.response?.data?.message ||
+        'Unable to test Telegram connection right now.'
+      );
     } finally {
       setActionLoading(false);
     }
