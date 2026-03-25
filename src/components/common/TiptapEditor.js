@@ -117,6 +117,75 @@ const ColorPicker = React.memo(({ colors, onSelect }) => (
   </Box>
 ));
 
+const resizeImageFile = (file, maxDimension = 1600, quality = 0.82) => (
+  new Promise((resolve, reject) => {
+    if (!file?.type?.startsWith('image/')) {
+      resolve(file);
+      return;
+    }
+
+    const image = new window.Image();
+    const objectUrl = URL.createObjectURL(file);
+
+    image.onload = () => {
+      try {
+        let { width, height } = image;
+        const longestSide = Math.max(width, height);
+
+        if (longestSide <= maxDimension) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+
+        const scale = maxDimension / longestSide;
+        width = Math.round(width * scale);
+        height = Math.round(height * scale);
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+
+        const context = canvas.getContext('2d');
+        if (!context) {
+          URL.revokeObjectURL(objectUrl);
+          resolve(file);
+          return;
+        }
+
+        context.drawImage(image, 0, 0, width, height);
+
+        const outputType = file.type === 'image/png' ? 'image/png' : 'image/jpeg';
+        canvas.toBlob(
+          (blob) => {
+            URL.revokeObjectURL(objectUrl);
+            if (!blob) {
+              resolve(file);
+              return;
+            }
+
+            const extension = outputType === 'image/png' ? 'png' : 'jpg';
+            const nextName = file.name.replace(/\.[^.]+$/, '') + `.${extension}`;
+            resolve(new File([blob], nextName, { type: outputType, lastModified: Date.now() }));
+          },
+          outputType,
+          outputType === 'image/png' ? undefined : quality,
+        );
+      } catch (error) {
+        URL.revokeObjectURL(objectUrl);
+        reject(error);
+      }
+    };
+
+    image.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error('Failed to load selected image.'));
+    };
+
+    image.src = objectUrl;
+  })
+);
+
 const ImageResizer = ({ editor }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageSize, setImageSize] = useState(100);
@@ -203,7 +272,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     setIsUploadingImage(true);
 
     try {
-      const response = await uploadsApi.uploadImage(file);
+      const resizedFile = await resizeImageFile(file);
+      const response = await uploadsApi.uploadImage(resizedFile);
       const imageUrl = response?.data?.data;
 
       if (!imageUrl || typeof imageUrl !== 'string') {
@@ -213,7 +283,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       editor
         .chain()
         .focus()
-        .setImage({ src: imageUrl, title: file.name, alt: file.name, width: '60%' })
+        .setImage({ src: imageUrl, title: resizedFile.name, alt: resizedFile.name, width: '60%' })
         .run();
     } catch (error) {
       devError('Failed to upload editor image:', error);

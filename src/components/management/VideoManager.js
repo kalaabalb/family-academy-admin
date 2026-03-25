@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import videosApi from '../../api/videos';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
@@ -69,6 +70,7 @@ import { devError } from '../../utils/devLogger';
 const VideoManager = () => {
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError, info: showInfo } = useNotification();
+  const { getCachedData, invalidateCache } = useUsers();
   
   const [videos, setVideos] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -109,6 +111,10 @@ const VideoManager = () => {
     course_id: '',
     chapter_id: '',
   });
+  const videosCacheKey = 'videos-management';
+  const categoriesCacheKey = 'videos-management-categories';
+  const coursesCacheKey = 'videos-management-courses';
+  const chaptersCacheKey = 'videos-management-chapters';
 
   // Helper functions
   const formatDuration = (seconds) => {
@@ -173,18 +179,12 @@ const VideoManager = () => {
       setLoading(true);
       setError('');
       
-      const videosResponse = await videosApi.getAllVideos();
-      const videosData = videosResponse.data?.data || [];
-      
-      const [categoriesRes, coursesRes, chaptersRes] = await Promise.all([
-        categoriesApi.getAllCategories(),
-        coursesApi.getAllCourses(),
-        chaptersApi.getAllChapters(),
+      const [videosData, categoriesData, coursesData, chaptersData] = await Promise.all([
+        getCachedData(videosCacheKey, () => videosApi.getAllVideos(), { forceRefresh, ttl: 10 * 60 * 1000 }),
+        getCachedData(categoriesCacheKey, () => categoriesApi.getAllCategories(), { forceRefresh, ttl: 15 * 60 * 1000 }),
+        getCachedData(coursesCacheKey, () => coursesApi.getAllCourses(), { forceRefresh, ttl: 15 * 60 * 1000 }),
+        getCachedData(chaptersCacheKey, () => chaptersApi.getAllChapters(), { forceRefresh, ttl: 10 * 60 * 1000 }),
       ]);
-      
-      const categoriesData = categoriesRes.data?.data || [];
-      const coursesData = coursesRes.data?.data || [];
-      const chaptersData = chaptersRes.data?.data || [];
       
       // Filter courses for teachers based on assigned_courses
       let filteredCoursesData = coursesData;
@@ -226,7 +226,7 @@ const VideoManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError, isTeacher, user]);
+  }, [categoriesCacheKey, chaptersCacheKey, coursesCacheKey, getCachedData, isTeacher, showError, user, videosCacheKey]);
 
   useEffect(() => {
     if (isAdmin() || isTeacher()) {
@@ -368,6 +368,7 @@ const VideoManager = () => {
         }
         
         await videosApi.updateVideo(selectedVideo.id, updateData);
+        invalidateCache(/^videos-management/);
         showSuccess('Video updated successfully!');
         setFormOpen(false);
         resetForm();
@@ -389,6 +390,7 @@ const VideoManager = () => {
           formDataToSend, 
           (progress) => setUploadProgress(progress)
         );
+        invalidateCache(/^videos-management/);
         
         // ensure progress reaches 100% in the UI before clearing
         setUploadProgress(100);
@@ -490,6 +492,7 @@ const VideoManager = () => {
     try {
       setActionLoading(true);
       await videosApi.deleteVideo(selectedVideo.id);
+      invalidateCache(/^videos-management/);
       
       setVideos(prev => prev.filter(v => v.id !== selectedVideo.id));
       showSuccess(`Video "${selectedVideo.title}" deleted successfully`);
