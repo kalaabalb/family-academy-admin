@@ -723,8 +723,8 @@ const UserManager = () => {
         placeholder="Search users by username, email, phone, or school..."
       />
 
-      {/* Loading Indicator (only show the bar once we already have data loaded) */}
-      {loading && users.length > 0 && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {/* Loading Indicator (only show the bar on initial load) */}
+      {loading && users.length === 0 && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
       <SummaryStrip
         items={[

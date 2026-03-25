@@ -324,7 +324,7 @@ const AdminManager = () => {
         </Stack>
       </Stack>
 
-      {(loading || actionLoading) && <LinearProgress sx={{ mb: 2, borderRadius: 2 }} />}
+      {(loading && admins.length === 0) && <LinearProgress sx={{ mb: 2, borderRadius: 2 }} />}
 
       <Paper sx={{ borderRadius: 3, overflow: 'hidden' }}>
         <DataTable

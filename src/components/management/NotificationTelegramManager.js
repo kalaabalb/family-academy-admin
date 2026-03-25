@@ -1235,7 +1235,7 @@ const NotificationTelegramManager = () => {
               New Template
             </Button>
           </Box>
-          <DataTable showToolbar={false} columns={templateColumns} data={templates} loading={loading} />
+          <DataTable showToolbar={false} columns={templateColumns} data={templates} loading={loading} onRefresh={handleRefresh} />
         </Box>
       )}
 
@@ -1251,7 +1251,7 @@ const NotificationTelegramManager = () => {
               New Schedule
             </Button>
           </Box>
-          <DataTable showToolbar={false} columns={scheduleColumns} data={schedules} loading={loading} />
+          <DataTable showToolbar={false} columns={scheduleColumns} data={schedules} loading={loading} onRefresh={handleRefresh} />
         </Box>
       )}
 
@@ -1280,7 +1280,7 @@ const NotificationTelegramManager = () => {
               </>
             }
           />
-          <DataTable showToolbar={false} columns={notificationColumns} data={filteredNotifications} loading={loading} />
+          <DataTable showToolbar={false} columns={notificationColumns} data={filteredNotifications} loading={loading} onRefresh={handleRefresh} />
         </Box>
       )}
 
