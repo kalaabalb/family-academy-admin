@@ -110,6 +110,9 @@ const NoteManager = () => {
   });
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
 
+  const getFriendlyFormError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   // Cache keys
   const notesCacheKey = 'notes';
   const categoriesCacheKey = 'categories';
@@ -360,7 +363,7 @@ const NoteManager = () => {
       
     } catch (err) {
       devError('Failed to save note:', err);
-      showError(err.response?.data?.message || 'Failed to save note');
+      showError(getFriendlyFormError(err, 'Failed to save note'));
     } finally {
       setActionLoading(false);
     }
@@ -435,7 +438,7 @@ const NoteManager = () => {
       
     } catch (err) {
       devError('Failed to delete note:', err);
-      showError(err.response?.data?.message || 'Failed to delete note');
+      showError(getFriendlyFormError(err, 'Failed to delete note'));
     } finally {
       setActionLoading(false);
     }

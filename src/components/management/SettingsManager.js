@@ -94,6 +94,14 @@ const SettingsManager = () => {
     description: '',
   });
 
+  const getFriendlyFormError = (error, fallback, duplicateMessage = null) => {
+    const rawMessage = String(error?.response?.data?.message || error?.message || '');
+    if (duplicateMessage && /already exists|duplicate entry|unique constraint/i.test(rawMessage)) {
+      return duplicateMessage;
+    }
+    return error?.userMessage || error?.response?.data?.message || fallback;
+  };
+
   // Data type options with user-friendly labels
   const dataTypeOptions = [
     { value: 'text', label: 'Text', icon: '📝', description: 'Plain text value' },
@@ -251,7 +259,13 @@ const SettingsManager = () => {
       
     } catch (err) {
       devError('Failed to save setting:', err);
-      showError(err.response?.data?.message || 'Failed to save setting');
+      showError(
+        getFriendlyFormError(
+          err,
+          'Failed to save setting',
+          'A setting with that key already exists.'
+        )
+      );
     } finally {
       setActionLoading(false);
     }
@@ -295,7 +309,7 @@ const SettingsManager = () => {
       
     } catch (err) {
       devError('Failed to delete setting:', err);
-      showError(err.response?.data?.message || 'Failed to delete setting');
+      showError(getFriendlyFormError(err, 'Failed to delete setting'));
     } finally {
       setActionLoading(false);
     }
@@ -312,7 +326,7 @@ const SettingsManager = () => {
       await fetchSettings(true);
     } catch (err) {
       devError('Failed to initialize defaults:', err);
-      showError(err.response?.data?.message || 'Failed to initialize default settings');
+      showError(getFriendlyFormError(err, 'Failed to initialize default settings'));
     } finally {
       setActionLoading(false);
     }

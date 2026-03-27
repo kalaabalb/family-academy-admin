@@ -152,6 +152,9 @@ const ExamManager = () => {
     show_results_immediately: false,
   });
 
+  const getFriendlyFormError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   // Cache keys
   const coursesCacheKey = 'courses';
 
@@ -515,7 +518,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to save exam:', err);
-      showError(err.response?.data?.message || 'Failed to save exam');
+      showError(getFriendlyFormError(err, 'Failed to save exam'));
     } finally {
       setActionLoading(false);
     }
@@ -555,7 +558,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to create exam question:', err);
-      showError(err.response?.data?.message || 'Failed to create exam question');
+      showError(getFriendlyFormError(err, 'Failed to create exam question'));
     } finally {
       setActionLoading(false);
     }
@@ -615,7 +618,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to create batch exam questions:', err);
-      showError(err.response?.data?.message || 'Failed to create batch exam questions');
+      showError(getFriendlyFormError(err, 'Failed to create batch exam questions'));
     } finally {
       setActionLoading(false);
     }
@@ -684,7 +687,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to delete exam:', err);
-      showError(err.response?.data?.message || 'Failed to delete exam');
+      showError(getFriendlyFormError(err, 'Failed to delete exam'));
     } finally {
       setActionLoading(false);
     }
@@ -710,7 +713,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to add questions:', err);
-      showError(err.response?.data?.message || 'Failed to add questions');
+      showError(getFriendlyFormError(err, 'Failed to add questions'));
     } finally {
       setActionLoading(false);
     }
@@ -734,7 +737,7 @@ const ExamManager = () => {
       
     } catch (err) {
       devError('Failed to remove question:', err);
-      showError(err.response?.data?.message || 'Failed to remove question');
+      showError(getFriendlyFormError(err, 'Failed to remove question'));
     } finally {
       setActionLoading(false);
     }

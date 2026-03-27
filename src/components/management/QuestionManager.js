@@ -130,6 +130,9 @@ const QuestionManager = () => {
     }]
   });
 
+  const getFriendlyFormError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
@@ -481,7 +484,7 @@ const QuestionManager = () => {
       
     } catch (err) {
       devError('Failed to save question:', err);
-      showError(err.response?.data?.message || 'Failed to save question');
+      showError(getFriendlyFormError(err, 'Failed to save question'));
     } finally {
       setActionLoading(false);
     }
@@ -520,7 +523,7 @@ const QuestionManager = () => {
       
     } catch (err) {
       devError('Failed to create batch questions:', err);
-      showError(err.response?.data?.message || 'Failed to create batch questions');
+      showError(getFriendlyFormError(err, 'Failed to create batch questions'));
     } finally {
       setActionLoading(false);
     }
@@ -584,7 +587,7 @@ const QuestionManager = () => {
       
     } catch (err) {
       devError('Failed to delete question:', err);
-      showError(err.response?.data?.message || 'Failed to delete question');
+      showError(getFriendlyFormError(err, 'Failed to delete question'));
     } finally {
       setActionLoading(false);
     }

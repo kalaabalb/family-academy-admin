@@ -116,6 +116,9 @@ const VideoManager = () => {
   const coursesCacheKey = 'videos-management-courses';
   const chaptersCacheKey = 'videos-management-chapters';
 
+  const getFriendlyFormError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   // Helper functions
   const formatDuration = (seconds) => {
     if (!seconds || isNaN(seconds) || seconds <= 0) return '00:00';
@@ -501,7 +504,7 @@ const VideoManager = () => {
       
     } catch (err) {
       devError('Failed to delete video:', err);
-      showError(err.response?.data?.message || 'Failed to delete video');
+      showError(getFriendlyFormError(err, 'Failed to delete video'));
     } finally {
       setActionLoading(false);
     }
