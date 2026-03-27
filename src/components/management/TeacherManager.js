@@ -96,6 +96,14 @@ const TeacherManager = () => {
     confirm_password: '',
   });
 
+  const getFriendlyFormError = (error, fallback, duplicateMessage = null) => {
+    const rawMessage = String(error?.response?.data?.message || error?.message || '');
+    if (duplicateMessage && /already exists|duplicate entry|unique constraint/i.test(rawMessage)) {
+      return duplicateMessage;
+    }
+    return error?.userMessage || error?.response?.data?.message || fallback;
+  };
+
   // Cache keys
   const teachersCacheKey = 'teachers';
   const coursesCacheKey = 'courses';
@@ -279,7 +287,7 @@ const TeacherManager = () => {
       
     } catch (err) {
       devError('Failed to save teacher:', err);
-      showError(err.response?.data?.message || 'Failed to save teacher');
+      showError(getFriendlyFormError(err, 'Failed to save teacher', 'A teacher with that username already exists.'));
     } finally {
       setActionLoading(false);
     }
@@ -338,7 +346,7 @@ const TeacherManager = () => {
       
     } catch (err) {
       devError('Failed to reset password:', err);
-      showError(err.response?.data?.message || 'Failed to reset password');
+      showError(getFriendlyFormError(err, 'Failed to reset password'));
     } finally {
       setActionLoading(false);
     }
@@ -368,7 +376,7 @@ const TeacherManager = () => {
       
     } catch (err) {
       devError('Failed to delete teacher:', err);
-      showError(err.response?.data?.message || 'Failed to delete teacher');
+      showError(getFriendlyFormError(err, 'Failed to delete teacher'));
     } finally {
       setActionLoading(false);
     }

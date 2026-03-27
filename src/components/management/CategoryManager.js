@@ -84,6 +84,14 @@ const CategoryManager = () => {
     image_url: '',
   });
 
+  const getFriendlyFormError = (error, fallback, duplicateMessage = null) => {
+    const rawMessage = String(error?.response?.data?.message || error?.message || '');
+    if (duplicateMessage && /already exists|duplicate entry|unique constraint/i.test(rawMessage)) {
+      return duplicateMessage;
+    }
+    return error?.userMessage || error?.response?.data?.message || fallback;
+  };
+
   // Cache keys
   const categoriesCacheKey = 'categories';
   const coursesCacheKey = 'courses';
@@ -178,7 +186,7 @@ const CategoryManager = () => {
       }
     } catch (err) {
       devError('Image upload error:', err);
-      showError(err.response?.data?.message || 'Failed to upload image');
+      showError(getFriendlyFormError(err, 'Failed to upload image'));
     } finally {
       setUploadingImage(false);
     }
@@ -243,7 +251,7 @@ const CategoryManager = () => {
       
     } catch (err) {
       devError('Failed to save category:', err);
-      showError(err.response?.data?.message || 'Failed to save category');
+      showError(getFriendlyFormError(err, 'Failed to save category', 'A category with that name already exists.'));
     } finally {
       setActionLoading(false);
     }
@@ -290,7 +298,7 @@ const CategoryManager = () => {
       
     } catch (err) {
       devError('Failed to delete category:', err);
-      showError(err.response?.data?.message || 'Failed to delete category');
+      showError(getFriendlyFormError(err, 'Failed to delete category'));
     } finally {
       setActionLoading(false);
     }

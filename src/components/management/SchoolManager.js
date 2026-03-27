@@ -51,6 +51,14 @@ const SchoolManager = () => {
   const [formData, setFormData] = useState({ name: '' });
   const [searchQuery, setSearchQuery] = useState('');
 
+  const getFriendlyFormError = (error, fallback, duplicateMessage = null) => {
+    const rawMessage = String(error?.response?.data?.message || error?.message || '');
+    if (duplicateMessage && /already exists|duplicate entry|unique constraint/i.test(rawMessage)) {
+      return duplicateMessage;
+    }
+    return error?.userMessage || error?.response?.data?.message || fallback;
+  };
+
   // Cache key
   const schoolsCacheKey = 'schools';
 
@@ -114,7 +122,7 @@ const SchoolManager = () => {
       await fetchSchools(true); // Force refresh
     } catch (error) {
       devError('Failed to save school:', error);
-      showError(error.response?.data?.message || 'Failed to save school');
+      showError(getFriendlyFormError(error, 'Failed to save school', 'A school with that name already exists.'));
     } finally {
       setLoading(false);
     }
@@ -147,7 +155,7 @@ const SchoolManager = () => {
       setSelectedSchool(null);
     } catch (error) {
       devError('Failed to delete school:', error);
-      showError(error.response?.data?.message || 'Failed to delete school');
+      showError(getFriendlyFormError(error, 'Failed to delete school'));
     } finally {
       setLoading(false);
     }

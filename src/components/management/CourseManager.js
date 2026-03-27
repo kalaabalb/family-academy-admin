@@ -88,6 +88,14 @@ const CourseManager = () => {
     teacher_ids: [],
   });
 
+  const getFriendlyFormError = (error, fallback, duplicateMessage = null) => {
+    const rawMessage = String(error?.response?.data?.message || error?.message || '');
+    if (duplicateMessage && /already exists|duplicate entry|unique constraint/i.test(rawMessage)) {
+      return duplicateMessage;
+    }
+    return error?.userMessage || error?.response?.data?.message || fallback;
+  };
+
   // For teacher selection in assign form
   const [assignedTeacherIds, setAssignedTeacherIds] = useState([]);
 
@@ -276,7 +284,7 @@ const CourseManager = () => {
       
     } catch (err) {
       devError('Failed to save course:', err);
-      showError(err.response?.data?.message || 'Failed to save course');
+      showError(getFriendlyFormError(err, 'Failed to save course', 'A course with that name already exists in this category.'));
     } finally {
       setActionLoading(false);
     }
@@ -313,7 +321,7 @@ const CourseManager = () => {
       
     } catch (err) {
       devError('Failed to assign teachers:', err);
-      showError(err.response?.data?.message || 'Failed to assign teachers');
+      showError(getFriendlyFormError(err, 'Failed to assign teachers'));
     } finally {
       setActionLoading(false);
     }
@@ -370,7 +378,7 @@ const CourseManager = () => {
       
     } catch (err) {
       devError('Failed to delete course:', err);
-      showError(err.response?.data?.message || 'Failed to delete course');
+      showError(getFriendlyFormError(err, 'Failed to delete course'));
     } finally {
       setActionLoading(false);
     }
