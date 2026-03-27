@@ -406,6 +406,10 @@ const DeviceManager = () => {
               startIcon={<Download />}
               onClick={async () => {
                 try {
+                  if (devices.length === 0) {
+                    showError('There are no devices to export right now.');
+                    return;
+                  }
                   const response = await devicesApi.exportDevices('csv');
                   const url = window.URL.createObjectURL(new Blob([response.data]));
                   const link = document.createElement('a');
@@ -415,7 +419,7 @@ const DeviceManager = () => {
                   link.click();
                   link.remove();
                 } catch (err) {
-                  showError('Failed to export devices');
+                  showError(err?.userMessage || err?.response?.data?.message || 'Failed to export devices');
                 }
               }}
               disabled={loading || devices.length === 0}

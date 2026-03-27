@@ -309,6 +309,11 @@ const PaymentManager = () => {
   };
 
   const handleExport = () => {
+    if (filteredPayments.length === 0) {
+      showError('There are no payments to export right now.');
+      return;
+    }
+
     const exportData = filteredPayments.map(payment => ({
       ID: payment.id,
       User: payment.user_username,

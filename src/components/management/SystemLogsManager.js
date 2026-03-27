@@ -411,7 +411,7 @@ const SystemLogsManager = () => {
     if (isAdmin()) {
       fetchLogs();
     }
-  }, [pagination.page, pagination.rowsPerPage, filters.level, filters.action, filters.start_date, filters.end_date, filters.user_id]);
+  }, [pagination.page, pagination.rowsPerPage, filters.level, filters.action, filters.start_date, filters.end_date, filters.user_id, filters.search]);
 
   useEffect(() => {
     if (logs.length > 0) {
@@ -620,7 +620,10 @@ const SystemLogsManager = () => {
 
       <ManagementSearchToolbar
         value={filters.search}
-        onChange={(value) => setFilters((prev) => ({ ...prev, search: value }))}
+        onChange={(value) => {
+          setFilters((prev) => ({ ...prev, search: value }));
+          setPagination((prev) => ({ ...prev, page: 0 }));
+        }}
         placeholder="Search activity by action, user, or summary..."
         actions={
           <Stack direction="row" spacing={1}>
