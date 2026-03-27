@@ -297,6 +297,9 @@ const SystemLogsManager = () => {
   });
   
   const [selectedLog, setSelectedLog] = useState(null);
+
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [clearDialogOpen, setClearDialogOpen] = useState(false);
   const [clearDays, setClearDays] = useState(30);
@@ -477,7 +480,7 @@ const SystemLogsManager = () => {
       fetchLogs(true);
       fetchLogStats(true);
     } catch (err) {
-      showError(err.response?.data?.message || 'Failed to clear logs');
+      showError(getFriendlyActionError(err, 'Failed to clear logs'));
     } finally {
       setActionLoading(false);
     }
@@ -503,7 +506,7 @@ const SystemLogsManager = () => {
       
       showSuccess(`Logs exported successfully as ${exportFormat.toUpperCase()}`);
     } catch (err) {
-      showError(err.response?.data?.message || 'Failed to export logs');
+      showError(getFriendlyActionError(err, 'Failed to export logs'));
     } finally {
       setActionLoading(false);
     }

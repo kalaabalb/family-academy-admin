@@ -82,6 +82,9 @@ const DeviceManager = () => {
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [unpairConfirmOpen, setUnpairConfirmOpen] = useState(false);
   const [selectedDevice, setSelectedDevice] = useState(null);
+
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
   const [showFilters, setShowFilters] = useState(false);
   
   const [filters, setFilters] = useState({
@@ -202,7 +205,7 @@ const DeviceManager = () => {
       
     } catch (err) {
       devError('Failed to remove device:', err);
-      showError(err.response?.data?.message || 'Failed to remove device');
+      showError(getFriendlyActionError(err, 'Failed to remove device'));
     } finally {
       setLoading(false);
     }
@@ -232,7 +235,7 @@ const DeviceManager = () => {
       
     } catch (err) {
       devError('Failed to unpair device:', err);
-      showError(err.response?.data?.message || 'Failed to unpair device');
+      showError(getFriendlyActionError(err, 'Failed to unpair device'));
     } finally {
       setLoading(false);
     }

@@ -101,6 +101,9 @@ const PaymentManager = () => {
   const [viewDetailsOpen, setViewDetailsOpen] = useState(false);
   const [selectedPayment, setSelectedPayment] = useState(null);
   const [viewingPayment, setViewingPayment] = useState(null);
+
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
   const [adminNotes, setAdminNotes] = useState('');
   const [rejectionReason, setRejectionReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
@@ -254,7 +257,7 @@ const PaymentManager = () => {
       
     } catch (err) {
       devError('Failed to verify payment:', err);
-      showError(err.response?.data?.message || 'Failed to verify payment');
+      showError(getFriendlyActionError(err, 'Failed to verify payment'));
     } finally {
       setLoading(false);
     }
@@ -285,7 +288,7 @@ const PaymentManager = () => {
       
     } catch (err) {
       devError('Failed to reject payment:', err);
-      showError(err.response?.data?.message || 'Failed to reject payment');
+      showError(getFriendlyActionError(err, 'Failed to reject payment'));
     } finally {
       setLoading(false);
     }

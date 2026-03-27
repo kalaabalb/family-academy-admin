@@ -233,6 +233,9 @@ const NotificationTelegramManager = () => {
   const [selectedItem, setSelectedItem] = useState(null);
   const [deleteType, setDeleteType] = useState('notification');
   const [repairingDelivery, setRepairingDelivery] = useState(false);
+
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
   const [testPushOpen, setTestPushOpen] = useState(false);
   
   // Form states
@@ -326,7 +329,7 @@ const NotificationTelegramManager = () => {
       resetTemplateForm();
       fetchAllData();
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to create template');
+      showError(getFriendlyActionError(error, 'Failed to create template'));
     } finally {
       setActionLoading(false);
     }
@@ -342,7 +345,7 @@ const NotificationTelegramManager = () => {
       resetTemplateForm();
       fetchAllData();
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to update template');
+      showError(getFriendlyActionError(error, 'Failed to update template'));
     } finally {
       setActionLoading(false);
     }
@@ -356,7 +359,7 @@ const NotificationTelegramManager = () => {
       showSuccess('Template deleted');
       fetchAllData();
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to delete template');
+      showError(getFriendlyActionError(error, 'Failed to delete template'));
     } finally {
       setActionLoading(false);
       setDeleteConfirmOpen(false);
@@ -417,7 +420,7 @@ const NotificationTelegramManager = () => {
       resetScheduleForm();
       fetchAllData();
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to create schedule');
+      showError(getFriendlyActionError(error, 'Failed to create schedule'));
     } finally {
       setActionLoading(false);
     }
@@ -429,7 +432,7 @@ const NotificationTelegramManager = () => {
       showSuccess(`Schedule ${isActive ? 'enabled' : 'disabled'}`);
       fetchAllData();
     } catch (error) {
-      showError('Failed to toggle schedule');
+      showError(getFriendlyActionError(error, 'Failed to toggle schedule'));
     }
   };
 
@@ -441,7 +444,7 @@ const NotificationTelegramManager = () => {
       showSuccess('Schedule deleted');
       fetchAllData();
     } catch (error) {
-      showError('Failed to delete schedule');
+      showError(getFriendlyActionError(error, 'Failed to delete schedule'));
     } finally {
       setActionLoading(false);
       setDeleteConfirmOpen(false);
@@ -499,7 +502,7 @@ const NotificationTelegramManager = () => {
       setActiveTab(3); // Switch to history tab
     } catch (error) {
       devError('Send notification error:', error.response?.data || error);
-      showError(error.response?.data?.message || 'Failed to send notification');
+      showError(getFriendlyActionError(error, 'Failed to send notification'));
     } finally {
       setActionLoading(false);
     }
@@ -513,7 +516,7 @@ const NotificationTelegramManager = () => {
       showSuccess('Notification deleted');
       fetchAllData();
     } catch (error) {
-      showError('Failed to delete');
+      showError(getFriendlyActionError(error, 'Failed to delete notification'));
     } finally {
       setActionLoading(false);
       setDeleteConfirmOpen(false);
@@ -532,7 +535,7 @@ const NotificationTelegramManager = () => {
       });
       showSuccess('Notification resent');
     } catch (error) {
-      showError('Failed to resend');
+      showError(getFriendlyActionError(error, 'Failed to resend notification'));
     } finally {
       setActionLoading(false);
     }
@@ -551,9 +554,7 @@ const NotificationTelegramManager = () => {
       showSuccess(message);
     } catch (error) {
       showError(
-        error?.userMessage ||
-        error?.response?.data?.message ||
-        'Unable to test Telegram connection right now.'
+        getFriendlyActionError(error, 'Unable to test Telegram connection right now.')
       );
     } finally {
       setActionLoading(false);
@@ -570,7 +571,7 @@ const NotificationTelegramManager = () => {
       );
       await fetchAllData();
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to repair notification delivery');
+      showError(getFriendlyActionError(error, 'Failed to repair notification delivery'));
     } finally {
       setRepairingDelivery(false);
     }
@@ -592,7 +593,7 @@ const NotificationTelegramManager = () => {
       );
       setTestPushOpen(false);
     } catch (error) {
-      showError(error.response?.data?.message || 'Failed to send test push');
+      showError(getFriendlyActionError(error, 'Failed to send test push'));
     } finally {
       setActionLoading(false);
     }
