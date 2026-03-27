@@ -184,9 +184,15 @@ const UserManager = () => {
     totalStudyHours: 0,
   });
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
+
+      if (forceRefresh) {
+        invalidateCache('users-admin');
+        invalidateCache('schools');
+        invalidateCache('categories');
+      }
       
       const [usersData, schoolsData, categoriesData] = await Promise.all([
         getCachedData('users-admin', () => usersApi.getAllUsers({ limit: 1000 }), { ttl: 15 * 60 * 1000 }),
@@ -233,7 +239,11 @@ const UserManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [getCachedData, showError]);
+  }, [getCachedData, invalidateCache, showError]);
+
+  const handleRefresh = useCallback(() => {
+    fetchData(true);
+  }, [fetchData]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -707,7 +717,7 @@ const UserManager = () => {
             <Button
               variant="outlined"
               startIcon={<Refresh />}
-              onClick={fetchData}
+              onClick={handleRefresh}
               disabled={loading}
               sx={{ borderRadius: 2 }}
             >
@@ -832,7 +842,7 @@ const UserManager = () => {
         columns={columns}
         data={filteredUsers}
         loading={loading}
-        onRefresh={fetchData}
+        onRefresh={handleRefresh}
         title="Users"
         rowKey="id"
       />
