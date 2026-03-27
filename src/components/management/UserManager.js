@@ -143,6 +143,9 @@ const UserManager = () => {
   
   // Expanded sections for progress
   const [expandedChapters, setExpandedChapters] = useState({});
+
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
   
   // Pagination
   const [subscriptionsPage, setSubscriptionsPage] = useState(0);
@@ -451,7 +454,7 @@ const UserManager = () => {
       
     } catch (err) {
       devError('Failed to update user:', err);
-      showError(err.response?.data?.message || 'Failed to update user');
+      showError(getFriendlyActionError(err, 'Failed to update user'));
     } finally {
       setActionLoading(false);
     }
@@ -478,7 +481,7 @@ const UserManager = () => {
       showSuccess(`User "${selectedUser.username}" deleted successfully`);
     } catch (err) {
       devError('Failed to delete user:', err);
-      showError(err.response?.data?.message || 'Failed to delete user');
+      showError(getFriendlyActionError(err, 'Failed to delete user'));
     } finally {
       setActionLoading(false);
     }

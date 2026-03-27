@@ -91,6 +91,9 @@ const ChapterManager = () => {
   });
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
 
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   // Cache keys
   const chaptersCacheKey = 'chapters';
   const categoriesCacheKey = 'categories';
@@ -339,7 +342,7 @@ const ChapterManager = () => {
       
     } catch (err) {
       devError('Failed to delete chapter:', err);
-      showError(err.response?.data?.message || 'Failed to delete chapter');
+      showError(getFriendlyActionError(err, 'Failed to delete chapter'));
     } finally {
       setActionLoading(false);
     }

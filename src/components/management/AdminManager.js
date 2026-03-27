@@ -75,6 +75,9 @@ const AdminManager = () => {
     confirm_password: '',
   });
 
+  const getFriendlyActionError = (error, fallback) =>
+    error?.userMessage || error?.response?.data?.message || fallback;
+
   const fetchAdmins = useCallback(async () => {
     try {
       setLoading(true);
@@ -203,7 +206,7 @@ const AdminManager = () => {
       fetchAdmins();
     } catch (error) {
       devError('Failed to delete admin:', error);
-      showError(error?.response?.data?.message || 'Failed to deactivate admin account');
+      showError(getFriendlyActionError(error, 'Failed to deactivate admin account'));
     } finally {
       setActionLoading(false);
     }
@@ -233,7 +236,7 @@ const AdminManager = () => {
       showSuccess('Admin password reset successfully');
     } catch (error) {
       devError('Failed to reset admin password:', error);
-      showError(error?.response?.data?.message || 'Failed to reset admin password');
+      showError(getFriendlyActionError(error, 'Failed to reset admin password'));
     } finally {
       setActionLoading(false);
     }
