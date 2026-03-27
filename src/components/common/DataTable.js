@@ -55,6 +55,7 @@ const DataTable = ({
   rowKey = 'id',
   selectable = false,
   bulkActions = false,
+  showInlineLoadingBar = false,
   sx,
   onBulkAction,
   ...props
@@ -425,8 +426,8 @@ const DataTable = ({
         </Box>
       )}
 
-      {/* Loading Indicator: only show the progress bar when we already have data to avoid duplicate loaders */}
-      {loading && data.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
+      {/* Optional inline loading bar for table-only loading states */}
+      {showInlineLoadingBar && loading && data.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
 
       {/* Table */}
       <TableContainer

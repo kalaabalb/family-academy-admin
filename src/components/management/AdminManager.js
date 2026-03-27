@@ -163,7 +163,17 @@ const AdminManager = () => {
       fetchAdmins();
     } catch (error) {
       devError('Failed to save admin:', error);
-      showError(error?.response?.data?.message || 'Failed to save admin account');
+      const duplicateMessage = /duplicate entry|already exists|username.*taken/i.test(
+        String(error?.response?.data?.message || error?.message || '')
+      )
+        ? 'An admin with that username already exists.'
+        : null;
+      showError(
+        duplicateMessage ||
+        error?.userMessage ||
+        error?.response?.data?.message ||
+        'Failed to save admin account'
+      );
     } finally {
       setActionLoading(false);
     }

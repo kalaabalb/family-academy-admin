@@ -693,6 +693,51 @@ const NotificationTelegramManager = () => {
 
   const handleRefresh = () => fetchAllData();
 
+  const handleExportHistory = () => {
+    const rows = filteredNotifications.map((row) => ({
+      id: row.id ?? '',
+      title: row.title ?? '',
+      message: row.message ?? '',
+      status: row.status ?? '',
+      trigger_event: row.trigger_event ?? '',
+      template_name: row.template_name ?? '',
+      target_type: row.target_type ?? '',
+      target_id: row.target_id ?? '',
+      total_recipients: row.total_recipients ?? '',
+      app_delivered_count: row.app_delivered_count ?? '',
+      app_failed_count: row.app_failed_count ?? '',
+      sent_by: row.sent_by_username ?? '',
+      created_at: row.created_at ?? '',
+      sent_at: row.sent_at ?? '',
+    }));
+
+    if (rows.length === 0) {
+      showError('There is no notification history to export yet.');
+      return;
+    }
+
+    const headers = Object.keys(rows[0]);
+    const csv = [
+      headers.join(','),
+      ...rows.map((row) =>
+        headers
+          .map((header) => `"${String(row[header] ?? '').replace(/"/g, '""')}"`)
+          .join(',')
+      ),
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `notification-history-${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showSuccess(`Exported ${rows.length} notification records.`);
+  };
+
   const handleDeleteClick = (item, type) => {
     setSelectedItem(item);
     setDeleteType(type);
@@ -1276,7 +1321,7 @@ const NotificationTelegramManager = () => {
                     <MenuItem value="failed">Failed</MenuItem>
                   </Select>
                 </FormControl>
-                <Button startIcon={<Download />} size="small">Export</Button>
+                <Button startIcon={<Download />} size="small" onClick={handleExportHistory}>Export</Button>
               </>
             }
           />
