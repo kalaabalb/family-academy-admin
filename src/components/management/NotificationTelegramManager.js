@@ -301,6 +301,12 @@ const NotificationTelegramManager = () => {
     });
   };
 
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setSelectedItem(null);
+    setDeleteType('notification');
+  };
+
   // ==================== API CALLS ====================
   
   const fetchAllData = useCallback(async () => {
@@ -379,8 +385,7 @@ const NotificationTelegramManager = () => {
       showError(getFriendlyActionError(error, 'Failed to delete template'));
     } finally {
       setActionLoading(false);
-      setDeleteConfirmOpen(false);
-      setSelectedItem(null);
+      closeDeleteConfirm();
     }
   };
 
@@ -463,8 +468,7 @@ const NotificationTelegramManager = () => {
       showError(getFriendlyActionError(error, 'Failed to delete schedule'));
     } finally {
       setActionLoading(false);
-      setDeleteConfirmOpen(false);
-      setSelectedItem(null);
+      closeDeleteConfirm();
     }
   };
 
@@ -535,8 +539,7 @@ const NotificationTelegramManager = () => {
       showError(getFriendlyActionError(error, 'Failed to delete notification'));
     } finally {
       setActionLoading(false);
-      setDeleteConfirmOpen(false);
-      setSelectedItem(null);
+      closeDeleteConfirm();
     }
   };
 
@@ -1584,7 +1587,7 @@ const NotificationTelegramManager = () => {
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
+        onClose={closeDeleteConfirm}
         onConfirm={handleConfirmDelete}
         title={`Delete ${deleteType}`}
         message={`Are you sure you want to delete this ${deleteType}?`}

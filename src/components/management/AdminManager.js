@@ -117,6 +117,11 @@ const AdminManager = () => {
     resetForm();
   };
 
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setSelectedAdmin(null);
+  };
+
   const validateForm = () => {
     if (!formData.name.trim()) {
       showError('Admin name is required');
@@ -201,8 +206,7 @@ const AdminManager = () => {
       setActionLoading(true);
       await adminsApi.deleteAdmin(selectedAdmin.id);
       showSuccess('Admin account deactivated successfully');
-      setDeleteConfirmOpen(false);
-      setSelectedAdmin(null);
+      closeDeleteConfirm();
       fetchAdmins();
     } catch (error) {
       devError('Failed to delete admin:', error);
@@ -518,10 +522,7 @@ const AdminManager = () => {
         message={`Deactivate ${selectedAdmin?.name || selectedAdmin?.username}? They will no longer be able to sign in.`}
         confirmText="Deactivate"
         severity="error"
-        onCancel={() => {
-          setDeleteConfirmOpen(false);
-          setSelectedAdmin(null);
-        }}
+        onClose={closeDeleteConfirm}
         onConfirm={handleDelete}
         loading={actionLoading}
       />

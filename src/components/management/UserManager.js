@@ -465,6 +465,11 @@ const UserManager = () => {
     setDeleteConfirmOpen(true);
   };
 
+  const closeDeleteConfirm = () => {
+    setDeleteConfirmOpen(false);
+    setSelectedUser(null);
+  };
+
   const confirmDelete = async () => {
     if (!selectedUser) return;
     
@@ -474,9 +479,8 @@ const UserManager = () => {
       await usersApi.deleteUser(selectedUser.id);
       
       setUsers(prev => prev.filter(u => u.id !== selectedUser.id));
-      setDeleteConfirmOpen(false);
+      closeDeleteConfirm();
       setViewModalOpen(false);
-      setSelectedUser(null);
       
       showSuccess(`User "${selectedUser.username}" deleted successfully`);
     } catch (err) {
@@ -1710,7 +1714,7 @@ const UserManager = () => {
       {/* Delete Confirmation */}
       <ConfirmDialog
         open={deleteConfirmOpen}
-        onClose={() => setDeleteConfirmOpen(false)}
+        onClose={closeDeleteConfirm}
         onConfirm={confirmDelete}
         title="Delete User"
         message={`Are you sure you want to delete user "${selectedUser?.username}"?`}
