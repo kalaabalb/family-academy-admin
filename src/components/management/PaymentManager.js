@@ -108,6 +108,23 @@ const PaymentManager = () => {
   const [rejectionReason, setRejectionReason] = useState('');
   const [showFilters, setShowFilters] = useState(false);
 
+  const closeViewDetails = () => {
+    setViewDetailsOpen(false);
+    setViewingPayment(null);
+  };
+
+  const closeVerifyDialog = () => {
+    setVerifyDialogOpen(false);
+    setSelectedPayment(null);
+    setAdminNotes('');
+  };
+
+  const closeRejectDialog = () => {
+    setRejectDialogOpen(false);
+    setSelectedPayment(null);
+    setRejectionReason('');
+  };
+
   // Cache keys
   const paymentsCacheKey = 'payments';
   const categoriesCacheKey = 'categories';
@@ -251,9 +268,7 @@ const PaymentManager = () => {
           : p
       ));
       
-      setVerifyDialogOpen(false);
-      setSelectedPayment(null);
-      setAdminNotes('');
+      closeVerifyDialog();
       
     } catch (err) {
       devError('Failed to verify payment:', err);
@@ -282,9 +297,7 @@ const PaymentManager = () => {
           : p
       ));
       
-      setRejectDialogOpen(false);
-      setSelectedPayment(null);
-      setRejectionReason('');
+      closeRejectDialog();
       
     } catch (err) {
       devError('Failed to reject payment:', err);
@@ -737,7 +750,7 @@ const PaymentManager = () => {
       {/* View Details Dialog */}
       <Dialog
         open={viewDetailsOpen}
-        onClose={() => setViewDetailsOpen(false)}
+        onClose={closeViewDetails}
         maxWidth="md"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2, maxHeight: '90vh' } }}
@@ -750,7 +763,7 @@ const PaymentManager = () => {
                 Payment Details #{viewingPayment?.id}
               </Typography>
             </Box>
-            <IconButton onClick={() => setViewDetailsOpen(false)} size="small">
+            <IconButton onClick={closeViewDetails} size="small">
               <Close />
             </IconButton>
           </Box>
@@ -900,7 +913,7 @@ const PaymentManager = () => {
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button
             variant="outlined"
-            onClick={() => setViewDetailsOpen(false)}
+            onClick={closeViewDetails}
             sx={{ borderRadius: 2 }}
           >
             Close
@@ -911,7 +924,7 @@ const PaymentManager = () => {
                 variant="contained"
                 color="success"
                 onClick={() => {
-                  setViewDetailsOpen(false);
+                  closeViewDetails();
                   setSelectedPayment(viewingPayment);
                   setVerifyDialogOpen(true);
                 }}
@@ -923,7 +936,7 @@ const PaymentManager = () => {
                 variant="contained"
                 color="error"
                 onClick={() => {
-                  setViewDetailsOpen(false);
+                  closeViewDetails();
                   setSelectedPayment(viewingPayment);
                   setRejectDialogOpen(true);
                 }}
@@ -939,7 +952,7 @@ const PaymentManager = () => {
       {/* Verify Payment Dialog */}
       <Dialog
         open={verifyDialogOpen}
-        onClose={() => !loading && setVerifyDialogOpen(false)}
+        onClose={() => !loading && closeVerifyDialog()}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -949,7 +962,7 @@ const PaymentManager = () => {
             <Typography variant="h6" fontWeight="bold">
               Verify Payment
             </Typography>
-            <IconButton onClick={() => setVerifyDialogOpen(false)} size="small" disabled={loading}>
+            <IconButton onClick={closeVerifyDialog} size="small" disabled={loading}>
               <Close />
             </IconButton>
           </Box>
@@ -1018,7 +1031,7 @@ const PaymentManager = () => {
         
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button
-            onClick={() => setVerifyDialogOpen(false)}
+            onClick={closeVerifyDialog}
             variant="outlined"
             disabled={loading}
             sx={{ borderRadius: 2 }}
@@ -1040,7 +1053,7 @@ const PaymentManager = () => {
       {/* Reject Payment Dialog */}
       <Dialog
         open={rejectDialogOpen}
-        onClose={() => !loading && setRejectDialogOpen(false)}
+        onClose={() => !loading && closeRejectDialog()}
         maxWidth="sm"
         fullWidth
         PaperProps={{ sx: { borderRadius: 2 } }}
@@ -1050,7 +1063,7 @@ const PaymentManager = () => {
             <Typography variant="h6" fontWeight="bold">
               Reject Payment
             </Typography>
-            <IconButton onClick={() => setRejectDialogOpen(false)} size="small" disabled={loading}>
+            <IconButton onClick={closeRejectDialog} size="small" disabled={loading}>
               <Close />
             </IconButton>
           </Box>
@@ -1112,7 +1125,7 @@ const PaymentManager = () => {
         
         <DialogActions sx={{ p: 3, pt: 2 }}>
           <Button
-            onClick={() => setRejectDialogOpen(false)}
+            onClick={closeRejectDialog}
             variant="outlined"
             disabled={loading}
             sx={{ borderRadius: 2 }}

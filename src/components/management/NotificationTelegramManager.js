@@ -282,6 +282,25 @@ const NotificationTelegramManager = () => {
     message: 'This is a test notification to confirm cloud push is working on this device.',
   });
 
+  const closeTemplateForm = () => {
+    setTemplateFormOpen(false);
+    resetTemplateForm();
+  };
+
+  const closeScheduleForm = () => {
+    setScheduleFormOpen(false);
+    resetScheduleForm();
+  };
+
+  const closeTestPushDialog = () => {
+    setTestPushOpen(false);
+    setTestPushForm({
+      user_id: '',
+      title: 'Family Academy test push',
+      message: 'This is a test notification to confirm cloud push is working on this device.',
+    });
+  };
+
   // ==================== API CALLS ====================
   
   const fetchAllData = useCallback(async () => {
@@ -325,8 +344,7 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.createTemplate(templateForm);
       showSuccess('Template created');
-      setTemplateFormOpen(false);
-      resetTemplateForm();
+      closeTemplateForm();
       fetchAllData();
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to create template'));
@@ -341,8 +359,7 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.updateTemplate(selectedItem.id, templateForm);
       showSuccess('Template updated');
-      setTemplateFormOpen(false);
-      resetTemplateForm();
+      closeTemplateForm();
       fetchAllData();
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to update template'));
@@ -416,8 +433,7 @@ const NotificationTelegramManager = () => {
 
       await notificationsApi.createSchedule(payload);
       showSuccess('Schedule created');
-      setScheduleFormOpen(false);
-      resetScheduleForm();
+      closeScheduleForm();
       fetchAllData();
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to create schedule'));
@@ -591,7 +607,7 @@ const NotificationTelegramManager = () => {
         response.data?.message ||
           `Test push sent to ${userLabel?.full_name || userLabel?.username || `User #${testPushForm.user_id}`}`
       );
-      setTestPushOpen(false);
+      closeTestPushDialog();
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to send test push'));
     } finally {
@@ -1331,11 +1347,11 @@ const NotificationTelegramManager = () => {
       )}
 
       {/* Template Form Dialog */}
-      <Dialog open={templateFormOpen} onClose={() => setTemplateFormOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={templateFormOpen} onClose={closeTemplateForm} maxWidth="md" fullWidth>
         <DialogTitle sx={{ p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" fontWeight="bold">{selectedItem ? 'Edit' : 'New'} Template</Typography>
-            <IconButton onClick={() => setTemplateFormOpen(false)} size="small"><Close /></IconButton>
+            <IconButton onClick={closeTemplateForm} size="small"><Close /></IconButton>
           </Box>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 3 }}>
@@ -1412,7 +1428,7 @@ const NotificationTelegramManager = () => {
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button variant="outlined" onClick={() => setTemplateFormOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
+          <Button variant="outlined" onClick={closeTemplateForm} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={selectedItem ? handleUpdateTemplate : handleCreateTemplate}
             disabled={!templateForm.name || !templateForm.title_template || !templateForm.message_template}
             sx={{ borderRadius: 2 }}>
@@ -1422,11 +1438,11 @@ const NotificationTelegramManager = () => {
       </Dialog>
 
       {/* Schedule Form Dialog */}
-      <Dialog open={scheduleFormOpen} onClose={() => setScheduleFormOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={scheduleFormOpen} onClose={closeScheduleForm} maxWidth="md" fullWidth>
         <DialogTitle sx={{ p: 3, pb: 2 }}>
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6" fontWeight="bold">New Schedule</Typography>
-            <IconButton onClick={() => setScheduleFormOpen(false)} size="small"><Close /></IconButton>
+            <IconButton onClick={closeScheduleForm} size="small"><Close /></IconButton>
           </Box>
         </DialogTitle>
         <DialogContent dividers sx={{ p: 3 }}>
@@ -1556,7 +1572,7 @@ const NotificationTelegramManager = () => {
           </Grid>
         </DialogContent>
         <DialogActions sx={{ p: 3, pt: 2 }}>
-          <Button variant="outlined" onClick={() => setScheduleFormOpen(false)} sx={{ borderRadius: 2 }}>Cancel</Button>
+          <Button variant="outlined" onClick={closeScheduleForm} sx={{ borderRadius: 2 }}>Cancel</Button>
           <Button variant="contained" onClick={handleCreateSchedule}
             disabled={!scheduleForm.name || !scheduleForm.template_id}
             sx={{ borderRadius: 2 }}>
@@ -1577,7 +1593,7 @@ const NotificationTelegramManager = () => {
         loading={actionLoading}
       />
 
-      <Dialog open={testPushOpen} onClose={() => !actionLoading && setTestPushOpen(false)} fullWidth maxWidth="sm">
+      <Dialog open={testPushOpen} onClose={() => !actionLoading && closeTestPushDialog()} fullWidth maxWidth="sm">
         <DialogTitle>Send Test Push</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ pt: 1 }}>
@@ -1639,7 +1655,7 @@ const NotificationTelegramManager = () => {
           </Stack>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setTestPushOpen(false)} disabled={actionLoading}>Cancel</Button>
+          <Button onClick={closeTestPushDialog} disabled={actionLoading}>Cancel</Button>
           <Button onClick={handleSendTestPush} variant="contained" disabled={actionLoading}>
             Send Test Push
           </Button>
