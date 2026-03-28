@@ -43,8 +43,9 @@ const DashboardPage = () => {
     return (
       <Layout>
         <Loading
-          type="fullscreen"
-          message="We are preparing your dashboard highlights and access details."
+          type="page"
+          title="Opening your dashboard"
+          message="We are loading your summary, alerts, and latest admin activity."
         />
       </Layout>
     );
@@ -68,8 +69,9 @@ const AppContent = () => {
   const theme = useMemo(() => getTheme(mode), [mode]);
   const routeLoadingFallback = (
     <Loading
-      type="fullscreen"
-      message="We are opening this section and gathering the latest information for you."
+      type="page"
+      title="Opening this page"
+      message="We are loading the latest records for this section."
     />
   );
 

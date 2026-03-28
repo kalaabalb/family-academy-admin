@@ -10,7 +10,8 @@ const PrivateRoute = ({ children }) => {
     return (
       <Loading
         type="fullscreen"
-        message="We are checking your access and restoring the tools you need."
+        title="Checking your access"
+        message="We are restoring your session and opening the admin tools you can use."
       />
     );
   }
