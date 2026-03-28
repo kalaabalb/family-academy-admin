@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useNotification } from '../contexts/NotificationContext';
-import teacherCoursesApi from '../api/teacherCourses';
 import coursesApi from '../api/courses';
-import { cacheManager } from '../api/utils';
+import { cacheManager, resolveCacheTTL } from '../api/utils';
 import { devError, devLog } from '../utils/devLogger';
 
 export const useTeacherCourses = () => {
@@ -47,7 +46,7 @@ export const useTeacherCourses = () => {
       
       devLog('Filtered courses:', filteredCourses.map(c => ({ id: c.id, name: c.name })));
       
-      cacheManager.set(cacheKey, filteredCourses, 5 * 60 * 1000);
+      cacheManager.set(cacheKey, filteredCourses, resolveCacheTTL(cacheKey, 5 * 60 * 1000));
       
       setCourses(filteredCourses);
       setLastFetched(Date.now());
@@ -85,8 +84,11 @@ export const useTeacherCourses = () => {
   useEffect(() => {
     if (assignedCourseIds.length > 0) {
       fetchCourses();
+      return;
     }
-  }, [assignedCourseIds.join(',')]);
+
+    setCourses([]);
+  }, [assignedCourseIds.join(','), fetchCourses]);
   
   return {
     courses,

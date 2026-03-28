@@ -332,9 +332,26 @@ class CacheManager {
    * @param {RegExp|string} pattern - Pattern to match
    */
   deletePattern(pattern) {
-    const regex = pattern instanceof RegExp ? pattern : new RegExp(pattern);
+    if (pattern instanceof RegExp) {
+      for (const key of this.cache.keys()) {
+        if (pattern.test(key)) {
+          this.cache.delete(key);
+        }
+      }
+      return;
+    }
+
+    const normalizedPattern = String(pattern || '').trim();
+    if (!normalizedPattern) {
+      return;
+    }
+
     for (const key of this.cache.keys()) {
-      if (regex.test(key)) {
+      if (
+        key === normalizedPattern ||
+        key.startsWith(`${normalizedPattern}?`) ||
+        key.startsWith(`${normalizedPattern}:`)
+      ) {
         this.cache.delete(key);
       }
     }
@@ -367,6 +384,40 @@ class CacheManager {
 
 // Create and export a single instance
 export const cacheManager = new CacheManager();
+
+const CACHE_TTL_RULES = [
+  { matcher: /^dashboard-/, ttl: 2 * 60 * 1000 },
+  { matcher: /^system-logs/, ttl: 60 * 1000 },
+  { matcher: /^devices/, ttl: 2 * 60 * 1000 },
+  { matcher: /^notifications/, ttl: 2 * 60 * 1000 },
+  { matcher: /^payments/, ttl: 2 * 60 * 1000 },
+  { matcher: /^subscriptions/, ttl: 2 * 60 * 1000 },
+  { matcher: /^settings/, ttl: 5 * 60 * 1000 },
+  { matcher: /^users/, ttl: 3 * 60 * 1000 },
+  { matcher: /^admins/, ttl: 3 * 60 * 1000 },
+  { matcher: /^teachers/, ttl: 5 * 60 * 1000 },
+  { matcher: /^schools/, ttl: 10 * 60 * 1000 },
+  { matcher: /^categories/, ttl: 10 * 60 * 1000 },
+  { matcher: /^courses/, ttl: 10 * 60 * 1000 },
+  { matcher: /^chapters/, ttl: 10 * 60 * 1000 },
+  { matcher: /^videos/, ttl: 10 * 60 * 1000 },
+  { matcher: /^notes/, ttl: 10 * 60 * 1000 },
+  { matcher: /^questions/, ttl: 10 * 60 * 1000 },
+  { matcher: /^exams/, ttl: 10 * 60 * 1000 },
+];
+
+export const resolveCacheTTL = (key, fallbackTTL = null) => {
+  if (typeof fallbackTTL === 'number' && fallbackTTL > 0) {
+    return fallbackTTL;
+  }
+
+  const normalizedKey = String(key || '');
+  const matchedRule = CACHE_TTL_RULES.find(({ matcher }) =>
+    matcher.test(normalizedKey)
+  );
+
+  return matchedRule?.ttl || cacheManager.defaultTTL;
+};
 
 /**
  * Generate a cache key from parameters
@@ -476,6 +527,7 @@ const utils = {
   copyToClipboard,
   cacheManager,
   generateCacheKey,
+  resolveCacheTTL,
   useCache
 };
 

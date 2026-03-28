@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useCallback, useRef } from 'react';
-import { cacheManager, generateCacheKey } from '../api/utils';
+import { cacheManager, generateCacheKey, resolveCacheTTL } from '../api/utils';
 import { devError } from '../utils/devLogger';
 
 // Create context
@@ -31,12 +31,17 @@ export const UserProvider = ({ children }) => {
    * @returns {Promise<any>} Data
    */
   const getCachedData = useCallback(async (key, fetchFn, options = {}) => {
-    const { forceRefresh = false, ttl, preserveShape = false } = options;
+    const {
+      forceRefresh = false,
+      ttl,
+      preserveShape = false,
+      staleOnError = true,
+    } = options;
+    const effectiveTTL = resolveCacheTTL(key, ttl);
     
     if (!forceRefresh && cacheManager.has(key)) {
       const cached = cacheManager.get(key);
-      // Ensure we return an array for list data
-      return cached || [];
+      return cached ?? (preserveShape ? null : []);
     }
 
     if (pendingRequestsRef.current.has(key)) {
@@ -57,16 +62,16 @@ export const UserProvider = ({ children }) => {
         const processedData = preserveShape
           ? (data ?? null)
           : (Array.isArray(data) ? data : (data ? [data] : []));
-        cacheManager.set(key, processedData, ttl);
+        cacheManager.set(key, processedData, effectiveTTL);
         return processedData;
       } catch (error) {
         devError(`Error fetching data for key ${key}:`, error);
 
-        if (cacheManager.has(key)) {
-          return cacheManager.get(key) || [];
+        if (staleOnError && cacheManager.has(key)) {
+          return cacheManager.get(key) ?? (preserveShape ? null : []);
         }
 
-        return [];
+        return preserveShape ? null : [];
       } finally {
         pendingRequestsRef.current.delete(key);
       }

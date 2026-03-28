@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import Cookies from 'js-cookie';
 import { devError } from '../utils/devLogger';
 import { getNotificationMessage } from '../utils/notificationMessage';
+import { cacheManager } from '../api/utils';
 
 const AuthContext = createContext({});
 
@@ -135,6 +136,7 @@ export const AuthProvider = ({ children }) => {
     sessionStorage.removeItem(STORAGE_KEYS.token);
     sessionStorage.removeItem(STORAGE_KEYS.user);
     sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
+    cacheManager.clear();
   }, []);
 
   const logout = useCallback(() => {
@@ -236,6 +238,7 @@ export const AuthProvider = ({ children }) => {
       }
       
       saveAuthData(token, userData, rememberMe, refreshToken);
+      cacheManager.clear();
       
       setUser(userData);
       setIsAuthenticated(true);
