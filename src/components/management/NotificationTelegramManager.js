@@ -162,6 +162,7 @@ const TRIGGER_EVENTS = [
   { value: 'payment_pending', label: 'Payment Pending', category: 'payment' },
   { value: 'subscription_expiring', label: 'Subscription Expiring', category: 'payment' },
   { value: 'subscription_expired', label: 'Subscription Expired', category: 'payment' },
+  { value: 'chapter_scheduled', label: 'Chapter Scheduled', category: 'academic' },
   { value: 'chapter_released', label: 'Chapter Released', category: 'academic' },
   { value: 'video_scheduled', label: 'Video Scheduled', category: 'academic' },
   { value: 'video_released', label: 'Video Released', category: 'academic' },
@@ -179,6 +180,7 @@ const TRIGGER_EVENTS = [
   { value: 'parent_weekly_report', label: 'Parent Weekly Report', category: 'parent' },
   { value: 'parent_streak', label: 'Parent Streak', category: 'parent' },
   { value: 'parent_chapter_completed', label: 'Parent Chapter Completed', category: 'parent' },
+  { value: 'parent_linked', label: 'Parent Linked', category: 'parent' },
 ];
 
 const VARIABLE_TYPES = {
@@ -186,6 +188,7 @@ const VARIABLE_TYPES = {
   'payment_rejected': ['amount', 'category_name', 'rejection_reason'],
   'payment_pending': ['amount', 'category_name', 'submitted_date'],
   'subscription_expiring': ['category_name', 'days_remaining'],
+  'chapter_scheduled': ['chapter_name', 'course_name', 'category_name', 'release_date', 'release_time', 'chapter_id'],
   'chapter_released': ['chapter_name', 'course_name', 'category_name'],
   'video_scheduled': ['video_title', 'chapter_name', 'course_name', 'category_name', 'release_date', 'release_time', 'video_id'],
   'video_released': ['video_title', 'chapter_name', 'course_name'],
@@ -201,6 +204,7 @@ const VARIABLE_TYPES = {
   'streak_milestone': ['streak_count'],
   'achievement_unlocked': ['achievement_title'],
   'parent_weekly_report': ['student_name', 'study_days', 'chapters_completed'],
+  'parent_linked': ['parent_name', 'linked_at'],
 };
 
 // ==================== MAIN COMPONENT ====================
