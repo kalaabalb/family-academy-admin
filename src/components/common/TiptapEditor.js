@@ -93,6 +93,33 @@ const ResizableImage = Image.extend({
           style: `width: ${attributes.width || '100%'}; max-width: 100%; height: auto; display: block;`,
         }),
       },
+      align: {
+        default: 'center',
+        parseHTML: element => element.getAttribute('data-align') || 'center',
+        renderHTML: attributes => {
+          const align = attributes.align || 'center';
+          const baseStyle = `width: ${attributes.width || '100%'}; max-width: 100%; height: auto; display: block;`;
+
+          if (align === 'left') {
+            return {
+              'data-align': 'left',
+              style: `${baseStyle} margin: 0.75rem auto 0.75rem 0;`,
+            };
+          }
+
+          if (align === 'right') {
+            return {
+              'data-align': 'right',
+              style: `${baseStyle} margin: 0.75rem 0 0.75rem auto;`,
+            };
+          }
+
+          return {
+            'data-align': 'center',
+            style: `${baseStyle} margin: 0.75rem auto;`,
+          };
+        },
+      },
     };
   },
 });
@@ -189,15 +216,17 @@ const resizeImageFile = (file, maxDimension = 1600, quality = 0.82) => (
 const ImageResizer = ({ editor }) => {
   const [selectedImage, setSelectedImage] = useState(null);
   const [imageSize, setImageSize] = useState(100);
+  const [imageAlign, setImageAlign] = useState('center');
   const [showControls, setShowControls] = useState(false);
 
   useEffect(() => {
     if (!editor) return;
     const handler = () => {
       if (editor.isActive('image')) {
-        const { src, width } = editor.getAttributes('image');
+        const { src, width, align } = editor.getAttributes('image');
         setSelectedImage(src);
         setImageSize(parseInt(width) || 100);
+        setImageAlign(align || 'center');
         setShowControls(true);
       } else setShowControls(false);
     };
@@ -207,10 +236,77 @@ const ImageResizer = ({ editor }) => {
 
   if (!showControls) return null;
   return (
-    <Paper sx={{ position:'absolute', bottom:'100%', left:0, p:1, display:'flex', gap:1, alignItems:'center', bgcolor:'background.paper', boxShadow:2, borderRadius:1, zIndex:1000 }}>
+    <Paper sx={{ position:'absolute', bottom:'100%', left:0, p:1, display:'flex', gap:1, alignItems:'center', flexWrap:'wrap', bgcolor:'background.paper', boxShadow:2, borderRadius:1, zIndex:1000, maxWidth:'100%' }}>
       <Typography variant="caption">Size:</Typography>
-      <Slider size="small" value={imageSize} onChange={(e,v)=>{ setImageSize(v); editor.chain().focus().setImage({ width:`${v}%` }).run(); }} min={10} max={200} sx={{ width:100 }} />
+      <Slider
+        size="small"
+        value={imageSize}
+        onChange={(e,v)=>{
+          setImageSize(v);
+          editor.chain().focus().updateAttributes('image', { width:`${v}%` }).run();
+        }}
+        min={10}
+        max={200}
+        sx={{ width:100 }}
+      />
       <Typography variant="caption">{imageSize}%</Typography>
+      <Button
+        size="small"
+        variant={imageAlign === 'left' ? 'contained' : 'outlined'}
+        onClick={() => {
+          setImageAlign('left');
+          editor.chain().focus().updateAttributes('image', { align: 'left' }).run();
+        }}
+      >
+        Left
+      </Button>
+      <Button
+        size="small"
+        variant={imageAlign === 'center' ? 'contained' : 'outlined'}
+        onClick={() => {
+          setImageAlign('center');
+          editor.chain().focus().updateAttributes('image', { align: 'center' }).run();
+        }}
+      >
+        Center
+      </Button>
+      <Button
+        size="small"
+        variant={imageAlign === 'right' ? 'contained' : 'outlined'}
+        onClick={() => {
+          setImageAlign('right');
+          editor.chain().focus().updateAttributes('image', { align: 'right' }).run();
+        }}
+      >
+        Right
+      </Button>
+      <Button
+        size="small"
+        onClick={() => {
+          setImageSize(35);
+          editor.chain().focus().updateAttributes('image', { width: '35%' }).run();
+        }}
+      >
+        Small
+      </Button>
+      <Button
+        size="small"
+        onClick={() => {
+          setImageSize(60);
+          editor.chain().focus().updateAttributes('image', { width: '60%' }).run();
+        }}
+      >
+        Medium
+      </Button>
+      <Button
+        size="small"
+        onClick={() => {
+          setImageSize(100);
+          editor.chain().focus().updateAttributes('image', { width: '100%' }).run();
+        }}
+      >
+        Full
+      </Button>
       <Tooltip title="Remove Image"><IconButton size="small" onClick={() => { editor.chain().focus().deleteSelection().run(); setShowControls(false); }} color="error"><Delete fontSize="small"/></IconButton></Tooltip>
     </Paper>
   );
@@ -283,7 +379,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       editor
         .chain()
         .focus()
-        .setImage({ src: imageUrl, title: resizedFile.name, alt: resizedFile.name, width: '60%' })
+        .setImage({ src: imageUrl, title: resizedFile.name, alt: resizedFile.name, width: '60%', align: 'center' })
         .run();
     } catch (error) {
       devError('Failed to upload editor image:', error);
