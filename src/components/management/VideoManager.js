@@ -479,6 +479,11 @@ const VideoManager = () => {
     setPreviewOpen(true);
   };
 
+  const closePreview = () => {
+    setPreviewOpen(false);
+    setPreviewVideo(null);
+  };
+
   const handleDelete = (video) => {
     if (isTeacher() && video.uploaded_by !== user.id) {
       showError('You can only delete videos you uploaded');
@@ -556,6 +561,10 @@ const VideoManager = () => {
           <Avatar
             variant="rounded"
             src={row.thumbnail_url}
+            imgProps={{
+              loading: 'lazy',
+              referrerPolicy: 'no-referrer',
+            }}
             sx={{ width: 80, height: 45, bgcolor: 'primary.light' }}
           >
             <PlayCircle />
@@ -1098,8 +1107,7 @@ const VideoManager = () => {
 
         <Dialog
           open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          keepMounted
+          onClose={closePreview}
           disableRestoreFocus
           maxWidth="md"
           fullWidth
@@ -1110,14 +1118,14 @@ const VideoManager = () => {
               <Typography variant="h6" fontWeight="bold">
                 {previewVideo?.title}
               </Typography>
-              <IconButton onClick={() => setPreviewOpen(false)} size="small">
+              <IconButton onClick={closePreview} size="small">
                 <Close />
               </IconButton>
             </Box>
           </DialogTitle>
           
           <DialogContent dividers sx={{ p: 3 }}>
-            {previewVideo && (
+            {previewOpen && previewVideo && (
               <Box>
                 <Box
                   sx={{
@@ -1135,7 +1143,7 @@ const VideoManager = () => {
                   <video
                     src={previewVideo.file_path}
                     poster={previewVideo.thumbnail_url}
-                    preload="metadata"
+                    preload="none"
                     controls
                     style={{
                       width: '100%',
