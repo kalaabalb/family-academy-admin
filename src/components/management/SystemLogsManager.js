@@ -100,65 +100,6 @@ const parseLogDetails = (details) => {
   return {};
 };
 
-const isMeaningfulLog = (log) => {
-  const action = String(log.action || '').toLowerCase();
-  const description = String(log.description || log.message || '').toLowerCase();
-  const details = parseLogDetails(log.details);
-  const level = String(log.level || '').toLowerCase();
-
-  if (level === 'error' || level === 'warn' || level === 'warning') {
-    return true;
-  }
-
-  if (Number(details.statusCode || 0) >= 400) {
-    return true;
-  }
-
-  if (
-    action.includes('admin') ||
-    action.includes('teacher') ||
-    action.includes('audit') ||
-    action.includes('error') ||
-    action.includes('payment') ||
-    action.includes('subscription') ||
-    action.includes('chapter') ||
-    action.includes('video') ||
-    action.includes('note') ||
-    action.includes('question') ||
-    action.includes('exam') ||
-    action.includes('login') ||
-    action.includes('logout') ||
-    action.includes('verified') ||
-    action.includes('created') ||
-    action.includes('updated') ||
-    action.includes('deleted') ||
-    action.includes('scheduled')
-  ) {
-    return true;
-  }
-
-  if (['http_access', 'request', 'response'].includes(action)) {
-    return false;
-  }
-
-  if (details.endpoint || details.url || details.method || details.statusCode) {
-    return false;
-  }
-
-  if (
-    description.includes('get /api/') ||
-    description.includes('post /api/') ||
-    description.includes('put /api/') ||
-    description.includes('delete /api/') ||
-    description.includes('patch /api/') ||
-    description.includes('http/1.1')
-  ) {
-    return false;
-  }
-
-  return true;
-};
-
 const getReadableLogAction = (log) => {
   const action = String(log.action || '').toLowerCase();
   const entity = humanizeLogText(log.entity_type || log.resource || '');
@@ -349,16 +290,9 @@ const SystemLogsManager = () => {
         }
       }
       
-      const rawLogs = logsData || [];
-      const meaningfulLogs = rawLogs.filter(isMeaningfulLog);
-      const visibleLogs = meaningfulLogs.length
-        ? meaningfulLogs
-        : rawLogs.filter((log) => {
-            const action = String(log.action || '').toLowerCase();
-            return !['http_access', 'request', 'response'].includes(action);
-          });
-      setLogs(visibleLogs);
-      setPagination(prev => ({ ...prev, total: visibleLogs.length }));
+      const rawLogs = Array.isArray(logsData) ? logsData : [];
+      setLogs(rawLogs);
+      setPagination(prev => ({ ...prev, total: total || rawLogs.length }));
       setError('');
     } catch (err) {
       devError('Failed to fetch system logs:', err);

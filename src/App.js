@@ -13,6 +13,7 @@ import Login from './components/auth/Login';
 import AdminDashboard from './components/dashboard/AdminDashboard';
 import TeacherDashboard from './components/dashboard/TeacherDashboard';
 import Layout from './components/common/Layout';
+import Loading from './components/common/Loading';
 
 import getTheme from './theme';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -41,9 +42,10 @@ const DashboardPage = () => {
   if (loading) {
     return (
       <Layout>
-        <div style={{ padding: '40px', textAlign: 'center' }}>
-          Loading dashboard...
-        </div>
+        <Loading
+          type="fullscreen"
+          message="We are preparing your dashboard highlights and access details."
+        />
       </Layout>
     );
   }
@@ -64,6 +66,12 @@ const DashboardPage = () => {
 const AppContent = () => {
   const { mode } = useThemeMode();
   const theme = useMemo(() => getTheme(mode), [mode]);
+  const routeLoadingFallback = (
+    <Loading
+      type="fullscreen"
+      message="We are opening this section and gathering the latest information for you."
+    />
+  );
 
   return (
     <ErrorBoundary>
@@ -97,8 +105,8 @@ const AppContent = () => {
                   <Route path="/schools" element={
                     <PrivateRoute>
                       <Layout>
-                        <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                      <AdminRoute>
+                        <Suspense fallback={routeLoadingFallback}>
                           <SchoolManager />
                         </Suspense>
                       </AdminRoute>
@@ -110,7 +118,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <CategoryManager />
                         </Suspense>
                       </AdminRoute>
@@ -122,7 +130,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <CourseManager />
                         </Suspense>
                       </AdminRoute>
@@ -134,7 +142,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <PaymentManager />
                         </Suspense>
                       </AdminRoute>
@@ -146,7 +154,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <UserManager />
                         </Suspense>
                       </AdminRoute>
@@ -158,7 +166,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <TeacherManager />
                         </Suspense>
                       </AdminRoute>
@@ -170,7 +178,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <AdminManager />
                         </Suspense>
                       </AdminRoute>
@@ -182,7 +190,7 @@ const AppContent = () => {
                 <Route path="/chapters" element={
                   <PrivateRoute>
                     <Layout>
-                      <Suspense fallback={<div>Loading...</div>}>
+                      <Suspense fallback={routeLoadingFallback}>
                         <ChapterManager />
                       </Suspense>
                     </Layout>
@@ -192,7 +200,7 @@ const AppContent = () => {
                 <Route path="/videos" element={
                   <PrivateRoute>
                     <Layout>
-                      <Suspense fallback={<div>Loading...</div>}>
+                      <Suspense fallback={routeLoadingFallback}>
                         <VideoManager />
                       </Suspense>
                     </Layout>
@@ -202,7 +210,7 @@ const AppContent = () => {
                 <Route path="/notes" element={
                   <PrivateRoute>
                     <Layout>
-                      <Suspense fallback={<div>Loading...</div>}>
+                      <Suspense fallback={routeLoadingFallback}>
                         <NoteManager />
                       </Suspense>
                     </Layout>
@@ -212,7 +220,7 @@ const AppContent = () => {
                 <Route path="/questions" element={
                   <PrivateRoute>
                     <Layout>
-                      <Suspense fallback={<div>Loading...</div>}>
+                      <Suspense fallback={routeLoadingFallback}>
                         <QuestionManager />
                       </Suspense>
                     </Layout>
@@ -222,7 +230,7 @@ const AppContent = () => {
                 <Route path="/exams" element={
                   <PrivateRoute>
                     <Layout>
-                      <Suspense fallback={<div>Loading...</div>}>
+                      <Suspense fallback={routeLoadingFallback}>
                         <ExamManager />
                       </Suspense>
                     </Layout>
@@ -234,7 +242,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <NotificationTelegramManager />
                         </Suspense>
                       </AdminRoute>
@@ -246,7 +254,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <SettingsManager />
                         </Suspense>
                       </AdminRoute>
@@ -258,7 +266,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <DeviceManager />
                         </Suspense>
                       </AdminRoute>
@@ -270,7 +278,7 @@ const AppContent = () => {
                   <PrivateRoute>
                     <Layout>
                       <AdminRoute>
-                        <Suspense fallback={<div>Loading...</div>}>
+                        <Suspense fallback={routeLoadingFallback}>
                           <SystemLogsManager />
                         </Suspense>
                       </AdminRoute>
