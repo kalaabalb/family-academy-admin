@@ -217,6 +217,7 @@ const ImageResizer = ({ editor }) => {
   const [imageSize, setImageSize] = useState(100);
   const [imageAlign, setImageAlign] = useState('center');
   const [showControls, setShowControls] = useState(false);
+  const [imagePosition, setImagePosition] = useState(null);
   const isInteractingRef = useRef(false);
 
   const keepToolbarOpen = useCallback((event) => {
@@ -228,21 +229,36 @@ const ImageResizer = ({ editor }) => {
   const releaseToolbar = useCallback(() => {
     window.setTimeout(() => {
       isInteractingRef.current = false;
-      if (!editor?.isActive('image')) {
+      if (!editor?.isActive('image') && imagePosition == null) {
         setShowControls(false);
       }
     }, 0);
-  }, [editor]);
+  }, [editor, imagePosition]);
+
+  const applyImageAttributes = useCallback((attributes) => {
+    if (!editor || imagePosition == null) {
+      return;
+    }
+
+    editor
+      .chain()
+      .focus()
+      .setNodeSelection(imagePosition)
+      .updateAttributes('image', attributes)
+      .run();
+  }, [editor, imagePosition]);
 
   useEffect(() => {
     if (!editor) return;
     const handler = () => {
       if (editor.isActive('image')) {
         const { width, align } = editor.getAttributes('image');
+        setImagePosition(editor.state.selection.from);
         setImageSize(parseInt(width) || 100);
         setImageAlign(align || 'center');
         setShowControls(true);
       } else if (!isInteractingRef.current) {
+        setImagePosition(null);
         setShowControls(false);
       }
     };
@@ -284,8 +300,9 @@ const ImageResizer = ({ editor }) => {
         value={imageSize}
         onMouseDown={keepToolbarOpen}
         onChange={(e,v)=>{
-          setImageSize(v);
-          editor.chain().focus().updateAttributes('image', { width:`${v}%` }).run();
+          const nextSize = Array.isArray(v) ? v[0] : v;
+          setImageSize(nextSize);
+          applyImageAttributes({ width:`${nextSize}%` });
         }}
         min={10}
         max={200}
@@ -298,7 +315,7 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('left');
-          editor.chain().focus().updateAttributes('image', { align: 'left' }).run();
+          applyImageAttributes({ align: 'left' });
         }}
       >
         Left
@@ -309,7 +326,7 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('center');
-          editor.chain().focus().updateAttributes('image', { align: 'center' }).run();
+          applyImageAttributes({ align: 'center' });
         }}
       >
         Center
@@ -320,7 +337,7 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('right');
-          editor.chain().focus().updateAttributes('image', { align: 'right' }).run();
+          applyImageAttributes({ align: 'right' });
         }}
       >
         Right
@@ -330,7 +347,7 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(35);
-          editor.chain().focus().updateAttributes('image', { width: '35%' }).run();
+          applyImageAttributes({ width: '35%' });
         }}
       >
         Small
@@ -340,7 +357,7 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(60);
-          editor.chain().focus().updateAttributes('image', { width: '60%' }).run();
+          applyImageAttributes({ width: '60%' });
         }}
       >
         Medium
@@ -350,12 +367,18 @@ const ImageResizer = ({ editor }) => {
         onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(100);
-          editor.chain().focus().updateAttributes('image', { width: '100%' }).run();
+          applyImageAttributes({ width: '100%' });
         }}
       >
         Full
       </Button>
-      <Tooltip title="Remove Image"><IconButton size="small" onMouseDown={keepToolbarOpen} onClick={() => { editor.chain().focus().deleteSelection().run(); setShowControls(false); }} color="error"><Delete fontSize="small"/></IconButton></Tooltip>
+      <Tooltip title="Remove Image"><IconButton size="small" onMouseDown={keepToolbarOpen} onClick={() => {
+        if (imagePosition != null) {
+          editor.chain().focus().setNodeSelection(imagePosition).deleteSelection().run();
+        }
+        setImagePosition(null);
+        setShowControls(false);
+      }} color="error"><Delete fontSize="small"/></IconButton></Tooltip>
     </Paper>
   );
 };
