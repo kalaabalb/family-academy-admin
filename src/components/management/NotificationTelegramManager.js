@@ -606,6 +606,10 @@ const NotificationTelegramManager = () => {
   // ==================== TELEGRAM HANDLERS ====================
   
   const handleTestTelegram = async () => {
+    if (actionLoading) {
+      return;
+    }
+
     setActionLoading(true);
     try {
       const res = await telegramApi.testBotConnection();
@@ -613,6 +617,8 @@ const NotificationTelegramManager = () => {
         res?.data?.message ||
         res?.data?.data?.message ||
         'Telegram connection OK';
+      invalidateCache('notifications-telegram-status');
+      await fetchAllData(true);
       showSuccess(message);
     } catch (error) {
       showError(
@@ -1159,8 +1165,13 @@ const NotificationTelegramManager = () => {
           <Button size="small" variant="outlined" startIcon={<NotificationsIcon />} onClick={() => setTestPushOpen(true)}>
             Test Push
           </Button>
-          <Button size="small" onClick={handleTestTelegram}>
-            Test Connection
+          <Button
+            size="small"
+            variant="outlined"
+            onClick={handleTestTelegram}
+            disabled={loading || actionLoading}
+          >
+            {actionLoading ? 'Checking...' : 'Test Connection'}
           </Button>
           <Button
             size="small"
