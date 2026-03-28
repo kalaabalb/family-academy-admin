@@ -100,12 +100,51 @@ const parseLogDetails = (details) => {
   return {};
 };
 
+const isTechnicalNoiseLog = (log) => {
+  const action = String(log.action || '').toLowerCase();
+  const description = String(log.description || '').toLowerCase();
+  const details = parseLogDetails(log.details);
+
+  if (action === 'request' || action === 'response' || action === 'http_access') {
+    return true;
+  }
+
+  if (
+    /^\d+([ _]\d+){4,}/.test(action) ||
+    description.includes('http/1.1') ||
+    description.includes('get /api/') ||
+    description.includes('post /api/') ||
+    description.includes('put /api/') ||
+    description.includes('delete /api/') ||
+    description.includes('patch /api/')
+  ) {
+    return true;
+  }
+
+  if (
+    (details.endpoint || details.url || details.method) &&
+    !String(log.level || '').match(/error|warn/i)
+  ) {
+    return true;
+  }
+
+  return false;
+};
+
 const getReadableLogAction = (log) => {
   const action = String(log.action || '').toLowerCase();
   const entity = humanizeLogText(log.entity_type || log.resource || '');
   const details = parseLogDetails(log.details);
   const actor = details.adminUsername || details.teacherUsername || log.user_name || log.username;
 
+  if (action === 'no_schedules_due_for_processing') return 'No Notifications Due';
+  if (action === 'starting_notification_scheduler_job') return 'Notification Scheduler Started';
+  if (action === 'scheduled_content_check_completed') return 'Scheduled Content Check Completed';
+  if (action === 'starting_scheduled_content_release_job') return 'Scheduled Content Release Started';
+  if (action === 'no_notes_scheduled_for_release') return 'No Notes Due';
+  if (action === 'no_videos_scheduled_for_release') return 'No Videos Due';
+  if (action === 'no_chapters_scheduled_for_release') return 'No Chapters Due';
+  if (isTechnicalNoiseLog(log)) return 'Background Request';
   if (action.includes('login')) return actor ? `${actor} Signed In` : 'User Sign In';
   if (action.includes('logout')) return actor ? `${actor} Signed Out` : 'User Sign Out';
   if (action.includes('created') || action.includes('create')) return actor ? `${actor} Created ${entity || 'Record'}` : `${entity || 'Record'} Created`;
@@ -131,6 +170,38 @@ const getReadableLogDescription = (log) => {
   const endpoint = details.endpoint || details.url;
   const method = details.method;
   const statusCode = details.statusCode;
+
+  if (action === 'no_schedules_due_for_processing') {
+    return 'There were no scheduled notifications waiting to be sent at this check.';
+  }
+
+  if (action === 'starting_notification_scheduler_job') {
+    return 'The notification scheduler started its regular background check.';
+  }
+
+  if (action === 'scheduled_content_check_completed') {
+    return 'The platform finished checking scheduled content releases.';
+  }
+
+  if (action === 'starting_scheduled_content_release_job') {
+    return 'The platform started a scheduled content release cycle.';
+  }
+
+  if (action === 'no_notes_scheduled_for_release') {
+    return 'No notes were due for release at this time.';
+  }
+
+  if (action === 'no_videos_scheduled_for_release') {
+    return 'No videos were due for release at this time.';
+  }
+
+  if (action === 'no_chapters_scheduled_for_release') {
+    return 'No chapters were due for release at this time.';
+  }
+
+  if (isTechnicalNoiseLog(log)) {
+    return 'A background API request was recorded.';
+  }
 
   if (statusCode >= 500) {
     return `The system failed${endpoint ? ` on ${endpoint}` : ''} with a server error.`;
@@ -296,8 +367,13 @@ const SystemLogsManager = () => {
       }
       
       const rawLogs = Array.isArray(logsData) ? logsData : [];
-      setLogs(rawLogs);
-      setPagination(prev => ({ ...prev, total: total || rawLogs.length }));
+      const visibleLogs = rawLogs.filter((log) => !isTechnicalNoiseLog(log));
+      const effectiveLogs = visibleLogs.length > 0 ? visibleLogs : rawLogs;
+      setLogs(effectiveLogs);
+      setPagination(prev => ({
+        ...prev,
+        total: visibleLogs.length > 0 ? visibleLogs.length : (total || rawLogs.length),
+      }));
       setError('');
     } catch (err) {
       devError('Failed to fetch system logs:', err);
