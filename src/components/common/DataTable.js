@@ -56,6 +56,7 @@ const DataTable = ({
   selectable = false,
   bulkActions = false,
   showInlineLoadingBar = false,
+  emptyMessage = 'No records found',
   sx,
   onBulkAction,
   ...props
@@ -548,7 +549,7 @@ const DataTable = ({
                   <Box sx={{ textAlign: 'center' }}>
                     <Search sx={{ fontSize: 48, color: 'text.disabled', mb: 2 }} />
                     <Typography variant="body1" color="text.secondary">
-                      No records found
+                      {emptyMessage}
                     </Typography>
                     {search && (
                       <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>

@@ -65,6 +65,7 @@ import {
   Lock,
   LockOpen,
   Search,
+  AutoAwesome,
 } from '@mui/icons-material';
 import { devError } from '../../utils/devLogger';
 
@@ -130,6 +131,69 @@ const SettingsManager = () => {
     { value: 'contact', label: 'Contact', icon: <ContactMail />, color: 'primary' },
     { value: 'upload', label: 'Upload', icon: <CloudUpload />, color: 'success' },
   ];
+
+  const categoryMeta = {
+    all: {
+      title: 'All settings',
+      description: 'Review every configurable system value in one place.',
+      tone: 'Use search to jump straight to the setting you want.',
+    },
+    general: {
+      title: 'General experience',
+      description: 'Branding, shared labels, and app-wide copy that shapes the overall feel.',
+      tone: 'Best place for names, subtitles, and broad user-facing wording.',
+    },
+    payment: {
+      title: 'Payments and plans',
+      description: 'Billing messages, payment instructions, plan labels, and review expectations.',
+      tone: 'These settings directly shape what students see before and after payment.',
+    },
+    security: {
+      title: 'Security and device rules',
+      description: 'Device-change limits, pairing windows, and other protection-focused settings.',
+      tone: 'Private values here affect restrictions and security guardrails.',
+    },
+    academic: {
+      title: 'Learning content',
+      description: 'Messages and labels tied to chapter availability and academic experience.',
+      tone: 'Use this for learning-state wording rather than payment or support text.',
+    },
+    chatbot: {
+      title: 'Learning assistant',
+      description: 'Chatbot availability, limits, and the study helper copy shown in the client.',
+      tone: 'These settings now affect both chatbot text and real chatbot behavior.',
+    },
+    telegram: {
+      title: 'Telegram connections',
+      description: 'Bot links, support Telegram details, and parent-facing Telegram references.',
+      tone: 'Keep these links accurate so parent and support flows stay trustworthy.',
+    },
+    parent_link: {
+      title: 'Parent link journey',
+      description: 'Texts and timing used when students connect a parent through Telegram.',
+      tone: 'This section controls the parent-link experience more directly now.',
+    },
+    support: {
+      title: 'Support experience',
+      description: 'Support empty states, quick actions, FAQs, and help-screen messaging.',
+      tone: 'Use this to make support feel clear, calm, and user-friendly.',
+    },
+    system: {
+      title: 'System operations',
+      description: 'Operational values and backend-oriented settings used by the platform itself.',
+      tone: 'These are usually changed less often and should stay clean and intentional.',
+    },
+    contact: {
+      title: 'Contact channels',
+      description: 'Phone, email, WhatsApp, office hours, and other direct contact details.',
+      tone: 'These values power what users can tap and contact immediately.',
+    },
+    upload: {
+      title: 'Upload behavior',
+      description: 'Upload-related configuration and storage-facing settings.',
+      tone: 'Keep these aligned with how media and files are handled in production.',
+    },
+  };
 
   const fetchSettings = useCallback(async (forceRefresh = false) => {
     try {
@@ -344,6 +408,13 @@ const SettingsManager = () => {
     fetchSettings(true);
   };
 
+  const categoryCounts = settings.reduce((acc, setting) => {
+    acc[setting.category] = (acc[setting.category] || 0) + 1;
+    return acc;
+  }, {});
+
+  const activeCategoryMeta = categoryMeta[activeTab] || categoryMeta.all;
+
   // Filter settings based on tab and search
   const filteredSettings = settings.filter(setting => {
     // Category filter
@@ -361,6 +432,16 @@ const SettingsManager = () => {
     
     return true;
   });
+
+  const handleOpenCreate = (presetCategory = null) => {
+    resetForm();
+    if (presetCategory && presetCategory !== 'all') {
+      setFormData(prev => ({ ...prev, category: presetCategory }));
+    } else if (activeTab !== 'all') {
+      setFormData(prev => ({ ...prev, category: activeTab }));
+    }
+    setFormOpen(true);
+  };
 
   const columns = [
     {
@@ -527,10 +608,7 @@ const SettingsManager = () => {
           <Button
             variant="contained"
             startIcon={<Add />}
-            onClick={() => {
-              resetForm();
-              setFormOpen(true);
-            }}
+            onClick={() => handleOpenCreate()}
             disabled={loading || actionLoading}
             sx={{ borderRadius: 2 }}
           >
@@ -582,6 +660,51 @@ const SettingsManager = () => {
         />
       </Paper>
 
+      <Grid container spacing={2} sx={{ mb: 3 }}>
+        {categoryOptions.map((category) => {
+          const count = categoryCounts[category.value] || 0;
+          const isActive = activeTab === category.value;
+          return (
+            <Grid item xs={12} sm={6} md={4} lg={3} key={category.value}>
+              <Card
+                onClick={() => setActiveTab(category.value)}
+                sx={{
+                  height: '100%',
+                  borderRadius: 3,
+                  cursor: 'pointer',
+                  border: '1px solid',
+                  borderColor: isActive ? 'primary.main' : 'divider',
+                  boxShadow: isActive ? 4 : 0,
+                  transition: 'all 0.2s ease',
+                  '&:hover': {
+                    borderColor: 'primary.main',
+                    transform: 'translateY(-1px)',
+                    boxShadow: 2,
+                  },
+                }}
+              >
+                <CardContent sx={{ p: 2.25 }}>
+                  <Stack direction="row" justifyContent="space-between" alignItems="flex-start" spacing={2}>
+                    <Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.75 }}>
+                        {category.icon}
+                        <Typography variant="subtitle1" fontWeight={700}>
+                          {category.label}
+                        </Typography>
+                      </Box>
+                      <Typography variant="body2" color="text.secondary">
+                        {count} setting{count === 1 ? '' : 's'}
+                      </Typography>
+                    </Box>
+                    {isActive ? <AutoAwesome color="primary" fontSize="small" /> : null}
+                  </Stack>
+                </CardContent>
+              </Card>
+            </Grid>
+          );
+        })}
+      </Grid>
+
       {/* Tabs for Categories - NOTIFICATIONS TAB REMOVED */}
       <Paper sx={{ mb: 3, borderRadius: 2 }}>
         <Tabs
@@ -592,7 +715,7 @@ const SettingsManager = () => {
           sx={{ borderBottom: 1, borderColor: 'divider' }}
         >
           <Tab 
-            label="All Settings" 
+            label={`All Settings (${settings.length})`} 
             value="all"
             icon={<Settings />}
             iconPosition="start"
@@ -600,13 +723,47 @@ const SettingsManager = () => {
           {categoryOptions.map(category => (
             <Tab
               key={category.value}
-              label={category.label}
+              label={`${category.label} (${categoryCounts[category.value] || 0})`}
               value={category.value}
               icon={category.icon}
               iconPosition="start"
             />
           ))}
         </Tabs>
+      </Paper>
+
+      <Paper sx={{ p: 2.5, mb: 3, borderRadius: 3, bgcolor: 'background.paper' }}>
+        <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} justifyContent="space-between" alignItems={{ xs: 'flex-start', md: 'center' }}>
+          <Box>
+            <Typography variant="h6" fontWeight={700} gutterBottom>
+              {activeCategoryMeta.title}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 820 }}>
+              {activeCategoryMeta.description}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
+              {activeCategoryMeta.tone}
+            </Typography>
+          </Box>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5}>
+            <Chip
+              label={`${filteredSettings.length} visible`}
+              color="primary"
+              variant="outlined"
+            />
+            {activeTab !== 'all' && (
+              <Button
+                variant="outlined"
+                startIcon={<Add />}
+                onClick={() => handleOpenCreate(activeTab)}
+                disabled={loading || actionLoading}
+                sx={{ borderRadius: 2 }}
+              >
+                Add in {categoryOptions.find(cat => cat.value === activeTab)?.label || 'Category'}
+              </Button>
+            )}
+          </Stack>
+        </Stack>
       </Paper>
 
       {/* Settings Table */}
@@ -618,6 +775,11 @@ const SettingsManager = () => {
         onRefresh={handleRefresh}
         title={`Settings (${filteredSettings.length})`}
         rowKey="setting_key"
+        emptyMessage={
+          activeTab === 'all'
+            ? 'No settings match the current search.'
+            : `No ${categoryOptions.find(cat => cat.value === activeTab)?.label || 'selected'} settings match the current filters.`
+        }
       />
 
       {/* Add/Edit Setting Dialog */}
