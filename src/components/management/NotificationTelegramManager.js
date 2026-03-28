@@ -347,12 +347,18 @@ const NotificationTelegramManager = () => {
         ),
       ]);
 
-      setTemplates(templatesRes.data?.data || []);
-      setSchedules(schedulesRes.data?.data || []);
-      setNotifications(notificationsRes.data?.data || []);
-      setUsers(usersRes.data?.data || []);
-      setTelegramStatus(telegramRes.data?.data || null);
-      setStats(statsRes.data?.data?.summary || { total: 0, sent: 0, scheduled: 0, failed: 0 });
+      setTemplates(Array.isArray(templatesRes) ? templatesRes : []);
+      setSchedules(Array.isArray(schedulesRes) ? schedulesRes : []);
+      setNotifications(Array.isArray(notificationsRes) ? notificationsRes : []);
+      setUsers(Array.isArray(usersRes) ? usersRes : []);
+      setTelegramStatus(
+        telegramRes && !Array.isArray(telegramRes) ? telegramRes : null
+      );
+      setStats(
+        statsRes?.summary ||
+          statsRes?.data?.summary ||
+          { total: 0, sent: 0, scheduled: 0, failed: 0 }
+      );
     } catch (error) {
       showError('Failed to load data');
     } finally {
@@ -362,6 +368,20 @@ const NotificationTelegramManager = () => {
 
   useEffect(() => {
     if (isAdmin()) fetchAllData();
+  }, [isAdmin, fetchAllData]);
+
+  useEffect(() => {
+    if (!isAdmin()) {
+      return undefined;
+    }
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchAllData(true);
+      }
+    }, 90 * 1000);
+
+    return () => window.clearInterval(interval);
   }, [isAdmin, fetchAllData]);
 
   const invalidateNotificationCaches = useCallback(() => {
