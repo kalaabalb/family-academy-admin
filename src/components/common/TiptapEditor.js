@@ -217,6 +217,22 @@ const ImageResizer = ({ editor }) => {
   const [imageSize, setImageSize] = useState(100);
   const [imageAlign, setImageAlign] = useState('center');
   const [showControls, setShowControls] = useState(false);
+  const isInteractingRef = useRef(false);
+
+  const keepToolbarOpen = useCallback((event) => {
+    isInteractingRef.current = true;
+    event.preventDefault();
+    event.stopPropagation();
+  }, []);
+
+  const releaseToolbar = useCallback(() => {
+    window.setTimeout(() => {
+      isInteractingRef.current = false;
+      if (!editor?.isActive('image')) {
+        setShowControls(false);
+      }
+    }, 0);
+  }, [editor]);
 
   useEffect(() => {
     if (!editor) return;
@@ -226,7 +242,9 @@ const ImageResizer = ({ editor }) => {
         setImageSize(parseInt(width) || 100);
         setImageAlign(align || 'center');
         setShowControls(true);
-      } else setShowControls(false);
+      } else if (!isInteractingRef.current) {
+        setShowControls(false);
+      }
     };
     editor.on('selectionUpdate', handler);
     editor.on('transaction', handler);
@@ -239,6 +257,9 @@ const ImageResizer = ({ editor }) => {
   if (!showControls) return null;
   return (
     <Paper
+      onMouseDown={keepToolbarOpen}
+      onMouseUp={releaseToolbar}
+      onMouseLeave={releaseToolbar}
       sx={{
         mx: 1,
         mt: 1,
@@ -261,6 +282,7 @@ const ImageResizer = ({ editor }) => {
       <Slider
         size="small"
         value={imageSize}
+        onMouseDown={keepToolbarOpen}
         onChange={(e,v)=>{
           setImageSize(v);
           editor.chain().focus().updateAttributes('image', { width:`${v}%` }).run();
@@ -273,6 +295,7 @@ const ImageResizer = ({ editor }) => {
       <Button
         size="small"
         variant={imageAlign === 'left' ? 'contained' : 'outlined'}
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('left');
           editor.chain().focus().updateAttributes('image', { align: 'left' }).run();
@@ -283,6 +306,7 @@ const ImageResizer = ({ editor }) => {
       <Button
         size="small"
         variant={imageAlign === 'center' ? 'contained' : 'outlined'}
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('center');
           editor.chain().focus().updateAttributes('image', { align: 'center' }).run();
@@ -293,6 +317,7 @@ const ImageResizer = ({ editor }) => {
       <Button
         size="small"
         variant={imageAlign === 'right' ? 'contained' : 'outlined'}
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageAlign('right');
           editor.chain().focus().updateAttributes('image', { align: 'right' }).run();
@@ -302,6 +327,7 @@ const ImageResizer = ({ editor }) => {
       </Button>
       <Button
         size="small"
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(35);
           editor.chain().focus().updateAttributes('image', { width: '35%' }).run();
@@ -311,6 +337,7 @@ const ImageResizer = ({ editor }) => {
       </Button>
       <Button
         size="small"
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(60);
           editor.chain().focus().updateAttributes('image', { width: '60%' }).run();
@@ -320,6 +347,7 @@ const ImageResizer = ({ editor }) => {
       </Button>
       <Button
         size="small"
+        onMouseDown={keepToolbarOpen}
         onClick={() => {
           setImageSize(100);
           editor.chain().focus().updateAttributes('image', { width: '100%' }).run();
@@ -327,7 +355,7 @@ const ImageResizer = ({ editor }) => {
       >
         Full
       </Button>
-      <Tooltip title="Remove Image"><IconButton size="small" onClick={() => { editor.chain().focus().deleteSelection().run(); setShowControls(false); }} color="error"><Delete fontSize="small"/></IconButton></Tooltip>
+      <Tooltip title="Remove Image"><IconButton size="small" onMouseDown={keepToolbarOpen} onClick={() => { editor.chain().focus().deleteSelection().run(); setShowControls(false); }} color="error"><Delete fontSize="small"/></IconButton></Tooltip>
     </Paper>
   );
 };
