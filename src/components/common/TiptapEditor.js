@@ -214,7 +214,6 @@ const resizeImageFile = (file, maxDimension = 1600, quality = 0.82) => (
 );
 
 const ImageResizer = ({ editor }) => {
-  const [selectedImage, setSelectedImage] = useState(null);
   const [imageSize, setImageSize] = useState(100);
   const [imageAlign, setImageAlign] = useState('center');
   const [showControls, setShowControls] = useState(false);
@@ -223,20 +222,41 @@ const ImageResizer = ({ editor }) => {
     if (!editor) return;
     const handler = () => {
       if (editor.isActive('image')) {
-        const { src, width, align } = editor.getAttributes('image');
-        setSelectedImage(src);
+        const { width, align } = editor.getAttributes('image');
         setImageSize(parseInt(width) || 100);
         setImageAlign(align || 'center');
         setShowControls(true);
       } else setShowControls(false);
     };
     editor.on('selectionUpdate', handler);
-    return () => editor.off('selectionUpdate', handler);
+    editor.on('transaction', handler);
+    return () => {
+      editor.off('selectionUpdate', handler);
+      editor.off('transaction', handler);
+    };
   }, [editor]);
 
   if (!showControls) return null;
   return (
-    <Paper sx={{ position:'absolute', bottom:'100%', left:0, p:1, display:'flex', gap:1, alignItems:'center', flexWrap:'wrap', bgcolor:'background.paper', boxShadow:2, borderRadius:1, zIndex:1000, maxWidth:'100%' }}>
+    <Paper
+      sx={{
+        mx: 1,
+        mt: 1,
+        p: 1.25,
+        display: 'flex',
+        gap: 1,
+        alignItems: 'center',
+        flexWrap: 'wrap',
+        bgcolor: 'background.paper',
+        boxShadow: 1,
+        borderRadius: 1.5,
+        border: '1px solid',
+        borderColor: 'divider',
+      }}
+    >
+      <Typography variant="caption" sx={{ fontWeight: 700, minWidth: 'fit-content' }}>
+        Image tools
+      </Typography>
       <Typography variant="caption">Size:</Typography>
       <Slider
         size="small"
@@ -329,7 +349,26 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     extensions: [ StarterKit.configure({ heading:{ levels:[1,2,3] }, bulletList:{ keepMarks:true, keepAttributes:true }, orderedList:{ keepMarks:true, keepAttributes:true }, underline:false, link:false }), Underline, TextStyle, Color, FontFamily, TextAlign.configure({ types:['heading','paragraph'] }), Link.configure({ openOnClick:false, HTMLAttributes:{ class:'tiptap-link' } }), ResizableImage.configure({ inline:true, allowBase64:true, HTMLAttributes:{ class:'tiptap-image' } }), Table.configure({ resizable:true }), TableRow, TableHeader, TableCell ],
     content: value,
     editable: !readOnly,
-    editorProps: { attributes: { class: 'tiptap-editor', 'data-placeholder': placeholder } },
+    editorProps: {
+      attributes: { class: 'tiptap-editor', 'data-placeholder': placeholder },
+      handlePaste: (view, event) => {
+        const clipboardItems = Array.from(event.clipboardData?.items || []);
+        const imageItem = clipboardItems.find((item) => item.type?.startsWith('image/'));
+
+        if (!imageItem) {
+          return false;
+        }
+
+        const file = imageItem.getAsFile();
+        if (!file) {
+          return false;
+        }
+
+        event.preventDefault();
+        void uploadAndInsertImage(file);
+        return true;
+      },
+    },
     onUpdate: ({ editor }) => {
       const html = editor.getHTML();
       if (html !== lastContentRef.current) {
@@ -359,12 +398,10 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
 
   useEffect(() => { return () => { if (changeDebounceRef.current) clearTimeout(changeDebounceRef.current); }; }, []);
 
-  const handleImageUpload = async (event) => {
-    const file = event.target.files?.[0];
+  const uploadAndInsertImage = useCallback(async (file) => {
     if (!file || !editor) {
-      return;
+      return false;
     }
-
     setIsUploadingImage(true);
 
     try {
@@ -381,20 +418,29 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         .focus()
         .setImage({ src: imageUrl, title: resizedFile.name, alt: resizedFile.name, width: '60%', align: 'center' })
         .run();
+      return true;
     } catch (error) {
       devError('Failed to upload editor image:', error);
+      return false;
     } finally {
-      event.target.value = '';
       setIsUploadingImage(false);
     }
+  }, [editor]);
+
+  const handleImageUpload = async (event) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    await uploadAndInsertImage(file);
+    event.target.value = '';
   };
 
   if (!editor) return null;
 
   return (
     <Paper variant="outlined" sx={{ borderRadius:2, overflow:'hidden', bgcolor: isDark ? 'grey.900' : 'background.paper', position:'relative', boxShadow: isDark ? 3 : 1, borderColor: isDark ? 'grey.800' : 'divider' }}>
-      {editor && <ImageResizer editor={editor} />}
-
       <input
         type="file"
         ref={fileInputRef}
@@ -404,52 +450,55 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       />
 
       {!readOnly && (
-        <Box sx={{ p:1, borderBottom:1, borderColor:'divider', bgcolor: isDark ? 'grey.900' : 'grey.50', display:'flex', flexWrap:'wrap', gap:0.5, alignItems:'center' }}>
-          <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo"><Undo fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo"><Redo fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold"><FormatBold fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Italic"><FormatItalic fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="Underline"><FormatUnderlined fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strike"><StrikethroughS fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <FormControl size="small" sx={{ minWidth:120 }}>
-            <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Font'}>
-              <MenuItem value="" disabled>Font Family</MenuItem>
-              {FONT_FAMILIES.map(f => <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>{f.label}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth:80 }}>
-            <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Size'}>
-              <MenuItem value="" disabled>Font Size</MenuItem>
-              {FONT_SIZES.map(s => <MenuItem key={s} value={s}>{s}px</MenuItem>)}
-            </Select>
-          </FormControl>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={(e)=>{}} title="Text Color"><FormatColorText fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={(e)=>{}} title="BG Color"><FormatColorFill fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Align Left"><FormatAlignLeft fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Align Center"><FormatAlignCenter fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><FormatAlignRight fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify"><FormatAlignJustify fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet"><FormatListBulleted fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered"><FormatListNumbered fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><Title fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Quote"><FormatQuote fontSize="small"/></ToolbarButton>
-          <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code"><Code fontSize="small"/></ToolbarButton>
-          <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-          <ToolbarButton onClick={() => editor.chain().focus().insertTable({ rows:3, cols:3, withHeaderRow:true }).run()} title="Table"><TableChart fontSize="small"/></ToolbarButton>
-          <ToolbarButton
-            onClick={() => !isUploadingImage && fileInputRef.current?.click()}
-            disabled={isUploadingImage}
-            title={isUploadingImage ? 'Uploading image...' : 'Upload Image'}
-          >
-            <PhotoCamera fontSize="small"/>
-          </ToolbarButton>
-        </Box>
+        <>
+          <Box sx={{ p:1, borderBottom:1, borderColor:'divider', bgcolor: isDark ? 'grey.900' : 'grey.50', display:'flex', flexWrap:'wrap', gap:0.5, alignItems:'center' }}>
+            <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo"><Undo fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo"><Redo fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={() => editor.chain().focus().toggleBold().run()} active={editor.isActive('bold')} title="Bold"><FormatBold fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleItalic().run()} active={editor.isActive('italic')} title="Italic"><FormatItalic fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleUnderline().run()} active={editor.isActive('underline')} title="Underline"><FormatUnderlined fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strike"><StrikethroughS fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <FormControl size="small" sx={{ minWidth:120 }}>
+              <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Font'}>
+                <MenuItem value="" disabled>Font Family</MenuItem>
+                {FONT_FAMILIES.map(f => <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>{f.label}</MenuItem>)}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth:80 }}>
+              <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Size'}>
+                <MenuItem value="" disabled>Font Size</MenuItem>
+                {FONT_SIZES.map(s => <MenuItem key={s} value={s}>{s}px</MenuItem>)}
+              </Select>
+            </FormControl>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={(e)=>{}} title="Text Color"><FormatColorText fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={(e)=>{}} title="BG Color"><FormatColorFill fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Align Left"><FormatAlignLeft fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Align Center"><FormatAlignCenter fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><FormatAlignRight fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify"><FormatAlignJustify fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet"><FormatListBulleted fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered"><FormatListNumbered fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><Title fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Quote"><FormatQuote fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code"><Code fontSize="small"/></ToolbarButton>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            <ToolbarButton onClick={() => editor.chain().focus().insertTable({ rows:3, cols:3, withHeaderRow:true }).run()} title="Table"><TableChart fontSize="small"/></ToolbarButton>
+            <ToolbarButton
+              onClick={() => !isUploadingImage && fileInputRef.current?.click()}
+              disabled={isUploadingImage}
+              title={isUploadingImage ? 'Uploading image...' : 'Upload Image'}
+            >
+              <PhotoCamera fontSize="small"/>
+            </ToolbarButton>
+          </Box>
+          <ImageResizer editor={editor} />
+        </>
       )}
 
       <Box sx={{ p:2, bgcolor: isDark ? 'grey.900' : 'background.paper', borderRadius:2 }}>
@@ -470,6 +519,11 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           display: block;
           margin: 0.75rem 0;
           border-radius: 8px;
+          cursor: pointer;
+        }
+        .tiptap-editor img.ProseMirror-selectednode, .tiptap-editor .tiptap-image.ProseMirror-selectednode {
+          outline: 3px solid ${isDark ? '#60a5fa' : '#2563eb'};
+          box-shadow: 0 0 0 6px ${isDark ? 'rgba(96, 165, 250, 0.16)' : 'rgba(37, 99, 235, 0.12)'};
         }
         .tiptap-editor pre { background: ${isDark? '#232323' : '#f5f5f5'}; color: ${isDark? '#e0e0e0' : '#222'}; padding:1em; border-radius:4px }
         .tiptap-editor code { background: ${isDark? '#232323' : '#f5f5f5'}; padding:0.2em 0.4em; border-radius:3px }
