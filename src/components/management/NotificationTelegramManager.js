@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import notificationsApi from '../../api/notifications';
 import telegramApi from '../../api/telegram';
 import usersApi from '../../api/users';
@@ -207,6 +208,7 @@ const VARIABLE_TYPES = {
 const NotificationTelegramManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, invalidateCache } = useUsers();
   
   // ==================== STATES ====================
   const [activeTab, setActiveTab] = useState(0);
@@ -309,16 +311,40 @@ const NotificationTelegramManager = () => {
 
   // ==================== API CALLS ====================
   
-  const fetchAllData = useCallback(async () => {
+  const fetchAllData = useCallback(async (forceRefresh = false) => {
     setLoading(true);
     try {
       const [templatesRes, schedulesRes, notificationsRes, usersRes, telegramRes, statsRes] = await Promise.all([
-        notificationsApi.getTemplates().catch(() => ({ data: { data: [] } })),
-        notificationsApi.getSchedules().catch(() => ({ data: { data: [] } })),
-        notificationsApi.getNotificationHistory().catch(() => ({ data: { data: [] } })),
-        usersApi.getAllUsers({ limit: 100 }).catch(() => ({ data: { data: [] } })),
-        telegramApi.getBotStatus().catch(() => ({ data: { data: null } })),
-        notificationsApi.getStats().catch(() => ({ data: { data: { summary: {} } } })),
+        getCachedData(
+          'notifications-templates-management',
+          () => notificationsApi.getTemplates().catch(() => ({ data: { data: [] } })),
+          { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+        ),
+        getCachedData(
+          'notifications-schedules-management',
+          () => notificationsApi.getSchedules().catch(() => ({ data: { data: [] } })),
+          { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+        ),
+        getCachedData(
+          'notifications-history-management',
+          () => notificationsApi.getNotificationHistory().catch(() => ({ data: { data: [] } })),
+          { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+        ),
+        getCachedData(
+          'notifications-users-management',
+          () => usersApi.getAllUsers({ limit: 100 }).catch(() => ({ data: { data: [] } })),
+          { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+        ),
+        getCachedData(
+          'notifications-telegram-status',
+          () => telegramApi.getBotStatus().catch(() => ({ data: { data: null } })),
+          { forceRefresh, ttl: 60 * 1000, preserveShape: true }
+        ),
+        getCachedData(
+          'notifications-stats-management',
+          () => notificationsApi.getStats().catch(() => ({ data: { data: { summary: {} } } })),
+          { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
+        ),
       ]);
 
       setTemplates(templatesRes.data?.data || []);
@@ -332,11 +358,20 @@ const NotificationTelegramManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) fetchAllData();
   }, [isAdmin, fetchAllData]);
+
+  const invalidateNotificationCaches = useCallback(() => {
+    invalidateCache('notifications-templates-management');
+    invalidateCache('notifications-schedules-management');
+    invalidateCache('notifications-history-management');
+    invalidateCache('notifications-users-management');
+    invalidateCache('notifications-telegram-status');
+    invalidateCache('notifications-stats-management');
+  }, [invalidateCache]);
 
   // ==================== TEMPLATE HANDLERS ====================
   
@@ -351,7 +386,8 @@ const NotificationTelegramManager = () => {
       await notificationsApi.createTemplate(templateForm);
       showSuccess('Template created');
       closeTemplateForm();
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to create template'));
     } finally {
@@ -366,7 +402,8 @@ const NotificationTelegramManager = () => {
       await notificationsApi.updateTemplate(selectedItem.id, templateForm);
       showSuccess('Template updated');
       closeTemplateForm();
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to update template'));
     } finally {
@@ -380,7 +417,8 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.deleteTemplate(selectedItem.id);
       showSuccess('Template deleted');
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to delete template'));
     } finally {
@@ -439,7 +477,8 @@ const NotificationTelegramManager = () => {
       await notificationsApi.createSchedule(payload);
       showSuccess('Schedule created');
       closeScheduleForm();
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to create schedule'));
     } finally {
@@ -451,7 +490,8 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.toggleSchedule(id, isActive);
       showSuccess(`Schedule ${isActive ? 'enabled' : 'disabled'}`);
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to toggle schedule'));
     }
@@ -463,7 +503,8 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.deleteSchedule(selectedItem.id);
       showSuccess('Schedule deleted');
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to delete schedule'));
     } finally {
@@ -518,7 +559,8 @@ const NotificationTelegramManager = () => {
       showSuccess(response.data?.message || 'Notification sent successfully');
       resetNotificationForm();
       setSelectedItem(null); // Clear selected template
-      await fetchAllData();
+      invalidateNotificationCaches();
+      await fetchAllData(true);
       setActiveTab(3); // Switch to history tab
     } catch (error) {
       devError('Send notification error:', error.response?.data || error);
@@ -534,7 +576,8 @@ const NotificationTelegramManager = () => {
     try {
       await notificationsApi.deleteNotification(selectedItem.id);
       showSuccess('Notification deleted');
-      fetchAllData();
+      invalidateNotificationCaches();
+      fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to delete notification'));
     } finally {
@@ -588,7 +631,8 @@ const NotificationTelegramManager = () => {
       showSuccess(
         `Repair completed: ${result.repaired_log_rows || 0} logs fixed, ${result.created_payment_notifications || 0} payment notifications created.`
       );
-      await fetchAllData();
+      invalidateNotificationCaches();
+      await fetchAllData(true);
     } catch (error) {
       showError(getFriendlyActionError(error, 'Failed to repair notification delivery'));
     } finally {
@@ -711,7 +755,10 @@ const NotificationTelegramManager = () => {
     });
   };
 
-  const handleRefresh = () => fetchAllData();
+  const handleRefresh = () => {
+    invalidateNotificationCaches();
+    return fetchAllData(true);
+  };
 
   const handleExportHistory = () => {
     const rows = filteredNotifications.map((row) => ({

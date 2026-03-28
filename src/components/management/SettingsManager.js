@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import settingsApi from '../../api/settings';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -70,6 +71,7 @@ import { devError } from '../../utils/devLogger';
 const SettingsManager = () => {
   const { isAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, invalidateCache } = useUsers();
   
   const [settings, setSettings] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -133,9 +135,12 @@ const SettingsManager = () => {
     try {
       setLoading(true);
       setError('');
-      
-      const response = await settingsApi.getAllSettings();
-      setSettings(response.data?.data || []);
+      const settingsData = await getCachedData(
+        'settings-management',
+        () => settingsApi.getAllSettings(),
+        { forceRefresh, ttl: 5 * 60 * 1000 }
+      );
+      setSettings(Array.isArray(settingsData) ? settingsData : []);
       
     } catch (err) {
       devError('Failed to fetch settings:', err);
@@ -144,7 +149,7 @@ const SettingsManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isAdmin()) {
@@ -255,6 +260,7 @@ const SettingsManager = () => {
 
       setFormOpen(false);
       resetForm();
+      invalidateCache('settings-management');
       await fetchSettings(true);
       
     } catch (err) {
@@ -302,6 +308,7 @@ const SettingsManager = () => {
       await settingsApi.deleteSetting(selectedSetting.setting_key);
       
       setSettings(prev => prev.filter(s => s.setting_key !== selectedSetting.setting_key));
+      invalidateCache('settings-management');
       
       showSuccess(`Setting "${selectedSetting.display_name}" deleted successfully`);
       setDeleteConfirmOpen(false);
@@ -323,6 +330,7 @@ const SettingsManager = () => {
       await settingsApi.initializeDefaultSettings();
       showSuccess('Default settings initialized successfully');
       
+      invalidateCache('settings-management');
       await fetchSettings(true);
     } catch (err) {
       devError('Failed to initialize defaults:', err);

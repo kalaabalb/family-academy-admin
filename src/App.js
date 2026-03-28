@@ -67,13 +67,7 @@ const DashboardPage = () => {
 const AppContent = () => {
   const { mode } = useThemeMode();
   const theme = useMemo(() => getTheme(mode), [mode]);
-  const routeLoadingFallback = (
-    <Loading
-      type="page"
-      title="Opening this page"
-      message="We are loading the latest records for this section."
-    />
-  );
+  const routeLoadingFallback = null;
 
   return (
     <ErrorBoundary>

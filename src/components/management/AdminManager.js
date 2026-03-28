@@ -31,6 +31,7 @@ import {
 } from '@mui/icons-material';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
+import { useUsers } from '../../contexts/UserContext';
 import adminsApi from '../../api/admins';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
@@ -51,6 +52,7 @@ const ROLE_OPTIONS = [
 const AdminManager = () => {
   const { user, isSuperAdmin } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
+  const { getCachedData, invalidateCache } = useUsers();
 
   const [admins, setAdmins] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -78,11 +80,14 @@ const AdminManager = () => {
   const getFriendlyActionError = (error, fallback) =>
     error?.userMessage || error?.response?.data?.message || fallback;
 
-  const fetchAdmins = useCallback(async () => {
+  const fetchAdmins = useCallback(async (forceRefresh = false) => {
     try {
       setLoading(true);
-      const response = await adminsApi.getAllAdmins();
-      const adminsData = response?.data?.data || [];
+      const adminsData = await getCachedData(
+        'admins-management',
+        () => adminsApi.getAllAdmins(),
+        { forceRefresh, ttl: 3 * 60 * 1000 }
+      );
       setAdmins(Array.isArray(adminsData) ? adminsData : []);
     } catch (error) {
       devError('Failed to fetch admins:', error);
@@ -90,7 +95,7 @@ const AdminManager = () => {
     } finally {
       setLoading(false);
     }
-  }, [showError]);
+  }, [getCachedData, showError]);
 
   useEffect(() => {
     if (isSuperAdmin()) {
@@ -167,8 +172,9 @@ const AdminManager = () => {
         showSuccess('Admin account updated successfully');
       }
 
+      invalidateCache('admins-management');
       closeForm();
-      fetchAdmins();
+      fetchAdmins(true);
     } catch (error) {
       devError('Failed to save admin:', error);
       const duplicateMessage = /duplicate entry|already exists|username.*taken/i.test(
@@ -206,8 +212,9 @@ const AdminManager = () => {
       setActionLoading(true);
       await adminsApi.deleteAdmin(selectedAdmin.id);
       showSuccess('Admin account deactivated successfully');
+      invalidateCache('admins-management');
       closeDeleteConfirm();
-      fetchAdmins();
+      fetchAdmins(true);
     } catch (error) {
       devError('Failed to delete admin:', error);
       showError(getFriendlyActionError(error, 'Failed to deactivate admin account'));
@@ -322,7 +329,7 @@ const AdminManager = () => {
           <Button
             variant="outlined"
             startIcon={<Refresh />}
-            onClick={fetchAdmins}
+            onClick={() => fetchAdmins(true)}
             disabled={loading || actionLoading}
           >
             Refresh
@@ -351,7 +358,7 @@ const AdminManager = () => {
           columns={columns}
           loading={loading}
           rowKey="id"
-          onRefresh={fetchAdmins}
+          onRefresh={() => fetchAdmins(true)}
           onEdit={handleEdit}
           onDelete={(admin) => {
             setSelectedAdmin(admin);

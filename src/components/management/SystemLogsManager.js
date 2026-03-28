@@ -275,18 +275,23 @@ const SystemLogsManager = () => {
       let logsData = [];
       let total = 0;
       
-      if (response?.data) {
-        if (Array.isArray(response.data)) {
-          logsData = response.data;
+      const responseData = response?.data ? response.data : response;
+
+      if (responseData) {
+        if (Array.isArray(responseData)) {
+          logsData = responseData;
           total = logsData.length;
-        } else if (response.data.data) {
-          if (Array.isArray(response.data.data)) {
-            logsData = response.data.data;
+        } else if (responseData.data) {
+          if (Array.isArray(responseData.data)) {
+            logsData = responseData.data;
             total = logsData.length;
-          } else if (response.data.data.logs) {
-            logsData = response.data.data.logs || [];
-            total = response.data.data.pagination?.total || logsData.length;
+          } else if (responseData.data.logs) {
+            logsData = responseData.data.logs || [];
+            total = responseData.data.pagination?.total || logsData.length;
           }
+        } else if (Array.isArray(responseData.logs)) {
+          logsData = responseData.logs;
+          total = responseData.pagination?.total || logsData.length;
         }
       }
       
@@ -298,6 +303,7 @@ const SystemLogsManager = () => {
       devError('Failed to fetch system logs:', err);
       setError(err.response?.data?.message || 'Failed to load system logs');
       setLogs([]);
+      setPagination(prev => ({ ...prev, total: 0 }));
     } finally {
       setLoading(false);
     }
@@ -310,11 +316,14 @@ const SystemLogsManager = () => {
         () => systemLogsApi.getLogStats(),
         { forceRefresh, ttl: 2 * 60 * 1000, preserveShape: true }
       );
+      const responseData = response?.data ? response.data : response;
       
-      if (response.data?.success && response.data?.data) {
-        setStats(response.data.data);
-      } else if (response.data?.data) {
-        setStats(response.data.data);
+      if (responseData?.success && responseData?.data) {
+        setStats(responseData.data);
+      } else if (responseData?.data) {
+        setStats(responseData.data);
+      } else if (responseData?.counts || responseData?.summary) {
+        setStats(responseData);
       } else {
         // Calculate stats from logs if API fails
         const total = logs.length;
