@@ -46,15 +46,7 @@ import {
   FormatQuote,
   Code,
   HorizontalRule,
-  InsertEmoticon,
-  Link as LinkIcon,
-  LinkOff,
   TableChart,
-  Title,
-  LooksOne,
-  LooksTwo,
-  Looks3,
-  Looks4,
   Undo,
   Redo,
   FormatColorText,
@@ -662,6 +654,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const currentTextColor = editor.getAttributes('textStyle').color || '';
   const currentBackgroundColor =
     editor.getAttributes('textStyle').backgroundColor || '';
+  const currentFontLabel =
+    FONT_FAMILIES.find((font) => font.value === currentFontFamily)?.label || 'Default font';
 
   if (!editor) return null;
 
@@ -730,11 +724,11 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             <ToolbarButton onClick={() => editor.chain().focus().sinkListItem('listItem').run()} disabled={!editor.can().sinkListItem('listItem')} title="Indent"><FormatIndentIncrease fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().liftListItem('listItem').run()} disabled={!editor.can().liftListItem('listItem')} title="Outdent"><FormatIndentDecrease fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><LooksOne fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:2 }).run()} active={editor.isActive('heading',{level:2})} title="H2"><LooksTwo fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:3 }).run()} active={editor.isActive('heading',{level:3})} title="H3"><Looks3 fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:4 }).run()} active={editor.isActive('heading',{level:4})} title="H4"><Looks4 fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={() => editor.chain().focus().setParagraph().run()} active={editor.isActive('paragraph')} title="Paragraph"><Title fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><Typography variant="caption" sx={{ fontWeight: 700 }}>H1</Typography></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:2 }).run()} active={editor.isActive('heading',{level:2})} title="H2"><Typography variant="caption" sx={{ fontWeight: 700 }}>H2</Typography></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:3 }).run()} active={editor.isActive('heading',{level:3})} title="H3"><Typography variant="caption" sx={{ fontWeight: 700 }}>H3</Typography></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:4 }).run()} active={editor.isActive('heading',{level:4})} title="H4"><Typography variant="caption" sx={{ fontWeight: 700 }}>H4</Typography></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setParagraph().run()} active={editor.isActive('paragraph')} title="Paragraph"><Typography variant="caption" sx={{ fontWeight: 700 }}>P</Typography></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Quote"><FormatQuote fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code"><Code fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Divider"><HorizontalRule fontSize="small"/></ToolbarButton>
@@ -758,6 +752,47 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             >
               <PhotoCamera fontSize="small"/>
             </ToolbarButton>
+          </Box>
+          <Box
+            sx={{
+              px: 1.25,
+              py: 0.75,
+              borderBottom: 1,
+              borderColor: 'divider',
+              bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(25,118,210,0.03)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 0.75,
+              alignItems: 'center',
+            }}
+          >
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+              Active style
+            </Typography>
+            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+              <Typography variant="caption">{currentFontLabel}</Typography>
+            </Box>
+            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
+              <Typography variant="caption">{currentFontSize ? `${currentFontSize}px` : 'Default size'}</Typography>
+            </Box>
+            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', display: 'flex', alignItems: 'center', gap: 0.6 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: currentTextColor || '#111111', border: '1px solid', borderColor: 'divider' }} />
+              <Typography variant="caption">Text</Typography>
+            </Box>
+            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', display: 'flex', alignItems: 'center', gap: 0.6 }}>
+              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: currentBackgroundColor || 'transparent', border: '1px solid', borderColor: 'divider' }} />
+              <Typography variant="caption">Background</Typography>
+            </Box>
+            {(editor.isActive('orderedList') || editor.isActive('bulletList')) && (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Use Indent for nested items like 1.1, 1.2. Use Outdent to move them back.
+              </Typography>
+            )}
+            {editor.isActive('table') && (
+              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                Table editing is active. Use the toolbar buttons to add or remove rows and columns around the selected cell.
+              </Typography>
+            )}
           </Box>
           <ImageResizer editor={editor} />
         </>
