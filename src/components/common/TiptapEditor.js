@@ -298,8 +298,11 @@ const ImageResizer = ({ editor }) => {
 
   const keepToolbarOpen = useCallback((event) => {
     isInteractingRef.current = true;
-    event.preventDefault();
     event.stopPropagation();
+  }, []);
+
+  const keepToolbarSurfaceOpen = useCallback(() => {
+    isInteractingRef.current = true;
   }, []);
 
   const releaseToolbar = useCallback(() => {
@@ -349,7 +352,7 @@ const ImageResizer = ({ editor }) => {
   if (!showControls) return null;
   return (
     <Paper
-      onMouseDown={keepToolbarOpen}
+      onMouseDown={keepToolbarSurfaceOpen}
       onMouseUp={releaseToolbar}
       onMouseLeave={releaseToolbar}
       sx={{
@@ -388,6 +391,7 @@ const ImageResizer = ({ editor }) => {
         size="small"
         value={imageSize}
         onMouseDown={keepToolbarOpen}
+        onFocus={keepToolbarSurfaceOpen}
         onChange={(event) => {
           const rawValue = event.target.value.replace(/[^0-9]/g, '');
           const nextSize = rawValue === '' ? '' : Math.min(200, Math.max(10, Number(rawValue)));
