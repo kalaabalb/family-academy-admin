@@ -2,6 +2,7 @@
 import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { Extension } from '@tiptap/core';
 import Underline from '@tiptap/extension-underline';
 import TextAlign from '@tiptap/extension-text-align';
 import { Color } from '@tiptap/extension-color';
@@ -25,6 +26,7 @@ import {
   Popover,
   TextField,
   Button,
+  Stack,
   alpha,
   useTheme,
   Slider,
@@ -49,19 +51,21 @@ import {
   LinkOff,
   TableChart,
   Title,
+  LooksOne,
+  LooksTwo,
+  Looks3,
+  Looks4,
   Undo,
   Redo,
   FormatColorText,
   FormatColorFill,
-  BorderLeft,
-  BorderRight,
-  BorderTop,
-  BorderBottom,
-  BorderVertical,
-  BorderHorizontal,
+  FormatIndentIncrease,
+  FormatIndentDecrease,
+  Add,
+  ViewColumn,
+  ViewAgenda,
   Delete,
   PhotoCamera,
-  Close,
 } from '@mui/icons-material';
 import uploadsApi from '../../api/uploads';
 import { devError } from '../../utils/devLogger';
@@ -79,6 +83,86 @@ const FONT_FAMILIES = [
 ];
 const FONT_SIZES = [8,10,12,14,16,18,20,24,28,32,36,48,64,72];
 const COLORS = ['#000000','#434343','#666666','#999999','#b7b7b7','#cccccc','#d9d9d9','#efefef','#f3f3f3','#ffffff','#ff0000','#00ff00','#0000ff'];
+
+const FontSize = Extension.create({
+  name: 'fontSize',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['textStyle'],
+        attributes: {
+          fontSize: {
+            default: null,
+            parseHTML: (element) => element.style.fontSize?.replace('px', '') || null,
+            renderHTML: (attributes) => {
+              if (!attributes.fontSize) {
+                return {};
+              }
+
+              return {
+                style: `font-size: ${attributes.fontSize}px`,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      setFontSize:
+        (fontSize) =>
+        ({ chain }) =>
+          chain().setMark('textStyle', { fontSize: String(fontSize) }).run(),
+      unsetFontSize:
+        () =>
+        ({ chain }) =>
+          chain().setMark('textStyle', { fontSize: null }).removeEmptyTextStyle().run(),
+    };
+  },
+});
+
+const TextBackgroundColor = Extension.create({
+  name: 'textBackgroundColor',
+
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['textStyle'],
+        attributes: {
+          backgroundColor: {
+            default: null,
+            parseHTML: (element) => element.style.backgroundColor || null,
+            renderHTML: (attributes) => {
+              if (!attributes.backgroundColor) {
+                return {};
+              }
+
+              return {
+                style: `background-color: ${attributes.backgroundColor}`,
+              };
+            },
+          },
+        },
+      },
+    ];
+  },
+
+  addCommands() {
+    return {
+      setTextBackgroundColor:
+        (backgroundColor) =>
+        ({ chain }) =>
+          chain().setMark('textStyle', { backgroundColor }).run(),
+      unsetTextBackgroundColor:
+        () =>
+        ({ chain }) =>
+          chain().setMark('textStyle', { backgroundColor: null }).removeEmptyTextStyle().run(),
+    };
+  },
+});
 
 const ResizableImage = Image.extend({
   addAttributes() {
@@ -308,7 +392,25 @@ const ImageResizer = ({ editor }) => {
         max={200}
         sx={{ width:100 }}
       />
-      <Typography variant="caption">{imageSize}%</Typography>
+      <TextField
+        size="small"
+        value={imageSize}
+        onMouseDown={keepToolbarOpen}
+        onChange={(event) => {
+          const rawValue = event.target.value.replace(/[^0-9]/g, '');
+          const nextSize = rawValue === '' ? '' : Math.min(200, Math.max(10, Number(rawValue)));
+          setImageSize(nextSize === '' ? 10 : nextSize);
+          if (rawValue !== '') {
+            applyImageAttributes({ width: `${nextSize}%` });
+          }
+        }}
+        inputProps={{
+          min: 10,
+          max: 200,
+          style: { width: 54, textAlign: 'center' },
+        }}
+      />
+      <Typography variant="caption">%</Typography>
       <Button
         size="small"
         variant={imageAlign === 'left' ? 'contained' : 'outlined'}
@@ -391,13 +493,39 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const changeDebounceRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const [isUploadingImage, setIsUploadingImage] = useState(false);
+  const [textColorAnchorEl, setTextColorAnchorEl] = useState(null);
+  const [backgroundColorAnchorEl, setBackgroundColorAnchorEl] = useState(null);
+  const [tableAnchorEl, setTableAnchorEl] = useState(null);
+  const [tableRows, setTableRows] = useState(3);
+  const [tableColumns, setTableColumns] = useState(3);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
 
   const editor = useEditor({
-    extensions: [ StarterKit.configure({ heading:{ levels:[1,2,3] }, bulletList:{ keepMarks:true, keepAttributes:true }, orderedList:{ keepMarks:true, keepAttributes:true }, underline:false, link:false }), Underline, TextStyle, Color, FontFamily, TextAlign.configure({ types:['heading','paragraph'] }), Link.configure({ openOnClick:false, HTMLAttributes:{ class:'tiptap-link' } }), ResizableImage.configure({ inline:true, allowBase64:true, HTMLAttributes:{ class:'tiptap-image' } }), Table.configure({ resizable:true }), TableRow, TableHeader, TableCell ],
+    extensions: [
+      StarterKit.configure({
+        heading:{ levels:[1,2,3,4] },
+        bulletList:{ keepMarks:true, keepAttributes:true },
+        orderedList:{ keepMarks:true, keepAttributes:true },
+        underline:false,
+        link:false,
+      }),
+      Underline,
+      TextStyle,
+      Color,
+      FontFamily,
+      FontSize,
+      TextBackgroundColor,
+      TextAlign.configure({ types:['heading','paragraph'] }),
+      Link.configure({ openOnClick:false, HTMLAttributes:{ class:'tiptap-link' } }),
+      ResizableImage.configure({ inline:true, allowBase64:true, HTMLAttributes:{ class:'tiptap-image' } }),
+      Table.configure({ resizable:true }),
+      TableRow,
+      TableHeader,
+      TableCell,
+    ],
     content: value,
     editable: !readOnly,
     editorProps: {
@@ -488,6 +616,53 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     event.target.value = '';
   };
 
+  const applyFontFamily = (fontFamily) => {
+    if (!fontFamily) {
+      editor.chain().focus().unsetFontFamily().run();
+      return;
+    }
+
+    editor.chain().focus().setFontFamily(fontFamily).run();
+  };
+
+  const applyFontSize = (fontSize) => {
+    if (!fontSize) {
+      editor.chain().focus().unsetFontSize().run();
+      return;
+    }
+
+    editor.chain().focus().setFontSize(fontSize).run();
+  };
+
+  const applyTextColor = (color) => {
+    editor.chain().focus().setColor(color).run();
+    setTextColorAnchorEl(null);
+  };
+
+  const applyBackgroundColor = (color) => {
+    editor.chain().focus().setTextBackgroundColor(color).run();
+    setBackgroundColorAnchorEl(null);
+  };
+
+  const insertTableWithShape = () => {
+    editor
+      .chain()
+      .focus()
+      .insertTable({
+        rows: Math.max(1, Number(tableRows) || 1),
+        cols: Math.max(1, Number(tableColumns) || 1),
+        withHeaderRow: true,
+      })
+      .run();
+    setTableAnchorEl(null);
+  };
+
+  const currentFontFamily = editor.getAttributes('textStyle').fontFamily || '';
+  const currentFontSize = editor.getAttributes('textStyle').fontSize || '';
+  const currentTextColor = editor.getAttributes('textStyle').color || '';
+  const currentBackgroundColor =
+    editor.getAttributes('textStyle').backgroundColor || '';
+
   if (!editor) return null;
 
   return (
@@ -512,20 +687,38 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             <ToolbarButton onClick={() => editor.chain().focus().toggleStrike().run()} active={editor.isActive('strike')} title="Strike"><StrikethroughS fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
             <FormControl size="small" sx={{ minWidth:120 }}>
-              <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Font'}>
-                <MenuItem value="" disabled>Font Family</MenuItem>
+              <Select
+                value={currentFontFamily}
+                onChange={(event) => applyFontFamily(event.target.value)}
+                displayEmpty
+                size="small"
+                renderValue={(selected) => {
+                  if (!selected) {
+                    return 'Font';
+                  }
+
+                  return FONT_FAMILIES.find((font) => font.value === selected)?.label || 'Font';
+                }}
+              >
+                <MenuItem value="">Default Font</MenuItem>
                 {FONT_FAMILIES.map(f => <MenuItem key={f.value} value={f.value} sx={{ fontFamily: f.value }}>{f.label}</MenuItem>)}
               </Select>
             </FormControl>
             <FormControl size="small" sx={{ minWidth:80 }}>
-              <Select value={''} onChange={()=>{}} displayEmpty size="small" renderValue={()=>'Size'}>
-                <MenuItem value="" disabled>Font Size</MenuItem>
-                {FONT_SIZES.map(s => <MenuItem key={s} value={s}>{s}px</MenuItem>)}
+              <Select
+                value={currentFontSize}
+                onChange={(event) => applyFontSize(event.target.value)}
+                displayEmpty
+                size="small"
+                renderValue={(selected) => selected ? `${selected}px` : 'Size'}
+              >
+                <MenuItem value="">Default Size</MenuItem>
+                {FONT_SIZES.map(s => <MenuItem key={s} value={String(s)}>{s}px</MenuItem>)}
               </Select>
             </FormControl>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            <ToolbarButton onClick={(e)=>{}} title="Text Color"><FormatColorText fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={(e)=>{}} title="BG Color"><FormatColorFill fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={(event)=>setTextColorAnchorEl(event.currentTarget)} title="Text Color"><FormatColorText fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={(event)=>setBackgroundColorAnchorEl(event.currentTarget)} title="BG Color"><FormatColorFill fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('left').run()} active={editor.isActive({ textAlign: 'left' })} title="Align Left"><FormatAlignLeft fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('center').run()} active={editor.isActive({ textAlign: 'center' })} title="Align Center"><FormatAlignCenter fontSize="small"/></ToolbarButton>
@@ -534,12 +727,30 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
             <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet"><FormatListBulleted fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered"><FormatListNumbered fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().sinkListItem('listItem').run()} disabled={!editor.can().sinkListItem('listItem')} title="Indent"><FormatIndentIncrease fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().liftListItem('listItem').run()} disabled={!editor.can().liftListItem('listItem')} title="Outdent"><FormatIndentDecrease fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><Title fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:1 }).run()} active={editor.isActive('heading',{level:1})} title="H1"><LooksOne fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:2 }).run()} active={editor.isActive('heading',{level:2})} title="H2"><LooksTwo fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:3 }).run()} active={editor.isActive('heading',{level:3})} title="H3"><Looks3 fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().toggleHeading({ level:4 }).run()} active={editor.isActive('heading',{level:4})} title="H4"><Looks4 fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setParagraph().run()} active={editor.isActive('paragraph')} title="Paragraph"><Title fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive('blockquote')} title="Quote"><FormatQuote fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().toggleCodeBlock().run()} active={editor.isActive('codeBlock')} title="Code"><Code fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={() => editor.chain().focus().setHorizontalRule().run()} title="Divider"><HorizontalRule fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            <ToolbarButton onClick={() => editor.chain().focus().insertTable({ rows:3, cols:3, withHeaderRow:true }).run()} title="Table"><TableChart fontSize="small"/></ToolbarButton>
+            <ToolbarButton onClick={(event) => setTableAnchorEl(event.currentTarget)} title="Insert Table"><TableChart fontSize="small"/></ToolbarButton>
+            {editor.isActive('table') && (
+              <>
+                <ToolbarButton onClick={() => editor.chain().focus().addRowBefore().run()} title="Add Row Above"><Add fontSize="small"/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row Below"><ViewAgenda fontSize="small"/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().addColumnBefore().run()} title="Add Column Left"><Add fontSize="small" sx={{ transform: 'rotate(90deg)' }}/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column Right"><ViewColumn fontSize="small"/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row"><Delete fontSize="small"/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column"><Delete fontSize="small" sx={{ transform: 'rotate(90deg)' }}/></ToolbarButton>
+                <ToolbarButton onClick={() => editor.chain().focus().deleteTable().run()} title="Delete Table"><Delete fontSize="small" color="error"/></ToolbarButton>
+              </>
+            )}
             <ToolbarButton
               onClick={() => !isUploadingImage && fileInputRef.current?.click()}
               disabled={isUploadingImage}
@@ -551,6 +762,78 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           <ImageResizer editor={editor} />
         </>
       )}
+
+      <Popover
+        open={Boolean(textColorAnchorEl)}
+        anchorEl={textColorAnchorEl}
+        onClose={() => setTextColorAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Stack spacing={1} sx={{ p: 1.5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>
+            Text color
+          </Typography>
+          <ColorPicker colors={COLORS} onSelect={applyTextColor} />
+          <TextField
+            size="small"
+            label="Hex color"
+            value={currentTextColor}
+            onChange={(event) => editor.chain().focus().setColor(event.target.value).run()}
+          />
+        </Stack>
+      </Popover>
+
+      <Popover
+        open={Boolean(backgroundColorAnchorEl)}
+        anchorEl={backgroundColorAnchorEl}
+        onClose={() => setBackgroundColorAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Stack spacing={1} sx={{ p: 1.5 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700 }}>
+            Background color
+          </Typography>
+          <ColorPicker colors={COLORS} onSelect={applyBackgroundColor} />
+          <TextField
+            size="small"
+            label="Hex color"
+            value={currentBackgroundColor}
+            onChange={(event) => editor.chain().focus().setTextBackgroundColor(event.target.value).run()}
+          />
+        </Stack>
+      </Popover>
+
+      <Popover
+        open={Boolean(tableAnchorEl)}
+        anchorEl={tableAnchorEl}
+        onClose={() => setTableAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Stack spacing={1.5} sx={{ p: 2, minWidth: 220 }}>
+          <Typography variant="subtitle2" sx={{ fontWeight: 700 }}>
+            Create table
+          </Typography>
+          <TextField
+            size="small"
+            type="number"
+            label="Rows"
+            value={tableRows}
+            onChange={(event) => setTableRows(event.target.value)}
+            inputProps={{ min: 1, max: 20 }}
+          />
+          <TextField
+            size="small"
+            type="number"
+            label="Columns"
+            value={tableColumns}
+            onChange={(event) => setTableColumns(event.target.value)}
+            inputProps={{ min: 1, max: 20 }}
+          />
+          <Button variant="contained" onClick={insertTableWithShape}>
+            OK
+          </Button>
+        </Stack>
+      </Popover>
 
       <Box sx={{ p:2, bgcolor: isDark ? 'grey.900' : 'background.paper', borderRadius:2 }}>
         {isUploadingImage && (
