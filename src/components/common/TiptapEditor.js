@@ -656,11 +656,23 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     editor.getAttributes('textStyle').backgroundColor || '';
   const currentFontLabel =
     FONT_FAMILIES.find((font) => font.value === currentFontFamily)?.label || 'Default font';
+  const editorViewportHeight = Math.max(height, 420);
+  const editorBodyMinHeight = Math.max(editorViewportHeight - 170, 260);
 
   if (!editor) return null;
 
   return (
-    <Paper variant="outlined" sx={{ borderRadius:2, overflow:'hidden', bgcolor: isDark ? 'grey.900' : 'background.paper', position:'relative', boxShadow: isDark ? 3 : 1, borderColor: isDark ? 'grey.800' : 'divider' }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        borderRadius: 2,
+        overflow: 'hidden',
+        bgcolor: isDark ? 'grey.900' : 'background.paper',
+        position: 'relative',
+        boxShadow: isDark ? 3 : 1,
+        borderColor: isDark ? 'grey.800' : 'divider',
+      }}
+    >
       <input
         type="file"
         ref={fileInputRef}
@@ -671,7 +683,22 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
 
       {!readOnly && (
         <>
-          <Box sx={{ p:1, borderBottom:1, borderColor:'divider', bgcolor: isDark ? 'grey.900' : 'grey.50', display:'flex', flexWrap:'wrap', gap:0.5, alignItems:'center' }}>
+          <Box
+            sx={{
+              position: 'sticky',
+              top: 0,
+              zIndex: 4,
+              p: 1,
+              borderBottom: 1,
+              borderColor: 'divider',
+              bgcolor: isDark ? 'rgba(23, 23, 23, 0.96)' : 'rgba(250, 250, 250, 0.96)',
+              backdropFilter: 'blur(8px)',
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 0.5,
+              alignItems: 'center',
+            }}
+          >
             <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo"><Undo fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo"><Redo fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
@@ -755,11 +782,15 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           </Box>
           <Box
             sx={{
+              position: 'sticky',
+              top: 58,
+              zIndex: 3,
               px: 1.25,
               py: 0.75,
               borderBottom: 1,
               borderColor: 'divider',
-              bgcolor: isDark ? 'rgba(255,255,255,0.02)' : 'rgba(25,118,210,0.03)',
+              bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(25,118,210,0.05)',
+              backdropFilter: 'blur(8px)',
               display: 'flex',
               flexWrap: 'wrap',
               gap: 0.75,
@@ -870,7 +901,14 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         </Stack>
       </Popover>
 
-      <Box sx={{ p:2, bgcolor: isDark ? 'grey.900' : 'background.paper', borderRadius:2 }}>
+      <Box
+        sx={{
+          p: 2,
+          bgcolor: isDark ? 'grey.900' : 'background.paper',
+          borderRadius: 2,
+          minHeight: editorViewportHeight,
+        }}
+      >
         {isUploadingImage && (
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
             Uploading image...
@@ -880,7 +918,16 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       </Box>
 
       <style>{`
-        .tiptap-editor { min-height: ${height-120}px; outline:none; line-height:1.6; font-size:16px; background: ${isDark? '#181a1b' : '#fff'}; color: ${isDark? '#e0e0e0' : '#222'}; border-radius:8px; }
+        .tiptap-editor {
+          min-height: ${editorBodyMinHeight}px;
+          outline:none;
+          line-height:1.7;
+          font-size:16px;
+          background: ${isDark? '#181a1b' : '#fff'};
+          color: ${isDark? '#e0e0e0' : '#222'};
+          border-radius:8px;
+          padding-bottom: 2rem;
+        }
         .tiptap-editor p { margin:0 0 1em 0 }
         .tiptap-editor img, .tiptap-editor .tiptap-image {
           max-width: 100%;

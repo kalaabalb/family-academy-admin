@@ -871,7 +871,7 @@ const NoteManager = () => {
                     value={formData.content}
                     onChange={handleContentChange}
                     placeholder="Start writing your note content here..."
-                    height={400}
+                    height={560}
                     readOnly={actionLoading}
                   />
                 </Paper>
