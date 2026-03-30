@@ -1,6 +1,7 @@
 import React from 'react';
-import { Grid, FormControlLabel, Switch, TextField } from '@mui/material';
+import { Grid, FormControlLabel, Switch } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
+import { renderTimeViewClock } from '@mui/x-date-pickers/timeViewRenderers';
 
 const SchedulePicker = ({
   enabled,
@@ -35,7 +36,16 @@ const SchedulePicker = ({
             value={value}
             onChange={onChange}
             minDateTime={now}
+            disablePast
             disabled={disabled}
+            ampm={false}
+            views={['day', 'hours', 'minutes']}
+            openTo="day"
+            timeSteps={{ minutes: 1 }}
+            viewRenderers={{
+              hours: renderTimeViewClock,
+              minutes: renderTimeViewClock,
+            }}
             slotProps={{
               textField: {
                 fullWidth,
