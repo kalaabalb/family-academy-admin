@@ -189,7 +189,8 @@ const VideoManager = () => {
         getCachedData(chaptersCacheKey, () => chaptersApi.getAllChapters(), { forceRefresh, ttl: 10 * 60 * 1000 }),
       ]);
       
-      // Filter courses for teachers based on assigned_courses
+      // Only show categories that are usable for video assignment:
+      // active categories with at least one course the current user can work with.
       let filteredCoursesData = coursesData;
       let filteredCategoriesData = categoriesData;
       
@@ -199,13 +200,16 @@ const VideoManager = () => {
           assignedCourseIds.includes(course.id)
         );
         
-        const accessibleCategoryIds = new Set(
-          filteredCoursesData.map(c => c.category_id)
-        );
-        filteredCategoriesData = categoriesData.filter(cat => 
-          accessibleCategoryIds.has(cat.id)
-        );
       }
+
+      const accessibleCategoryIds = new Set(
+        filteredCoursesData.map((course) => course.category_id)
+      );
+
+      filteredCategoriesData = categoriesData.filter((category) =>
+        category.status !== 'coming_soon' &&
+        accessibleCategoryIds.has(category.id)
+      );
       
       const formattedVideos = videosData.map(video => ({
         ...video,
