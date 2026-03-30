@@ -807,7 +807,7 @@ const ChapterManager = () => {
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12} md={6}>
+                <Grid item xs={12}>
                   <SchedulePicker
                     enabled={scheduleEnabled}
                     onEnabledChange={(enabled) => {
@@ -819,7 +819,7 @@ const ChapterManager = () => {
                     value={formData.release_date}
                     onChange={(value) => setFormData(prev => ({ ...prev, release_date: value }))}
                     label="Release Date"
-                    helperText="Keep disabled to make the chapter available immediately."
+                    helperText="Pick when this chapter should become visible"
                     disabled={actionLoading}
                   />
                 </Grid>
