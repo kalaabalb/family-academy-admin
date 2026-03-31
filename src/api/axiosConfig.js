@@ -68,6 +68,38 @@ const axiosInstance = axios.create({
   withCredentials: true, // Important for cookies!
 });
 
+const AUTH_WHITELIST = [
+  '/auth/admin-login',
+  '/auth/login',
+  '/auth/logout',
+  '/auth/refresh-token',
+];
+
+const shouldSkipAutoLogout = (url) => {
+  if (!url) return false;
+
+  const normalizedUrl = url.replace(API_BASE_URL, '');
+  return AUTH_WHITELIST.some((path) => normalizedUrl.includes(path));
+};
+
+const clearStoredAuthData = () => {
+  Cookies.remove('token', { path: '/' });
+  Cookies.remove('user', { path: '/' });
+  Cookies.remove('refreshToken', { path: '/' });
+  localStorage.removeItem(STORAGE_KEYS.token);
+  localStorage.removeItem(STORAGE_KEYS.user);
+  localStorage.removeItem(STORAGE_KEYS.refreshToken);
+  sessionStorage.removeItem(STORAGE_KEYS.token);
+  sessionStorage.removeItem(STORAGE_KEYS.user);
+  sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
+};
+
+const redirectToLogin = () => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('fa-admin-force-logout'));
+  }
+};
+
 // Token refresh state
 let isRefreshing = false;
 let failedQueue = [];
@@ -127,18 +159,14 @@ axiosInstance.interceptors.response.use(
 
     // Handle 401 Unauthorized
     if (error.response?.status === 401 && !originalRequest._retry) {
+      if (shouldSkipAutoLogout(originalRequest.url)) {
+        return Promise.reject(error);
+      }
+
       if (originalRequest.url.includes('/auth/refresh')) {
         // Refresh token failed - logout
-        Cookies.remove('token', { path: '/' });
-        Cookies.remove('user', { path: '/' });
-        Cookies.remove('refreshToken', { path: '/' });
-        localStorage.removeItem(STORAGE_KEYS.token);
-        localStorage.removeItem(STORAGE_KEYS.user);
-        localStorage.removeItem(STORAGE_KEYS.refreshToken);
-        sessionStorage.removeItem(STORAGE_KEYS.token);
-        sessionStorage.removeItem(STORAGE_KEYS.user);
-        sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
-        window.location.href = '/login';
+        clearStoredAuthData();
+        redirectToLogin();
         return Promise.reject(error);
       }
 
@@ -204,19 +232,8 @@ axiosInstance.interceptors.response.use(
         return axiosInstance(originalRequest);
       } catch (refreshError) {
         processQueue(refreshError, null);
-        
-        // Clear all cookies
-        Cookies.remove('token', { path: '/' });
-        Cookies.remove('user', { path: '/' });
-        Cookies.remove('refreshToken', { path: '/' });
-        localStorage.removeItem(STORAGE_KEYS.token);
-        localStorage.removeItem(STORAGE_KEYS.user);
-        localStorage.removeItem(STORAGE_KEYS.refreshToken);
-        sessionStorage.removeItem(STORAGE_KEYS.token);
-        sessionStorage.removeItem(STORAGE_KEYS.user);
-        sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
-        
-        window.location.href = '/login';
+        clearStoredAuthData();
+        redirectToLogin();
         return Promise.reject(refreshError);
       } finally {
         isRefreshing = false;

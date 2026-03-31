@@ -106,7 +106,7 @@ const Login = () => {
   const [submitting, setSubmitting] = useState(false);
   const [ready, setReady] = useState(false);
 
-  const { login } = useAuth();
+  const { login, isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
@@ -118,6 +118,12 @@ const Login = () => {
     }
     return () => clearTimeout(timer);
   }, [location]);
+
+  useEffect(() => {
+    if (!loading && isAuthenticated) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isAuthenticated, loading, navigate]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();

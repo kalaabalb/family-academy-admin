@@ -139,19 +139,26 @@ export const AuthProvider = ({ children }) => {
     cacheManager.clear();
   }, []);
 
-  const logout = useCallback(() => {
+  const finalizeLogout = useCallback(() => {
     clearAuthData();
     setUser(null);
     setIsAuthenticated(false);
-    
+
     if (sessionTimeoutRef.current) {
       clearTimeout(sessionTimeoutRef.current);
       sessionTimeoutRef.current = null;
     }
-    
-    authApi.logout().catch(() => {});
-    navigate('/login');
-  }, [navigate, clearAuthData]);
+
+    navigate('/login', { replace: true });
+  }, [clearAuthData, navigate]);
+
+  const logout = useCallback(() => {
+    finalizeLogout();
+
+    authApi.logout()
+      .catch(() => {})
+      .finally(() => {});
+  }, [finalizeLogout]);
 
   // Session management
   const resetSessionTimeout = useCallback((rememberMe = true) => {
@@ -177,16 +184,8 @@ export const AuthProvider = ({ children }) => {
         if (cookieData) {
           setUser(cookieData.user);
           setIsAuthenticated(true);
-          const rememberMe = true;
+          const rememberMe = !!localStorage.getItem(STORAGE_KEYS.token);
           resetSessionTimeout(rememberMe);
-          
-          try {
-            await authApi.validateToken();
-          } catch (error) {
-            clearAuthData();
-            setUser(null);
-            setIsAuthenticated(false);
-          }
         }
       } catch (error) {
         logAuthError('Error loading user:', error);
@@ -198,25 +197,48 @@ export const AuthProvider = ({ children }) => {
 
     initializeAuth();
 
+    const validateExistingSession = async () => {
+      const cookieData = loadUserFromCookies();
+      if (!cookieData) {
+        return;
+      }
+
+      try {
+        await authApi.validateToken();
+      } catch (error) {
+        finalizeLogout();
+      }
+    };
+
+    void validateExistingSession();
+
+    const handleForcedLogout = () => {
+      finalizeLogout();
+    };
+
+    window.addEventListener('fa-admin-force-logout', handleForcedLogout);
+
     const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
     const resetActivity = () => {
-      const rememberMe = true;
+      const rememberMe = !!localStorage.getItem(STORAGE_KEYS.token);
       resetSessionTimeout(rememberMe);
     };
     events.forEach(event => document.addEventListener(event, resetActivity));
 
     return () => {
+      window.removeEventListener('fa-admin-force-logout', handleForcedLogout);
       events.forEach(event => document.removeEventListener(event, resetActivity));
       if (sessionTimeoutRef.current) {
         clearTimeout(sessionTimeoutRef.current);
         sessionTimeoutRef.current = null;
       }
     };
-  }, [clearAuthData, loadUserFromCookies, logAuthError, resetSessionTimeout]);
+  }, [clearAuthData, finalizeLogout, loadUserFromCookies, logAuthError, resetSessionTimeout]);
 
   const login = useCallback(async (username, password, rememberMe = true) => {
     try {
       setLoading(true);
+      clearAuthData();
       const response = await authApi.adminLogin(username, password);
       
       let token, userData, refreshToken;
