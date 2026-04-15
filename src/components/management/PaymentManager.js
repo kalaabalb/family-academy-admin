@@ -74,6 +74,7 @@ const PaymentManager = () => {
   
   const [payments, setPayments] = useState([]);
   const [filteredPayments, setFilteredPayments] = useState([]);
+  const [visiblePayments, setVisiblePayments] = useState([]);
   const [categories, setCategories] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -156,6 +157,7 @@ const PaymentManager = () => {
       const paymentsList = paymentsData || [];
       setPayments(paymentsList);
       setFilteredPayments(paymentsList);
+      setVisiblePayments(paymentsList.slice(0, 10));
       setCategories(categoriesData || []);
       setUsers(usersData || []);
       
@@ -324,13 +326,88 @@ const PaymentManager = () => {
     fetchData(true);
   };
 
-  const handleExport = () => {
-    if (filteredPayments.length === 0) {
-      showError('There are no payments to export right now.');
+  const buildSpreadsheetHtml = (rows) => {
+    const headers = Object.keys(rows[0] || {});
+    const escapeHtml = (value) =>
+      String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+
+    const headerHtml = headers
+      .map((header) => `<th>${escapeHtml(header)}</th>`)
+      .join('');
+
+    const rowHtml = rows
+      .map(
+        (row) =>
+          `<tr>${headers
+            .map((header) => `<td>${escapeHtml(row[header])}</td>`)
+            .join('')}</tr>`
+      )
+      .join('');
+
+    return `<!DOCTYPE html>
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:x="urn:schemas-microsoft-com:office:excel"
+      xmlns="http://www.w3.org/TR/REC-html40">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Type" content="application/vnd.ms-excel; charset=UTF-8" />
+    <style>
+      table { border-collapse: collapse; width: 100%; }
+      th, td { border: 1px solid #d0d7de; padding: 8px; text-align: left; vertical-align: top; }
+      th { background: #f3f4f6; font-weight: 700; }
+      td { mso-number-format: "\\@"; }
+    </style>
+  </head>
+  <body>
+    <table>
+      <thead><tr>${headerHtml}</tr></thead>
+      <tbody>${rowHtml}</tbody>
+    </table>
+  </body>
+</html>`;
+  };
+
+  const downloadBlob = async (blob, defaultFileName) => {
+    if (window.showSaveFilePicker) {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: defaultFileName,
+        types: [
+          {
+            description: 'Excel-compatible spreadsheet',
+            accept: {
+              'application/vnd.ms-excel': ['.xls'],
+            },
+          },
+        ],
+      });
+
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
       return;
     }
 
-    const exportData = filteredPayments.map(payment => ({
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = defaultFileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  };
+
+  const handleExport = async () => {
+    if (visiblePayments.length === 0) {
+      showError('There are no visible payments to export right now.');
+      return;
+    }
+
+    const exportData = visiblePayments.map(payment => ({
       ID: payment.id,
       User: payment.user_username,
       Category: payment.category_name,
@@ -344,29 +421,24 @@ const PaymentManager = () => {
       'Admin Notes': payment.admin_notes || '',
       'Rejection Reason': payment.rejection_reason || '',
     }));
-    
-    const headers = Object.keys(exportData[0] || {});
-    const csvRows = [
-      headers.join(','),
-      ...exportData.map(row => 
-        headers.map(header => {
-          const value = row[header] || '';
-          const escaped = String(value).replace(/"/g, '""');
-          return `"${escaped}"`;
-        }).join(',')
-      )
-    ];
-    
-    const csvString = csvRows.join('\n');
-    const blob = new Blob([csvString], { type: 'text/csv' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `payments_export_${new Date().toISOString().split('T')[0]}.csv`;
-    a.click();
-    window.URL.revokeObjectURL(url);
-    
-    showSuccess(`Exported ${exportData.length} payments successfully`);
+
+    const html = buildSpreadsheetHtml(exportData);
+    const blob = new Blob(['\ufeff', html], {
+      type: 'application/vnd.ms-excel;charset=utf-8;',
+    });
+    const today = new Date().toISOString().split('T')[0];
+
+    try {
+      await downloadBlob(blob, `payments_export_${today}.xls`);
+      showSuccess(`Exported ${exportData.length} visible payments successfully`);
+    } catch (err) {
+      if (err?.name === 'AbortError') {
+        return;
+      }
+
+      devError('Failed to export payments:', err);
+      showError('Failed to export payments');
+    }
   };
 
   const formatAmount = (amount) => {
@@ -745,6 +817,7 @@ const PaymentManager = () => {
         title="Payments"
         rowKey="id"
         searchable={false}
+        onVisibleRowsChange={setVisiblePayments}
       />
 
       {/* View Details Dialog */}

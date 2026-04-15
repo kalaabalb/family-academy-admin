@@ -59,6 +59,7 @@ const DataTable = ({
   emptyMessage = 'No records found',
   sx,
   onBulkAction,
+  onVisibleRowsChange,
   ...props
 }) => {
   const theme = useTheme();
@@ -147,9 +148,20 @@ const DataTable = ({
     });
   }, [filteredData, orderBy, order]);
 
-  const paginatedData = pagination
-    ? sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
-    : sortedData;
+  const paginatedData = useMemo(
+    () => (
+      pagination
+        ? sortedData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+        : sortedData
+    ),
+    [pagination, sortedData, page, rowsPerPage]
+  );
+
+  useEffect(() => {
+    if (typeof onVisibleRowsChange === 'function') {
+      onVisibleRowsChange(paginatedData);
+    }
+  }, [onVisibleRowsChange, paginatedData]);
 
   const tableMinWidth = useMemo(() => {
     const baseColumnsWidth = columns.reduce((total, column) => {
