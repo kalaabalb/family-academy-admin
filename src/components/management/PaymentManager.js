@@ -818,6 +818,8 @@ const PaymentManager = () => {
         rowKey="id"
         searchable={false}
         onVisibleRowsChange={setVisiblePayments}
+        defaultOrderBy="created_at"
+        defaultOrder="desc"
       />
 
       {/* View Details Dialog */}

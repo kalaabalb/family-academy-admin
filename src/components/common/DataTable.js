@@ -60,6 +60,8 @@ const DataTable = ({
   sx,
   onBulkAction,
   onVisibleRowsChange,
+  defaultOrder = 'asc',
+  defaultOrderBy,
   ...props
 }) => {
   const theme = useTheme();
@@ -71,8 +73,8 @@ const DataTable = ({
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [search, setSearch] = useState('');
-  const [order, setOrder] = useState('asc');
-  const [orderBy, setOrderBy] = useState(columns[0]?.field || '');
+  const [order, setOrder] = useState(defaultOrder);
+  const [orderBy, setOrderBy] = useState(defaultOrderBy || columns[0]?.field || '');
   const tableContainerRef = useRef(null);
   const dragStateRef = useRef({
     isDragging: false,
