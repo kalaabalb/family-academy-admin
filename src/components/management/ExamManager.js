@@ -155,6 +155,20 @@ const ExamManager = () => {
   const getFriendlyFormError = (error, fallback) =>
     error?.userMessage || error?.response?.data?.message || fallback;
 
+  const toSafeDate = useCallback((value) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+      return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+  }, []);
+
+  const toSafeIsoString = useCallback((value) => {
+    const date = toSafeDate(value);
+    return date ? date.toISOString() : '';
+  }, [toSafeDate]);
+
   // Cache keys
   const coursesCacheKey = 'courses';
 
@@ -411,8 +425,8 @@ const ExamManager = () => {
       return false;
     }
     
-    const startDate = formData.start_date ? new Date(formData.start_date) : null;
-    const endDate = formData.end_date ? new Date(formData.end_date) : null;
+    const startDate = toSafeDate(formData.start_date);
+    const endDate = toSafeDate(formData.end_date);
     const now = new Date();
 
     if (startDate && startDate <= now) {
@@ -636,8 +650,8 @@ const ExamManager = () => {
       category_id: course?.category_id?.toString() || '',
       course_id: exam.course_id?.toString() || '',
       exam_type: exam.exam_type || 'weekly',
-      start_date: exam.start_date ? exam.start_date.slice(0, 16) : '',
-      end_date: exam.end_date ? exam.end_date.slice(0, 16) : '',
+      start_date: exam.start_date || '',
+      end_date: exam.end_date || '',
       duration: exam.duration || 60,
       user_time_limit: exam.user_time_limit || '',
       passing_score: exam.passing_score || 50,
@@ -1243,12 +1257,12 @@ const ExamManager = () => {
             <Grid item xs={12} md={6}>
               <DateTimePicker
                 label="Start Date & Time"
-                value={formData.start_date ? new Date(formData.start_date) : null}
+                value={toSafeDate(formData.start_date)}
                 minDateTime={new Date()}
                 onChange={(date) =>
                   setFormData((prev) => ({
                     ...prev,
-                    start_date: date ? date.toISOString() : '',
+                    start_date: toSafeIsoString(date),
                   }))
                 }
                 disabled={actionLoading}
@@ -1264,14 +1278,14 @@ const ExamManager = () => {
             <Grid item xs={12} md={6}>
               <DateTimePicker
                 label="End Date & Time"
-                value={formData.end_date ? new Date(formData.end_date) : null}
+                value={toSafeDate(formData.end_date)}
                 minDateTime={
-                  formData.start_date ? new Date(formData.start_date) : new Date()
+                  toSafeDate(formData.start_date) || new Date()
                 }
                 onChange={(date) =>
                   setFormData((prev) => ({
                     ...prev,
-                    end_date: date ? date.toISOString() : '',
+                    end_date: toSafeIsoString(date),
                   }))
                 }
                 disabled={actionLoading}
@@ -1294,6 +1308,7 @@ const ExamManager = () => {
                 onChange={handleInputChange}
                 inputProps={{ min: 30, max: 180 }}
                 disabled={actionLoading}
+                helperText="Default exam timer. This is used when no per-user time limit override is set."
               />
             </Grid>
             
@@ -1307,7 +1322,7 @@ const ExamManager = () => {
                 onChange={handleInputChange}
                 inputProps={{ min: 30, max: 180 }}
                 disabled={actionLoading}
-                helperText="Leave empty for exam-wide timing"
+                helperText="Optional override for each student's attempt countdown. Leave empty to use Duration."
               />
             </Grid>
             

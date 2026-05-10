@@ -13,21 +13,25 @@ export const dateUtils = {
   formatDateTime: (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
-    return date.toLocaleDateString('en-US', {
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true,
     });
   },
   
   formatTime: (dateString) => {
     if (!dateString) return '';
     const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '';
     return date.toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      hour12: true,
     });
   },
   

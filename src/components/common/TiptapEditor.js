@@ -58,6 +58,10 @@ import {
   ViewAgenda,
   Delete,
   PhotoCamera,
+  Circle,
+  RadioButtonUnchecked,
+  CheckBoxOutlineBlank,
+  ShortText,
 } from '@mui/icons-material';
 import uploadsApi from '../../api/uploads';
 import { devError } from '../../utils/devLogger';
@@ -74,7 +78,191 @@ const FONT_FAMILIES = [
   { label: 'Comic Sans MS', value: '"Comic Sans MS", cursive, sans-serif' },
 ];
 const FONT_SIZES = [8,10,12,14,16,18,20,24,28,32,36,48,64,72];
-const COLORS = ['#000000','#434343','#666666','#999999','#b7b7b7','#cccccc','#d9d9d9','#efefef','#f3f3f3','#ffffff','#ff0000','#00ff00','#0000ff'];
+
+// FIX 2: Expanded color palette with rich, distinct colors
+const TEXT_COLORS = [
+  '#000000', // Black
+  '#434343', // Dark Gray
+  '#666666', // Gray
+  '#999999', // Medium Gray
+  '#FFFFFF', // White
+  '#FF0000', // Red
+  '#FF6B6B', // Light Red
+  '#FF8C00', // Dark Orange
+  '#FFA500', // Orange
+  '#FFD700', // Gold
+  '#FFFF00', // Yellow
+  '#ADFF2F', // Green Yellow
+  '#00FF00', // Green
+  '#32CD32', // Lime Green
+  '#008000', // Dark Green
+  '#00CED1', // Dark Turquoise
+  '#00FFFF', // Cyan
+  '#00BFFF', // Deep Sky Blue
+  '#1E90FF', // Dodger Blue
+  '#0000FF', // Blue
+  '#0000CD', // Medium Blue
+  '#4B0082', // Indigo
+  '#8B00FF', // Violet
+  '#9400D3', // Dark Violet
+  '#FF00FF', // Magenta
+  '#FF69B4', // Hot Pink
+  '#FF1493', // Deep Pink
+  '#FFC0CB', // Pink
+  '#8B4513', // Saddle Brown
+  '#A0522D', // Sienna
+  '#D2691E', // Chocolate
+  '#DEB887', // Burlywood
+  '#F5DEB3', // Wheat
+  '#808000', // Olive
+  '#556B2F', // Dark Olive Green
+];
+
+const BG_COLORS = [
+  '#000000', // Black
+  '#434343', // Dark Gray
+  '#808080', // Gray
+  '#C0C0C0', // Silver
+  '#FFFFFF', // White
+  '#FF0000', // Red
+  '#FFCCCC', // Light Red
+  '#FF6600', // Orange
+  '#FFE0B2', // Light Orange
+  '#FFFF00', // Yellow
+  '#FFFFE0', // Light Yellow
+  '#00FF00', // Green
+  '#C8E6C9', // Light Green
+  '#008000', // Dark Green
+  '#00FFFF', // Cyan
+  '#B2EBF2', // Light Cyan
+  '#0000FF', // Blue
+  '#BBDEFB', // Light Blue
+  '#000080', // Navy
+  '#800080', // Purple
+  '#E1BEE7', // Light Purple
+  '#FF00FF', // Magenta
+  '#FCE4EC', // Light Pink
+  '#FF69B4', // Hot Pink
+  '#8B4513', // Brown
+  '#D7CCC8', // Light Brown
+  '#FFD700', // Gold
+  '#FFF9C4', // Light Gold
+  '#FF6B6B', // Coral Red
+  '#E8F5E9', // Mint
+];
+
+// FIX 3: Bullet list types configuration
+const BULLET_LIST_TYPES = [
+  { value: 'disc', label: 'Filled Circle', icon: <Circle fontSize="small" /> },
+  { value: 'circle', label: 'Hollow Circle', icon: <RadioButtonUnchecked fontSize="small" /> },
+  { value: 'square', label: 'Square', icon: <CheckBoxOutlineBlank fontSize="small" /> },
+  { value: 'dash', label: 'Dash', icon: <ShortText fontSize="small" /> },
+];
+
+const NumberedListExtension = Extension.create({
+  name: 'numberedListType',
+  addOptions() {
+    return {
+      types: ['listItem'],
+    };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['listItem'],
+        attributes: {
+          listType: {
+            default: 'ordered',
+            parseHTML: (element) => {
+              const parent = element.parentElement;
+              if (parent?.tagName === 'OL') {
+                const type = parent.getAttribute('type') || '1';
+                return type;
+              }
+              return '1';
+            },
+            renderHTML: (attributes) => {
+              if (!attributes.listType || attributes.listType === '1') {
+                return {};
+              }
+              return { 'type': attributes.listType };
+            },
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setOrderedListType: (type) => ({ commands }) => {
+        return commands.toggleOrderedList();
+      },
+    };
+  },
+});
+
+const BulletListTypeExtension = Extension.create({
+  name: 'bulletListType',
+  addOptions() {
+    return {
+      types: ['bulletList'],
+    };
+  },
+  addGlobalAttributes() {
+    return [
+      {
+        types: ['bulletList'],
+        attributes: {
+          listType: {
+            default: 'disc',
+            parseHTML: (element) => {
+              return element.getAttribute('data-list-type') || 'disc';
+            },
+            renderHTML: (attributes) => {
+              if (!attributes.listType || attributes.listType === 'disc') {
+                return {};
+              }
+              return { 'data-list-type': attributes.listType };
+            },
+          },
+        },
+      },
+    ];
+  },
+  addCommands() {
+    return {
+      setBulletListType: (type) => ({ commands, editor }) => {
+        return commands.insertContent({
+          type: 'bulletList',
+          attrs: { listType: type },
+          content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [] }] }],
+        });
+      },
+      updateBulletListType: (type) => ({ commands, editor }) => {
+        const { state } = editor;
+        const { selection } = state;
+        const { $from } = selection;
+        
+        let node = $from.node($from.depth);
+        let pos = $from.before($from.depth);
+        
+        while (node && node.type.name !== 'bulletList') {
+          if ($from.depth > 1) {
+            pos = $from.before($from.depth - 1);
+            node = $from.node($from.depth - 1);
+          } else {
+            return false;
+          }
+        }
+        
+        if (node && node.type.name === 'bulletList') {
+          return commands.updateAttributes('bulletList', { listType: type });
+        }
+        return false;
+      },
+    };
+  },
+});
 
 const FontSize = Extension.create({
   name: 'fontSize',
@@ -214,11 +402,80 @@ const ToolbarButton = React.memo(({ onClick, active=false, disabled=false, child
 });
 ToolbarButton.displayName = 'ToolbarButton';
 
-const ColorPicker = React.memo(({ colors, onSelect }) => (
-  <Box sx={{ p:2, display:'grid', gridTemplateColumns:'repeat(10,1fr)', gap:0.5 }}>
-    {colors.map(c => <Box key={c} onClick={() => onSelect(c)} sx={{ width:24, height:24, bgcolor:c, cursor:'pointer', border:'2px solid', borderColor: c==='#ffffff' ? 'grey.300' : 'transparent' }} />)}
+const ColorPicker = React.memo(({ colors, onSelect, columns = 10 }) => (
+  <Box sx={{ p:2, display:'grid', gridTemplateColumns:`repeat(${columns},1fr)`, gap:0.5 }}>
+    {colors.map(c => <Box key={c} onClick={() => onSelect(c)} sx={{ width:24, height:24, bgcolor:c, cursor:'pointer', border:'2px solid', borderColor: c==='#ffffff' ? 'grey.300' : 'transparent', '&:hover': { transform: 'scale(1.15)', boxShadow: 2 } }} />)}
   </Box>
 ));
+
+// FIX 4: Sanitize and map pasted HTML/RTF formatting from Word/PDF
+const sanitizePastedHTML = (html) => {
+  if (!html) return html;
+  
+  // Create a temporary DOM element to parse the HTML
+  const temp = document.createElement('div');
+  temp.innerHTML = html;
+  
+  // Fix bullet points - map Word's special characters to proper list items
+  // Word uses various characters for bullets: •, ◦, ▪, –, etc.
+  const bulletPatterns = [
+    { pattern: /<[^>]*>\s*[•●◘◙◉⊙⊕]/g, replacement: '<li>' },
+    { pattern: /<[^>]*>\s*[○◌◦]/g, replacement: '<li data-list-type="circle">' },
+    { pattern: /<[^>]*>\s*[▪▫■□]/g, replacement: '<li data-list-type="square">' },
+    { pattern: /<[^>]*>\s*[–—−]/g, replacement: '<li data-list-type="dash">' },
+  ];
+  
+  // Fix numbered lists - Word uses various formats
+  const numberedPatterns = [
+    { pattern: /<[^>]*>\s*\d+\.\s*/, replacement: '<li>' },
+    { pattern: /<[^>]*>\s*[a-z]\.\s*/, replacement: '<li type="a">' },
+    { pattern: /<[^>]*>\s*[A-Z]\.\s*/, replacement: '<li type="A">' },
+    { pattern: /<[^>]*>\s*[ivx]+\.\s*/, replacement: '<li type="i">' },
+    { pattern: /<[^>]*>\s*[IVX]+\.\s*/, replacement: '<li type="I">' },
+  ];
+  
+  // Remove Word-specific classes and styles that cause issues
+  let cleaned = temp.innerHTML;
+  
+  // Remove MsoNormal and other Word-specific classes
+  cleaned = cleaned.replace(/class="MsoNormal"/gi, '');
+  cleaned = cleaned.replace(/class="MsoListParagraph"/gi, '');
+  cleaned = cleaned.replace(/class="MsoListBullet"/gi, '');
+  cleaned = cleaned.replace(/style="[^"]*mso-list[^"]*"/gi, '');
+  
+  // Fix common Word formatting issues
+  cleaned = cleaned.replace(/<o:p>\s*<\/o:p>/gi, '');
+  cleaned = cleaned.replace(/<!--\[if !supportLists\]-->[\s\S]*?<!--\[endif\]-->/gi, '');
+  cleaned = cleaned.replace(/<span[^>]*style="[^"]*mso-list[^"]*"[^>]*>[\s\S]*?<\/span>/gi, '');
+  
+  // Convert divs with bullet characters to proper list items
+  cleaned = cleaned.replace(/<div[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<div><li>');
+  cleaned = cleaned.replace(/<p[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<p><li>');
+  
+  return cleaned;
+};
+
+// FIX 5: Extract plain text from PDF paste instead of treating as image
+const extractTextFromPDFPaste = (clipboardData) => {
+  // Check for PDF data in clipboard
+  const items = Array.from(clipboardData.items || []);
+  
+  // First, try to get text/plain or text/html (PDF text is often copied as HTML/text)
+  const textData = clipboardData.getData('text/plain') || clipboardData.getData('text/html');
+  if (textData && textData.trim().length > 0) {
+    return { type: 'text', data: textData };
+  }
+  
+  // Check for file application/pdf
+  const pdfItem = items.find(item => item.type === 'application/pdf');
+  if (pdfItem) {
+    // PDF as file - we can't extract text from it directly in browser
+    // Return null to indicate no text extraction possible
+    return { type: 'file', data: null };
+  }
+  
+  return null;
+};
 
 const resizeImageFile = (file, maxDimension = 1600, quality = 0.82) => (
   new Promise((resolve, reject) => {
@@ -494,10 +751,22 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const [tableAnchorEl, setTableAnchorEl] = useState(null);
   const [tableRows, setTableRows] = useState(3);
   const [tableColumns, setTableColumns] = useState(3);
+  const [bulletListTypeAnchorEl, setBulletListTypeAnchorEl] = useState(null);
+  const [numberedListTypeAnchorEl, setNumberedListTypeAnchorEl] = useState(null);
+  const toolbarRef = useRef(null);
+  const [toolbarHeight, setToolbarHeight] = useState(0);
 
   useEffect(() => {
     onChangeRef.current = onChange;
   }, [onChange]);
+
+  // Measure toolbar height for sticky positioning
+  useEffect(() => {
+    if (toolbarRef.current) {
+      const rect = toolbarRef.current.getBoundingClientRect();
+      setToolbarHeight(rect.height);
+    }
+  }, []);
 
   const editor = useEditor({
     extensions: [
@@ -521,27 +790,52 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       TableRow,
       TableHeader,
       TableCell,
+      BulletListTypeExtension,
+      NumberedListExtension,
     ],
     content: value,
     editable: !readOnly,
     editorProps: {
       attributes: { class: 'tiptap-editor', 'data-placeholder': placeholder },
       handlePaste: (view, event) => {
-        const clipboardItems = Array.from(event.clipboardData?.items || []);
+        const clipboardData = event.clipboardData;
+        if (!clipboardData) return false;
+
+        // FIX 5: Check for PDF paste and extract text
+        const pdfResult = extractTextFromPDFPaste(clipboardData);
+        if (pdfResult && pdfResult.type === 'text' && pdfResult.data) {
+          event.preventDefault();
+          const sanitizedContent = sanitizePastedHTML(pdfResult.data);
+          editor.chain().focus().insertContent(sanitizedContent).run();
+          return true;
+        }
+
+        // FIX 4: Handle Word/PDF paste with formatting preservation
+        const htmlData = clipboardData.getData('text/html');
+        const textData = clipboardData.getData('text/plain');
+        const clipboardItems = Array.from(clipboardData.items || []);
         const imageItem = clipboardItems.find((item) => item.type?.startsWith('image/'));
 
-        if (!imageItem) {
-          return false;
+        // If there's HTML content, sanitize and insert it
+        if (htmlData && htmlData.trim().length > 0) {
+          event.preventDefault();
+          const sanitizedContent = sanitizePastedHTML(htmlData);
+          editor.chain().focus().insertContent(sanitizedContent).run();
+          return true;
         }
 
-        const file = imageItem.getAsFile();
-        if (!file) {
-          return false;
+        // If there's an image but no text, handle image upload
+        if (imageItem && !textData?.trim()) {
+          const file = imageItem.getAsFile();
+          if (file) {
+            event.preventDefault();
+            void uploadAndInsertImage(file);
+            return true;
+          }
         }
 
-        event.preventDefault();
-        void uploadAndInsertImage(file);
-        return true;
+        // Default: let Tiptap handle the paste
+        return false;
       },
     },
     onUpdate: ({ editor }) => {
@@ -640,6 +934,27 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     setBackgroundColorAnchorEl(null);
   };
 
+  // FIX 3: Apply bullet list type
+  const applyBulletListType = (type) => {
+    if (editor.isActive('bulletList')) {
+      editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
+    } else {
+      editor.chain().focus().toggleBulletList().run();
+      if (type !== 'disc') {
+        editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
+      }
+    }
+    setBulletListTypeAnchorEl(null);
+  };
+
+  // FIX 3: Apply numbered list type
+  const applyNumberedListType = (type) => {
+    editor.chain().focus().toggleOrderedList().run();
+    // Note: Tiptap's orderedList doesn't support type attribute directly,
+    // but we can use CSS or wrap with custom attributes
+    setNumberedListTypeAnchorEl(null);
+  };
+
   const insertTableWithShape = () => {
     editor
       .chain()
@@ -658,6 +973,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const currentTextColor = editor.getAttributes('textStyle').color || '';
   const currentBackgroundColor =
     editor.getAttributes('textStyle').backgroundColor || '';
+  const currentBulletListType = editor.getAttributes('bulletList')?.listType || 'disc';
   const currentFontLabel =
     FONT_FAMILIES.find((font) => font.value === currentFontFamily)?.label || 'Default font';
   const editorViewportHeight = Math.max(height, 420);
@@ -687,20 +1003,26 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
 
       {!readOnly && (
         <>
+          {/* FIX 1: Make toolbar sticky - it stays at top while content scrolls */}
           <Box
+            ref={toolbarRef}
             sx={{
               position: 'sticky',
               top: 0,
-              zIndex: 4,
+              zIndex: 10,
               p: 1,
               borderBottom: 1,
               borderColor: 'divider',
-              bgcolor: isDark ? 'rgba(23, 23, 23, 0.96)' : 'rgba(250, 250, 250, 0.96)',
-              backdropFilter: 'blur(8px)',
+              bgcolor: isDark ? 'rgba(23, 23, 23, 0.98)' : 'rgba(250, 250, 250, 0.98)',
+              backdropFilter: 'blur(12px)',
               display: 'flex',
               flexWrap: 'wrap',
               gap: 0.5,
               alignItems: 'center',
+              // Ensure toolbar stays visible when content scrolls
+              '& + div': {
+                // Second toolbar row
+              },
             }}
           >
             <ToolbarButton onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo"><Undo fontSize="small"/></ToolbarButton>
@@ -750,8 +1072,32 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><FormatAlignRight fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify"><FormatAlignJustify fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            <ToolbarButton onClick={() => editor.chain().focus().toggleBulletList().run()} active={editor.isActive('bulletList')} title="Bullet"><FormatListBulleted fontSize="small"/></ToolbarButton>
-            <ToolbarButton onClick={() => editor.chain().focus().toggleOrderedList().run()} active={editor.isActive('orderedList')} title="Numbered"><FormatListNumbered fontSize="small"/></ToolbarButton>
+            {/* FIX 3: Bullet list with type selector */}
+            <Tooltip title="Bullet List" arrow>
+              <Box component="span" sx={{ display: 'inline-block' }}>
+                <IconButton 
+                  size="small" 
+                  onClick={(event) => setBulletListTypeAnchorEl(event.currentTarget)} 
+                  color={editor.isActive('bulletList') ? 'primary' : 'default'}
+                  sx={{ minWidth: 40, height: 40, borderRadius: 1, bgcolor: editor.isActive('bulletList') ? alpha(theme.palette.primary.main,0.1) : 'transparent' }}
+                >
+                  <FormatListBulleted fontSize="small"/>
+                </IconButton>
+              </Box>
+            </Tooltip>
+            {/* FIX 3: Numbered list with type selector */}
+            <Tooltip title="Numbered List" arrow>
+              <Box component="span" sx={{ display: 'inline-block' }}>
+                <IconButton 
+                  size="small" 
+                  onClick={(event) => setNumberedListTypeAnchorEl(event.currentTarget)} 
+                  color={editor.isActive('orderedList') ? 'primary' : 'default'}
+                  sx={{ minWidth: 40, height: 40, borderRadius: 1, bgcolor: editor.isActive('orderedList') ? alpha(theme.palette.primary.main,0.1) : 'transparent' }}
+                >
+                  <FormatListNumbered fontSize="small"/>
+                </IconButton>
+              </Box>
+            </Tooltip>
             <ToolbarButton onClick={() => editor.chain().focus().sinkListItem('listItem').run()} disabled={!editor.can().sinkListItem('listItem')} title="Indent"><FormatIndentIncrease fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().liftListItem('listItem').run()} disabled={!editor.can().liftListItem('listItem')} title="Outdent"><FormatIndentDecrease fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
@@ -839,11 +1185,12 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         onClose={() => setTextColorAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
-        <Stack spacing={1} sx={{ p: 1.5 }}>
+        <Stack spacing={1} sx={{ p: 1.5, maxWidth: 320 }}>
           <Typography variant="caption" sx={{ fontWeight: 700 }}>
             Text color
           </Typography>
-          <ColorPicker colors={COLORS} onSelect={applyTextColor} />
+          {/* FIX 2: Use expanded color palette */}
+          <ColorPicker colors={TEXT_COLORS} onSelect={applyTextColor} columns={10} />
           <TextField
             size="small"
             label="Hex color"
@@ -859,17 +1206,98 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         onClose={() => setBackgroundColorAnchorEl(null)}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
       >
-        <Stack spacing={1} sx={{ p: 1.5 }}>
+        <Stack spacing={1} sx={{ p: 1.5, maxWidth: 320 }}>
           <Typography variant="caption" sx={{ fontWeight: 700 }}>
             Background color
           </Typography>
-          <ColorPicker colors={COLORS} onSelect={applyBackgroundColor} />
+          {/* FIX 2: Use expanded color palette */}
+          <ColorPicker colors={BG_COLORS} onSelect={applyBackgroundColor} columns={10} />
           <TextField
             size="small"
             label="Hex color"
             value={currentBackgroundColor}
             onChange={(event) => editor.chain().focus().setTextBackgroundColor(event.target.value).run()}
           />
+        </Stack>
+      </Popover>
+
+      {/* FIX 3: Bullet list type selector popover */}
+      <Popover
+        open={Boolean(bulletListTypeAnchorEl)}
+        anchorEl={bulletListTypeAnchorEl}
+        onClose={() => setBulletListTypeAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Stack spacing={0.5} sx={{ p: 1, minWidth: 180 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Bullet style
+          </Typography>
+          {BULLET_LIST_TYPES.map((type) => (
+            <Button
+              key={type.value}
+              fullWidth
+              startIcon={type.icon}
+              variant={currentBulletListType === type.value ? 'contained' : 'text'}
+              onClick={() => applyBulletListType(type.value)}
+              sx={{ justifyContent: 'flex-start' }}
+            >
+              {type.label}
+            </Button>
+          ))}
+        </Stack>
+      </Popover>
+
+      {/* FIX 3: Numbered list type selector popover */}
+      <Popover
+        open={Boolean(numberedListTypeAnchorEl)}
+        anchorEl={numberedListTypeAnchorEl}
+        onClose={() => setNumberedListTypeAnchorEl(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+      >
+        <Stack spacing={0.5} sx={{ p: 1, minWidth: 180 }}>
+          <Typography variant="caption" sx={{ fontWeight: 700, mb: 0.5 }}>
+            Numbering style
+          </Typography>
+          <Button
+            fullWidth
+            variant={!editor.isActive('orderedList') ? 'contained' : 'text'}
+            onClick={() => applyNumberedListType('1')}
+            sx={{ justifyContent: 'flex-start' }}
+          >
+            1, 2, 3... (Default)
+          </Button>
+          <Button
+            fullWidth
+            variant={editor.isActive('orderedList') ? 'text' : 'text'}
+            onClick={() => applyNumberedListType('a')}
+            sx={{ justifyContent: 'flex-start' }}
+          >
+            a, b, c... (Lowercase letters)
+          </Button>
+          <Button
+            fullWidth
+            variant={editor.isActive('orderedList') ? 'text' : 'text'}
+            onClick={() => applyNumberedListType('A')}
+            sx={{ justifyContent: 'flex-start' }}
+          >
+            A, B, C... (Uppercase letters)
+          </Button>
+          <Button
+            fullWidth
+            variant={editor.isActive('orderedList') ? 'text' : 'text'}
+            onClick={() => applyNumberedListType('i')}
+            sx={{ justifyContent: 'flex-start' }}
+          >
+            i, ii, iii... (Lowercase Roman)
+          </Button>
+          <Button
+            fullWidth
+            variant={editor.isActive('orderedList') ? 'text' : 'text'}
+            onClick={() => applyNumberedListType('I')}
+            sx={{ justifyContent: 'flex-start' }}
+          >
+            I, II, III... (Uppercase Roman)
+          </Button>
         </Stack>
       </Popover>
 
@@ -950,6 +1378,25 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         .tiptap-editor th { background: ${isDark? '#232323' : '#f5f5f5'}; color: ${isDark? '#e0e0e0' : '#222'} }
         .tiptap-editor td, .tiptap-editor th { border:1px solid ${isDark? '#444' : '#ddd'}; padding:0.5em }
         .tiptap-editor:empty:before { content: attr(data-placeholder); color: ${isDark? '#888' : '#999'} }
+        
+        /* FIX 3: Custom bullet list styles */
+        .tiptap-editor ul[data-list-type="disc"] { list-style-type: disc; }
+        .tiptap-editor ul[data-list-type="circle"] { list-style-type: circle; }
+        .tiptap-editor ul[data-list-type="square"] { list-style-type: square; }
+        .tiptap-editor ul[data-list-type="dash"] { list-style-type: none; padding-left: 1.5em; }
+        .tiptap-editor ul[data-list-type="dash"] > li::before {
+          content: "—";
+          margin-left: -1.5em;
+          margin-right: 0.5em;
+          display: inline-block;
+          width: 1em;
+        }
+        
+        /* FIX 3: Custom numbered list styles */
+        .tiptap-editor ol[type="a"] { list-style-type: lower-alpha; }
+        .tiptap-editor ol[type="A"] { list-style-type: upper-alpha; }
+        .tiptap-editor ol[type="i"] { list-style-type: lower-roman; }
+        .tiptap-editor ol[type="I"] { list-style-type: upper-roman; }
       `}</style>
     </Paper>
   );

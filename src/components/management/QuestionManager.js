@@ -1009,6 +1009,18 @@ const QuestionManager = () => {
         
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
+            <ContentAssignmentFields
+              categories={categories}
+              courses={courses}
+              chapters={chapters}
+              values={formData}
+              onChange={handleAssignmentChange}
+              disabled={actionLoading}
+              showCategory
+              showCourse
+              showChapter
+            />
+
             <Grid item xs={12}>
               <FastTextField
                 fullWidth
@@ -1023,18 +1035,6 @@ const QuestionManager = () => {
                 disabled={actionLoading}
               />
             </Grid>
-
-            <ContentAssignmentFields
-              categories={categories}
-              courses={courses}
-              chapters={chapters}
-              values={formData}
-              onChange={handleAssignmentChange}
-              disabled={actionLoading}
-              showCategory
-              showCourse
-              showChapter
-            />
 
             <Grid item xs={12}>
               <Typography variant="subtitle2" fontWeight="bold" gutterBottom>

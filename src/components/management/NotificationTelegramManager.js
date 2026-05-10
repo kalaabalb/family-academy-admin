@@ -87,6 +87,7 @@ import {
   FormatQuote,
 } from '@mui/icons-material';
 import { devError } from '../../utils/devLogger';
+import dateUtils from '../../utils/dateUtils';
 
 const getNotificationTypeColor = (value) => {
   switch (value) {
@@ -147,6 +148,40 @@ const toSafeDate = (value) => {
 const toSafeIsoString = (value) => {
   const date = toSafeDate(value);
   return date ? date.toISOString() : '';
+};
+
+const formatScheduleClock = (value) => {
+  if (!value) return 'Time not set';
+  const normalized = String(value).trim();
+  const match = normalized.match(/^(\d{1,2}):(\d{2})(?::\d{2})?$/);
+  if (!match) return normalized;
+
+  const date = new Date();
+  date.setHours(Number(match[1]), Number(match[2]), 0, 0);
+  return date.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: true,
+  });
+};
+
+const formatScheduleSummary = (schedule) => {
+  switch (schedule?.schedule_type) {
+    case 'one_time':
+      return schedule?.schedule_value
+        ? `Runs once on ${dateUtils.formatDateTime(schedule.schedule_value)}`
+        : 'Runs once';
+    case 'weekly':
+      return `Every ${formatLabel(schedule?.scheduled_day)} at ${formatScheduleClock(schedule?.scheduled_time)}`;
+    case 'monthly':
+      return `Every month on day ${schedule?.schedule_value || '-'} at ${formatScheduleClock(schedule?.scheduled_time)}`;
+    case 'daily':
+      return `Every day at ${formatScheduleClock(schedule?.scheduled_time)}`;
+    default:
+      return schedule?.scheduled_time
+        ? `At ${formatScheduleClock(schedule.scheduled_time)}`
+        : '-';
+  }
 };
 
 const SCHEDULE_TYPES = [
@@ -576,7 +611,8 @@ const NotificationTelegramManager = () => {
         scheduled_time: notificationForm.send_now
           ? null
           : toSafeIsoString(notificationForm.scheduled_time),
-        variables: {} // Add empty variables object as required by backend
+        variables: {}, // Add empty variables object as required by backend
+        force_push: true,
       };
 
       const response = await notificationsApi.sendNotification(payload);
@@ -1113,9 +1149,12 @@ const NotificationTelegramManager = () => {
     {
       field: 'next_run',
       headerName: 'Next Run',
-      width: 150,
-      minWidth: 170,
-      render: (value) => renderTableDate(value),
+      width: 220,
+      minWidth: 260,
+      render: (value, row) => renderPrimaryCell({
+        primary: dateUtils.formatDateTime(value) || '-',
+        secondary: formatScheduleSummary(row),
+      }),
     },
     {
       field: 'is_active',

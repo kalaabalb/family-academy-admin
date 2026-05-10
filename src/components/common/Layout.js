@@ -306,13 +306,13 @@ const Layout = ({ children }) => {
           sx={{
             width: 48,
             height: 48,
-            bgcolor: 'rgba(255, 255, 255, 0.92)',
-            color: 'primary.main',
-            fontWeight: 'bold',
+            bgcolor: 'rgba(255, 255, 255, 0.96)',
+            p: 0.5,
           }}
-        >
-          FA
-        </Avatar>
+          src="/family-academy-brand-logo.png"
+          alt="Family Academy"
+          imgProps={{ style: { objectFit: 'contain' } }}
+        />
         <Box>
           <Typography variant="subtitle1" fontWeight="bold" sx={{ color: 'inherit' }}>
             Family Academy
