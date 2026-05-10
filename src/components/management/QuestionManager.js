@@ -449,6 +449,7 @@ const QuestionManager = () => {
       const questionData = {
         question_text: formData.question_text.trim(),
         chapter_id: parseInt(formData.chapter_id),
+        question_type: 'practice',
         option_a: formData.option_a.trim(),
         option_b: formData.option_b.trim(),
         option_c: formData.option_c.trim() || null,
@@ -1009,6 +1010,11 @@ const QuestionManager = () => {
         
         <DialogContent dividers sx={{ p: 3 }}>
           <Grid container spacing={3}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle2" fontWeight="bold" gutterBottom>
+                Assignment
+              </Typography>
+            </Grid>
             <ContentAssignmentFields
               categories={categories}
               courses={courses}

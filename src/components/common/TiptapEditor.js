@@ -447,7 +447,31 @@ const sanitizePastedHTML = (html) => {
   cleaned = cleaned.replace(/<o:p>\s*<\/o:p>/gi, '');
   cleaned = cleaned.replace(/<!--\[if !supportLists\]-->[\s\S]*?<!--\[endif\]-->/gi, '');
   cleaned = cleaned.replace(/<span[^>]*style="[^"]*mso-list[^"]*"[^>]*>[\s\S]*?<\/span>/gi, '');
-  
+
+  // Strip aggressive inline sizing/family so pasted content becomes editable
+  // normal document text instead of tiny imported fragments.
+  cleaned = cleaned.replace(/\sstyle="([^"]*)"/gi, (_, styleValue) => {
+    const filteredRules = styleValue
+      .split(';')
+      .map((rule) => rule.trim())
+      .filter(Boolean)
+      .filter((rule) => {
+        const lowerRule = rule.toLowerCase();
+        return !(
+          lowerRule.startsWith('font-size') ||
+          lowerRule.startsWith('font-family') ||
+          lowerRule.startsWith('line-height') ||
+          lowerRule.startsWith('mso-') ||
+          lowerRule.startsWith('tab-stops')
+        );
+      });
+
+    return filteredRules.length > 0 ? ` style="${filteredRules.join('; ')}"` : '';
+  });
+
+  cleaned = cleaned.replace(/<(span|font)\b[^>]*>([\s\S]*?)<\/\1>/gi, '$2');
+  cleaned = cleaned.replace(/<img[^>]*>/gi, '');
+
   // Convert divs with bullet characters to proper list items
   cleaned = cleaned.replace(/<div[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<div><li>');
   cleaned = cleaned.replace(/<p[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<p><li>');
@@ -475,6 +499,53 @@ const extractTextFromPDFPaste = (clipboardData) => {
   }
   
   return null;
+};
+
+const escapeHtml = (value) =>
+  value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const plainTextToHtml = (text) => {
+  if (!text || !text.trim()) return '';
+
+  const normalized = text
+    .replace(/\r\n/g, '\n')
+    .replace(/\u00a0/g, ' ')
+    .trim();
+
+  const blocks = normalized.split(/\n{2,}/).filter(Boolean);
+
+  return blocks
+    .map((block) => {
+      const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
+      if (lines.length === 0) return '';
+
+      const isBulletList = lines.every((line) => /^([•●◘◙◉⊙⊕▪▫■□\-–—])\s+/.test(line));
+      if (isBulletList) {
+        const items = lines
+          .map((line) => line.replace(/^([•●◘◙◉⊙⊕▪▫■□\-–—])\s+/, ''))
+          .map((line) => `<li>${escapeHtml(line)}</li>`)
+          .join('');
+        return `<ul>${items}</ul>`;
+      }
+
+      const isNumberedList = lines.every((line) => /^(\d+\.|[a-zA-Z]\.|[ivxlcdmIVXLCDM]+\.)\s+/.test(line));
+      if (isNumberedList) {
+        const items = lines
+          .map((line) => line.replace(/^(\d+\.|[a-zA-Z]\.|[ivxlcdmIVXLCDM]+\.)\s+/, ''))
+          .map((line) => `<li>${escapeHtml(line)}</li>`)
+          .join('');
+        return `<ol>${items}</ol>`;
+      }
+
+      return `<p>${lines.map((line) => escapeHtml(line)).join('<br/>')}</p>`;
+    })
+    .filter(Boolean)
+    .join('');
 };
 
 const resizeImageFile = (file, maxDimension = 1600, quality = 0.82) => (
@@ -805,8 +876,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         const pdfResult = extractTextFromPDFPaste(clipboardData);
         if (pdfResult && pdfResult.type === 'text' && pdfResult.data) {
           event.preventDefault();
-          const sanitizedContent = sanitizePastedHTML(pdfResult.data);
-          editor.chain().focus().insertContent(sanitizedContent).run();
+          const normalizedText = plainTextToHtml(pdfResult.data);
+          editor.chain().focus().insertContent(normalizedText).run();
           return true;
         }
 
@@ -821,6 +892,12 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           event.preventDefault();
           const sanitizedContent = sanitizePastedHTML(htmlData);
           editor.chain().focus().insertContent(sanitizedContent).run();
+          return true;
+        }
+
+        if (textData && textData.trim().length > 0) {
+          event.preventDefault();
+          editor.chain().focus().insertContent(plainTextToHtml(textData)).run();
           return true;
         }
 
@@ -1133,7 +1210,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           <Box
             sx={{
               position: 'sticky',
-              top: 58,
+              top: toolbarHeight || 58,
               zIndex: 3,
               px: 1.25,
               py: 0.75,
@@ -1339,6 +1416,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           bgcolor: isDark ? 'grey.900' : 'background.paper',
           borderRadius: 2,
           minHeight: editorViewportHeight,
+          maxHeight: editorViewportHeight,
+          overflowY: 'auto',
         }}
       >
         {isUploadingImage && (
