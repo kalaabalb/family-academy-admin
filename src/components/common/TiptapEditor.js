@@ -161,31 +161,24 @@ const BULLET_LIST_TYPES = [
 
 const NumberedListExtension = Extension.create({
   name: 'numberedListType',
-  addOptions() {
-    return {
-      types: ['listItem'],
-    };
-  },
   addGlobalAttributes() {
     return [
       {
-        types: ['listItem'],
+        types: ['orderedList'],
         attributes: {
           listType: {
-            default: 'ordered',
+            default: '1',
             parseHTML: (element) => {
-              const parent = element.parentElement;
-              if (parent?.tagName === 'OL') {
-                const type = parent.getAttribute('type') || '1';
-                return type;
-              }
-              return '1';
+              return element.getAttribute('data-list-type') || element.getAttribute('type') || '1';
             },
             renderHTML: (attributes) => {
               if (!attributes.listType || attributes.listType === '1') {
                 return {};
               }
-              return { 'type': attributes.listType };
+              return {
+                'data-list-type': attributes.listType,
+                type: attributes.listType,
+              };
             },
           },
         },
@@ -195,7 +188,7 @@ const NumberedListExtension = Extension.create({
   addCommands() {
     return {
       setOrderedListType: (type) => ({ commands }) => {
-        return commands.toggleOrderedList();
+        return commands.updateAttributes('orderedList', { listType: type });
       },
     };
   },
@@ -1011,24 +1004,74 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
     setBackgroundColorAnchorEl(null);
   };
 
-  // FIX 3: Apply bullet list type
-  const applyBulletListType = (type) => {
-    if (editor.isActive('bulletList')) {
-      editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
-    } else {
-      editor.chain().focus().toggleBulletList().run();
-      if (type !== 'disc') {
-        editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
-      }
+  const startFreshListBlock = useCallback(() => {
+    if (!editor) {
+      return false;
     }
+
+    const { selection } = editor.state;
+    if (!selection.empty) {
+      return false;
+    }
+
+    const parent = selection.$from.parent;
+    const listItemNode = selection.$from.node(selection.$from.depth - 1);
+    const isInsideListItem = listItemNode?.type?.name === 'listItem';
+    const isEmptyParagraph = parent.type.name === 'paragraph' && parent.content.size === 0;
+
+    if (!isInsideListItem) {
+      return false;
+    }
+
+    if (!isEmptyParagraph) {
+      editor.chain().focus().splitListItem('listItem').run();
+    }
+
+    if (editor.can().liftListItem('listItem')) {
+      editor.chain().focus().liftListItem('listItem').run();
+      return true;
+    }
+
+    return false;
+  }, [editor]);
+
+  const applyBulletListType = (type) => {
+    const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
+    const shouldStartNewList = editor.state.selection.empty && inAnyList;
+
+    if (shouldStartNewList) {
+      startFreshListBlock();
+    }
+
+    if (editor.isActive('orderedList')) {
+      editor.chain().focus().toggleOrderedList().run();
+    }
+
+    if (!editor.isActive('bulletList')) {
+      editor.chain().focus().toggleBulletList().run();
+    }
+
+    editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
     setBulletListTypeAnchorEl(null);
   };
 
-  // FIX 3: Apply numbered list type
   const applyNumberedListType = (type) => {
-    editor.chain().focus().toggleOrderedList().run();
-    // Note: Tiptap's orderedList doesn't support type attribute directly,
-    // but we can use CSS or wrap with custom attributes
+    const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
+    const shouldStartNewList = editor.state.selection.empty && inAnyList;
+
+    if (shouldStartNewList) {
+      startFreshListBlock();
+    }
+
+    if (editor.isActive('bulletList')) {
+      editor.chain().focus().toggleBulletList().run();
+    }
+
+    if (!editor.isActive('orderedList')) {
+      editor.chain().focus().toggleOrderedList().run();
+    }
+
+    editor.chain().focus().updateAttributes('orderedList', { listType: type }).run();
     setNumberedListTypeAnchorEl(null);
   };
 
@@ -1050,11 +1093,14 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const currentTextColor = editor.getAttributes('textStyle').color || '';
   const currentBackgroundColor =
     editor.getAttributes('textStyle').backgroundColor || '';
-  const currentBulletListType = editor.getAttributes('bulletList')?.listType || 'disc';
+  const currentBulletListType =
+    editor.getAttributes('bulletList')?.listType || 'disc';
+  const currentOrderedListType =
+    editor.getAttributes('orderedList')?.listType || '1';
   const currentFontLabel =
     FONT_FAMILIES.find((font) => font.value === currentFontFamily)?.label || 'Default font';
-  const editorViewportHeight = Math.max(height, 420);
-  const editorBodyMinHeight = Math.max(editorViewportHeight - 170, 260);
+  const editorViewportHeight = Math.max(height, 940);
+  const editorPageMinHeight = Math.max(editorViewportHeight - 56, 1120);
 
   if (!editor) return null;
 
@@ -1243,7 +1289,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             </Box>
             {(editor.isActive('orderedList') || editor.isActive('bulletList')) && (
               <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Use Indent for nested items like 1.1, 1.2. Use Outdent to move them back.
+                List styles now start a fresh list block so previous bullets and numbering stay unchanged.
               </Typography>
             )}
             {editor.isActive('table') && (
@@ -1335,46 +1381,23 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           <Typography variant="caption" sx={{ fontWeight: 700, mb: 0.5 }}>
             Numbering style
           </Typography>
-          <Button
-            fullWidth
-            variant={!editor.isActive('orderedList') ? 'contained' : 'text'}
-            onClick={() => applyNumberedListType('1')}
-            sx={{ justifyContent: 'flex-start' }}
-          >
-            1, 2, 3... (Default)
-          </Button>
-          <Button
-            fullWidth
-            variant={editor.isActive('orderedList') ? 'text' : 'text'}
-            onClick={() => applyNumberedListType('a')}
-            sx={{ justifyContent: 'flex-start' }}
-          >
-            a, b, c... (Lowercase letters)
-          </Button>
-          <Button
-            fullWidth
-            variant={editor.isActive('orderedList') ? 'text' : 'text'}
-            onClick={() => applyNumberedListType('A')}
-            sx={{ justifyContent: 'flex-start' }}
-          >
-            A, B, C... (Uppercase letters)
-          </Button>
-          <Button
-            fullWidth
-            variant={editor.isActive('orderedList') ? 'text' : 'text'}
-            onClick={() => applyNumberedListType('i')}
-            sx={{ justifyContent: 'flex-start' }}
-          >
-            i, ii, iii... (Lowercase Roman)
-          </Button>
-          <Button
-            fullWidth
-            variant={editor.isActive('orderedList') ? 'text' : 'text'}
-            onClick={() => applyNumberedListType('I')}
-            sx={{ justifyContent: 'flex-start' }}
-          >
-            I, II, III... (Uppercase Roman)
-          </Button>
+          {[
+            ['1', '1, 2, 3... (Default)'],
+            ['a', 'a, b, c... (Lowercase letters)'],
+            ['A', 'A, B, C... (Uppercase letters)'],
+            ['i', 'i, ii, iii... (Lowercase Roman)'],
+            ['I', 'I, II, III... (Uppercase Roman)'],
+          ].map(([type, label]) => (
+            <Button
+              key={type}
+              fullWidth
+              variant={currentOrderedListType === type ? 'contained' : 'text'}
+              onClick={() => applyNumberedListType(type)}
+              sx={{ justifyContent: 'flex-start' }}
+            >
+              {label}
+            </Button>
+          ))}
         </Stack>
       </Popover>
 
@@ -1412,7 +1435,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
 
       <Box
         sx={{
-          p: 2,
+          p: 2.5,
           bgcolor: isDark ? 'grey.900' : 'background.paper',
           borderRadius: 2,
           minHeight: editorViewportHeight,
@@ -1430,16 +1453,30 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
 
       <style>{`
         .tiptap-editor {
-          min-height: ${editorBodyMinHeight}px;
+          width: min(100%, 920px);
+          min-height: ${editorPageMinHeight}px;
+          margin: 0 auto;
           outline:none;
           line-height:1.7;
           font-size:16px;
           background: ${isDark? '#181a1b' : '#fff'};
           color: ${isDark? '#e0e0e0' : '#222'};
-          border-radius:8px;
+          border-radius: 12px;
+          border: 1px solid ${isDark ? '#2f2f2f' : '#d9dde5'};
+          box-shadow: ${isDark ? '0 16px 42px rgba(0,0,0,0.38)' : '0 18px 46px rgba(15,23,42,0.10)'};
+          padding: 48px 56px 56px;
+          box-sizing: border-box;
           padding-bottom: 2rem;
         }
         .tiptap-editor p { margin:0 0 1em 0 }
+        .tiptap-editor ul,
+        .tiptap-editor ol {
+          margin: 0 0 1em 0;
+          padding-left: 1.75em;
+        }
+        .tiptap-editor li > p {
+          margin: 0.15em 0;
+        }
         .tiptap-editor img, .tiptap-editor .tiptap-image {
           max-width: 100%;
           height: auto;
@@ -1457,8 +1494,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         .tiptap-editor th { background: ${isDark? '#232323' : '#f5f5f5'}; color: ${isDark? '#e0e0e0' : '#222'} }
         .tiptap-editor td, .tiptap-editor th { border:1px solid ${isDark? '#444' : '#ddd'}; padding:0.5em }
         .tiptap-editor:empty:before { content: attr(data-placeholder); color: ${isDark? '#888' : '#999'} }
-        
-        /* FIX 3: Custom bullet list styles */
+
         .tiptap-editor ul[data-list-type="disc"] { list-style-type: disc; }
         .tiptap-editor ul[data-list-type="circle"] { list-style-type: circle; }
         .tiptap-editor ul[data-list-type="square"] { list-style-type: square; }
@@ -1470,12 +1506,13 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           display: inline-block;
           width: 1em;
         }
-        
-        /* FIX 3: Custom numbered list styles */
-        .tiptap-editor ol[type="a"] { list-style-type: lower-alpha; }
-        .tiptap-editor ol[type="A"] { list-style-type: upper-alpha; }
-        .tiptap-editor ol[type="i"] { list-style-type: lower-roman; }
-        .tiptap-editor ol[type="I"] { list-style-type: upper-roman; }
+
+        .tiptap-editor ol[data-list-type="1"],
+        .tiptap-editor ol:not([data-list-type]) { list-style-type: decimal; }
+        .tiptap-editor ol[data-list-type="a"] { list-style-type: lower-alpha; }
+        .tiptap-editor ol[data-list-type="A"] { list-style-type: upper-alpha; }
+        .tiptap-editor ol[data-list-type="i"] { list-style-type: lower-roman; }
+        .tiptap-editor ol[data-list-type="I"] { list-style-type: upper-roman; }
       `}</style>
     </Paper>
   );
