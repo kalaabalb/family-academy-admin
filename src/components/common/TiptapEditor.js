@@ -153,11 +153,35 @@ const BG_COLORS = [
 
 // FIX 3: Bullet list types configuration
 const BULLET_LIST_TYPES = [
-  { value: 'disc', label: 'Filled Circle', icon: <Circle fontSize="small" /> },
-  { value: 'circle', label: 'Hollow Circle', icon: <RadioButtonUnchecked fontSize="small" /> },
-  { value: 'square', label: 'Square', icon: <CheckBoxOutlineBlank fontSize="small" /> },
-  { value: 'dash', label: 'Dash', icon: <ShortText fontSize="small" /> },
+  { value: 'diamond', label: 'Diamond', symbol: '❖' },
+  { value: 'hand', label: 'Hand Pointer', symbol: '☞' },
+  { value: 'dash', label: 'Dash', symbol: '—' },
+  { value: 'hollow-circle', label: 'Hollow Circle', symbol: '○' },
+  { value: 'square', label: 'Square', symbol: '■' },
+  { value: 'filled-circle', label: 'Filled Circle', symbol: '●' },
+  { value: 'double-arrow', label: 'Double Arrow', symbol: '⇒' },
+  { value: 'check', label: 'Check Mark', symbol: '✓' },
 ];
+
+const BULLET_SYMBOL_TO_TYPE = {
+  '❖': 'diamond',
+  '◆': 'diamond',
+  '☞': 'hand',
+  '👉': 'hand',
+  '—': 'dash',
+  '-': 'dash',
+  '○': 'hollow-circle',
+  '◦': 'hollow-circle',
+  '■': 'square',
+  '▪': 'square',
+  '●': 'filled-circle',
+  '•': 'filled-circle',
+  '⇒': 'double-arrow',
+  '➜': 'double-arrow',
+  '→': 'double-arrow',
+  '✓': 'check',
+  '✔': 'check',
+};
 
 const NumberedListExtension = Extension.create({
   name: 'numberedListType',
@@ -207,12 +231,12 @@ const BulletListTypeExtension = Extension.create({
         types: ['bulletList'],
         attributes: {
           listType: {
-            default: 'disc',
+            default: 'filled-circle',
             parseHTML: (element) => {
-              return element.getAttribute('data-list-type') || 'disc';
+              return element.getAttribute('data-list-type') || 'filled-circle';
             },
             renderHTML: (attributes) => {
-              if (!attributes.listType || attributes.listType === 'disc') {
+              if (!attributes.listType || attributes.listType === 'filled-circle') {
                 return {};
               }
               return { 'data-list-type': attributes.listType };
@@ -409,24 +433,6 @@ const sanitizePastedHTML = (html) => {
   const temp = document.createElement('div');
   temp.innerHTML = html;
   
-  // Fix bullet points - map Word's special characters to proper list items
-  // Word uses various characters for bullets: •, ◦, ▪, –, etc.
-  const bulletPatterns = [
-    { pattern: /<[^>]*>\s*[•●◘◙◉⊙⊕]/g, replacement: '<li>' },
-    { pattern: /<[^>]*>\s*[○◌◦]/g, replacement: '<li data-list-type="circle">' },
-    { pattern: /<[^>]*>\s*[▪▫■□]/g, replacement: '<li data-list-type="square">' },
-    { pattern: /<[^>]*>\s*[–—−]/g, replacement: '<li data-list-type="dash">' },
-  ];
-  
-  // Fix numbered lists - Word uses various formats
-  const numberedPatterns = [
-    { pattern: /<[^>]*>\s*\d+\.\s*/, replacement: '<li>' },
-    { pattern: /<[^>]*>\s*[a-z]\.\s*/, replacement: '<li type="a">' },
-    { pattern: /<[^>]*>\s*[A-Z]\.\s*/, replacement: '<li type="A">' },
-    { pattern: /<[^>]*>\s*[ivx]+\.\s*/, replacement: '<li type="i">' },
-    { pattern: /<[^>]*>\s*[IVX]+\.\s*/, replacement: '<li type="I">' },
-  ];
-  
   // Remove Word-specific classes and styles that cause issues
   let cleaned = temp.innerHTML;
   
@@ -465,10 +471,6 @@ const sanitizePastedHTML = (html) => {
   cleaned = cleaned.replace(/<(span|font)\b[^>]*>([\s\S]*?)<\/\1>/gi, '$2');
   cleaned = cleaned.replace(/<img[^>]*>/gi, '');
 
-  // Convert divs with bullet characters to proper list items
-  cleaned = cleaned.replace(/<div[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<div><li>');
-  cleaned = cleaned.replace(/<p[^>]*>\s*([•●◘◙◉⊙⊕])\s*/gi, '<p><li>');
-  
   return cleaned;
 };
 
@@ -517,13 +519,15 @@ const plainTextToHtml = (text) => {
       const lines = block.split('\n').map((line) => line.trim()).filter(Boolean);
       if (lines.length === 0) return '';
 
-      const isBulletList = lines.every((line) => /^([•●◘◙◉⊙⊕▪▫■□\-–—])\s+/.test(line));
+      const bulletMatch = lines.map((line) => line.match(/^([❖◆☞👉—\-○◦■▪●•⇒➜→✓✔])\s+(.*)$/));
+      const isBulletList = bulletMatch.every(Boolean);
       if (isBulletList) {
+        const listType = BULLET_SYMBOL_TO_TYPE[bulletMatch[0][1]] || 'filled-circle';
         const items = lines
-          .map((line) => line.replace(/^([•●◘◙◉⊙⊕▪▫■□\-–—])\s+/, ''))
+          .map((line) => line.replace(/^([❖◆☞👉—\-○◦■▪●•⇒➜→✓✔])\s+/, ''))
           .map((line) => `<li>${escapeHtml(line)}</li>`)
           .join('');
-        return `<ul>${items}</ul>`;
+        return `<ul data-list-type="${listType}">${items}</ul>`;
       }
 
       const isNumberedList = lines.every((line) => /^(\d+\.|[a-zA-Z]\.|[ivxlcdmIVXLCDM]+\.)\s+/.test(line));
@@ -802,7 +806,7 @@ const ImageResizer = ({ editor }) => {
   );
 };
 
-const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placeholder='Start writing your content here...' }) => {
+const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeight=false, placeholder='Start writing your content here...' }) => {
   const theme = useTheme();
   const isDark = theme.palette.mode === 'dark';
   const fileInputRef = useRef(null);
@@ -879,6 +883,15 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         const textData = clipboardData.getData('text/plain');
         const clipboardItems = Array.from(clipboardData.items || []);
         const imageItem = clipboardItems.find((item) => item.type?.startsWith('image/'));
+
+        const looksLikeWordOrOfficePaste =
+          /class="?Mso|mso-|supportLists|urn:schemas-microsoft-com/i.test(htmlData || '');
+
+        if (looksLikeWordOrOfficePaste && textData && textData.trim().length > 0) {
+          event.preventDefault();
+          editor.chain().focus().insertContent(plainTextToHtml(textData)).run();
+          return true;
+        }
 
         // If there's HTML content, sanitize and insert it
         if (htmlData && htmlData.trim().length > 0) {
@@ -1094,7 +1107,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
   const currentBackgroundColor =
     editor.getAttributes('textStyle').backgroundColor || '';
   const currentBulletListType =
-    editor.getAttributes('bulletList')?.listType || 'disc';
+    editor.getAttributes('bulletList')?.listType || 'filled-circle';
   const currentOrderedListType =
     editor.getAttributes('orderedList')?.listType || '1';
   const currentFontLabel =
@@ -1112,6 +1125,9 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         overflow: 'hidden',
         bgcolor: isDark ? 'grey.900' : 'background.paper',
         position: 'relative',
+        display: 'flex',
+        flexDirection: 'column',
+        height: fullHeight ? '100%' : 'auto',
         boxShadow: isDark ? 3 : 1,
         borderColor: isDark ? 'grey.800' : 'divider',
       }}
@@ -1359,11 +1375,16 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
             <Button
               key={type.value}
               fullWidth
-              startIcon={type.icon}
               variant={currentBulletListType === type.value ? 'contained' : 'text'}
               onClick={() => applyBulletListType(type.value)}
-              sx={{ justifyContent: 'flex-start' }}
+              sx={{ justifyContent: 'flex-start', gap: 1.25 }}
             >
+              <Typography
+                component="span"
+                sx={{ minWidth: 22, textAlign: 'center', fontSize: '1rem', fontWeight: 700 }}
+              >
+                {type.symbol}
+              </Typography>
               {type.label}
             </Button>
           ))}
@@ -1438,8 +1459,9 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
           p: 2.5,
           bgcolor: isDark ? 'grey.900' : 'background.paper',
           borderRadius: 2,
-          minHeight: editorViewportHeight,
-          maxHeight: editorViewportHeight,
+          flex: fullHeight ? '1 1 auto' : '0 0 auto',
+          minHeight: fullHeight ? 0 : editorViewportHeight,
+          maxHeight: fullHeight ? 'none' : editorViewportHeight,
           overflowY: 'auto',
         }}
       >
@@ -1454,7 +1476,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
       <style>{`
         .tiptap-editor {
           width: min(100%, 920px);
-          min-height: ${editorPageMinHeight}px;
+          min-height: ${fullHeight ? '100%' : `${editorPageMinHeight}px`};
           margin: 0 auto;
           outline:none;
           line-height:1.7;
@@ -1495,17 +1517,28 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, placehol
         .tiptap-editor td, .tiptap-editor th { border:1px solid ${isDark? '#444' : '#ddd'}; padding:0.5em }
         .tiptap-editor:empty:before { content: attr(data-placeholder); color: ${isDark? '#888' : '#999'} }
 
-        .tiptap-editor ul[data-list-type="disc"] { list-style-type: disc; }
-        .tiptap-editor ul[data-list-type="circle"] { list-style-type: circle; }
-        .tiptap-editor ul[data-list-type="square"] { list-style-type: square; }
-        .tiptap-editor ul[data-list-type="dash"] { list-style-type: none; padding-left: 1.5em; }
-        .tiptap-editor ul[data-list-type="dash"] > li::before {
-          content: "—";
+        .tiptap-editor ul[data-list-type] {
+          list-style: none;
+          padding-left: 1.9em;
+        }
+        .tiptap-editor ul[data-list-type] > li {
+          position: relative;
+        }
+        .tiptap-editor ul[data-list-type] > li::before {
           margin-left: -1.5em;
           margin-right: 0.5em;
           display: inline-block;
-          width: 1em;
+          width: 1.2em;
+          font-weight: 700;
         }
+        .tiptap-editor ul[data-list-type="diamond"] > li::before { content: "❖"; }
+        .tiptap-editor ul[data-list-type="hand"] > li::before { content: "☞"; }
+        .tiptap-editor ul[data-list-type="dash"] > li::before { content: "—"; }
+        .tiptap-editor ul[data-list-type="hollow-circle"] > li::before { content: "○"; }
+        .tiptap-editor ul[data-list-type="square"] > li::before { content: "■"; }
+        .tiptap-editor ul[data-list-type="filled-circle"] > li::before { content: "●"; }
+        .tiptap-editor ul[data-list-type="double-arrow"] > li::before { content: "⇒"; }
+        .tiptap-editor ul[data-list-type="check"] > li::before { content: "✓"; }
 
         .tiptap-editor ol[data-list-type="1"],
         .tiptap-editor ol:not([data-list-type]) { list-style-type: decimal; }

@@ -785,11 +785,25 @@ const NoteManager = () => {
           onClose={() => !actionLoading && setFormOpen(false)}
           keepMounted
           disableRestoreFocus
-          maxWidth="lg"
-          fullWidth
-          PaperProps={{ sx: { borderRadius: 2.5 } }}
+          fullScreen
+          PaperProps={{
+            sx: {
+              borderRadius: 0,
+              display: 'flex',
+              flexDirection: 'column',
+            },
+          }}
         >
-          <DialogTitle sx={{ m: 0, p: 3, pb: 2 }}>
+          <DialogTitle
+            sx={{
+              m: 0,
+              p: 3,
+              pb: 2,
+              borderBottom: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+            }}
+          >
             <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <Typography component="div" variant="h6" fontWeight="bold">
                 {isEditing ? 'Edit Note' : 'Create New Note'}
@@ -809,9 +823,19 @@ const NoteManager = () => {
             </Box>
           </DialogTitle>
           
-          <DialogContent dividers sx={{ p: 3 }}>
-            <Grid container spacing={3}>
-            <Grid item xs={12}>
+          <DialogContent
+            dividers
+            sx={{
+              p: 0,
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              minHeight: 0,
+            }}
+          >
+            <Box sx={{ px: 3, pt: 3, pb: 2, flexShrink: 0 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={12}>
                 <FastTextField
                   fullWidth
                   label="Note Title *"
@@ -852,19 +876,44 @@ const NoteManager = () => {
                   disabled={actionLoading}
                 />
               </Grid>
+              </Grid>
+            </Box>
 
-              <Grid item xs={12}>
+            <Box
+              sx={{
+                px: 3,
+                pb: 3,
+                flex: '1 1 auto',
+                minHeight: 0,
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <Box sx={{ flexShrink: 0, pb: 1 }}>
                 <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
                   Content *
                 </Typography>
+              </Box>
+              <Paper
+                variant="outlined"
+                sx={{
+                  borderRadius: 2,
+                  bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
+                  boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
+                  borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
+                  p: 1,
+                  flex: '1 1 auto',
+                  minHeight: 0,
+                  overflow: 'hidden',
+                }}
+              >
                 <Paper
-                  variant="outlined"
                   sx={{
+                    height: '100%',
+                    display: 'flex',
+                    flexDirection: 'column',
                     borderRadius: 2,
-                    bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
-                    boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
-                    borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
-                    p: 1,
+                    overflow: 'hidden',
                   }}
                 >
                   <TiptapEditor
@@ -872,14 +921,23 @@ const NoteManager = () => {
                     onChange={handleContentChange}
                     placeholder="Start writing your note content here..."
                     height={980}
+                    fullHeight
                     readOnly={actionLoading}
                   />
                 </Paper>
-              </Grid>
-            </Grid>
+              </Paper>
+            </Box>
           </DialogContent>
           
-          <DialogActions sx={{ p: 3, pt: 2 }}>
+          <DialogActions
+            sx={{
+              p: 3,
+              pt: 2,
+              borderTop: 1,
+              borderColor: 'divider',
+              flexShrink: 0,
+            }}
+          >
             <Button
               variant="outlined"
               onClick={() => {
