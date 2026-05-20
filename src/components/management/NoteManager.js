@@ -904,25 +904,6 @@ const NoteManager = () => {
                 overflow: 'hidden',
               }}
             >
-              <Box
-                sx={{
-                  flexShrink: 0,
-                  pb: 2,
-                  display: 'flex',
-                  alignItems: 'flex-end',
-                  justifyContent: 'space-between',
-                  gap: 2,
-                }}
-              >
-                <Box>
-                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                    Content *
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    The toolbar stays fixed. Only the page surface scrolls while you write.
-                  </Typography>
-                </Box>
-              </Box>
               <Paper
                 variant="outlined"
                 sx={{

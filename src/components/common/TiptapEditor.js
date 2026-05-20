@@ -27,7 +27,6 @@ import {
   TextField,
   Button,
   Stack,
-  Chip,
   alpha,
   useTheme,
   Slider,
@@ -183,6 +182,9 @@ const BULLET_SYMBOL_TO_TYPE = {
   '✓': 'check',
   '✔': 'check',
 };
+
+const getBulletSymbol = (type) =>
+  BULLET_LIST_TYPES.find((item) => item.value === type)?.symbol || '●';
 
 const createUniqueListId = () =>
   `list-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1072,7 +1074,76 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
     return false;
   }, [editor]);
 
+  const getSeparatedListInsertPosition = useCallback((targetListType) => {
+    if (!editor) {
+      return null;
+    }
+
+    const { selection } = editor.state;
+    if (!selection.empty) {
+      return null;
+    }
+
+    const { $from } = selection;
+    const parent = $from.parent;
+    if (parent.type.name !== 'paragraph' || parent.content.size !== 0 || $from.depth < 1) {
+      return null;
+    }
+
+    const containerDepth = $from.depth - 1;
+    const containerNode = $from.node(containerDepth);
+    const currentIndex = $from.index(containerDepth);
+    const previousSibling = currentIndex > 0 ? containerNode.child(currentIndex - 1) : null;
+    const nextSibling =
+      currentIndex < containerNode.childCount - 1
+        ? containerNode.child(currentIndex + 1)
+        : null;
+
+    const hasAdjacentMatchingList =
+      previousSibling?.type?.name === targetListType ||
+      nextSibling?.type?.name === targetListType;
+
+    if (!hasAdjacentMatchingList) {
+      return null;
+    }
+
+    return $from.after($from.depth);
+  }, [editor]);
+
+  const insertSeparatedList = useCallback((targetListType, listType) => {
+    const insertPos = getSeparatedListInsertPosition(targetListType);
+    if (!insertPos) {
+      return false;
+    }
+
+    const listId = createUniqueListId();
+    const listNode = {
+      type: targetListType,
+      attrs: { listType, listId },
+      content: [
+        {
+          type: 'listItem',
+          content: [{ type: 'paragraph' }],
+        },
+      ],
+    };
+
+    editor
+      .chain()
+      .focus()
+      .insertContentAt(insertPos, listNode)
+      .setTextSelection(insertPos + 3)
+      .run();
+
+    return true;
+  }, [editor, getSeparatedListInsertPosition]);
+
   const applyBulletListType = (type) => {
+    if (insertSeparatedList('bulletList', type)) {
+      setBulletListTypeAnchorEl(null);
+      return;
+    }
+
     const nextListId = createUniqueListId();
     const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
     const shouldStartNewList = editor.state.selection.empty && inAnyList;
@@ -1102,6 +1173,11 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
   };
 
   const applyNumberedListType = (type) => {
+    if (insertSeparatedList('orderedList', type)) {
+      setNumberedListTypeAnchorEl(null);
+      return;
+    }
+
     const nextListId = createUniqueListId();
     const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
     const shouldStartNewList = editor.state.selection.empty && inAnyList;
@@ -1255,30 +1331,6 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><FormatAlignRight fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify"><FormatAlignJustify fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
-            {/* Visible bullet style selector */}
-            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-              {BULLET_LIST_TYPES.map((type) => (
-                <Tooltip key={type.value} title={type.label} arrow>
-                  <Chip
-                    label={
-                      <Typography sx={{ fontWeight: 800, minWidth: 14, textAlign: 'center' }}>
-                        {type.symbol}
-                      </Typography>
-                    }
-                    clickable
-                    color={currentBulletListType === type.value ? 'primary' : 'default'}
-                    variant={currentBulletListType === type.value ? 'filled' : 'outlined'}
-                    onClick={() => applyBulletListType(type.value)}
-                    sx={{
-                      height: 32,
-                      borderRadius: 1.5,
-                      '& .MuiChip-label': { px: 1.2, py: 0 },
-                    }}
-                  />
-                </Tooltip>
-              ))}
-            </Stack>
-            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
             {/* FIX 3: Bullet list with type selector */}
             <Tooltip title="Bullet List" arrow>
               <Box component="span" sx={{ display: 'inline-block' }}>
@@ -1288,7 +1340,9 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
                   color={editor.isActive('bulletList') ? 'primary' : 'default'}
                   sx={{ minWidth: 40, height: 40, borderRadius: 1, bgcolor: editor.isActive('bulletList') ? alpha(theme.palette.primary.main,0.1) : 'transparent' }}
                 >
-                  <FormatListBulleted fontSize="small"/>
+                  <Typography sx={{ fontWeight: 800, fontSize: '1rem', lineHeight: 1 }}>
+                    {getBulletSymbol(currentBulletListType)}
+                  </Typography>
                 </IconButton>
               </Box>
             </Tooltip>
@@ -1336,69 +1390,6 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
             >
               <PhotoCamera fontSize="small"/>
             </ToolbarButton>
-          </Box>
-            <Box
-              sx={{
-                position: 'sticky',
-                top: toolbarHeight || 58,
-                zIndex: 3,
-                px: 1.25,
-                py: 0.75,
-                borderBottom: 1,
-                borderColor: 'divider',
-                bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(25,118,210,0.05)',
-                backdropFilter: 'blur(8px)',
-                display: 'flex',
-                flexWrap: 'wrap',
-                gap: 0.75,
-                alignItems: 'center',
-              }}
-            >
-            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-              Bullets
-            </Typography>
-            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
-              {BULLET_LIST_TYPES.map((type) => (
-                <Chip
-                  key={`quick-${type.value}`}
-                  size="small"
-                  label={type.symbol}
-                  clickable
-                  color={currentBulletListType === type.value ? 'primary' : 'default'}
-                  variant={currentBulletListType === type.value ? 'filled' : 'outlined'}
-                  onClick={() => applyBulletListType(type.value)}
-                  sx={{ fontWeight: 800, minWidth: 38 }}
-                />
-              ))}
-            </Stack>
-            <Divider orientation="vertical" flexItem sx={{ mx: 0.75 }} />
-            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
-              Active style
-            </Typography>
-            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-              <Typography variant="caption">{currentFontLabel}</Typography>
-            </Box>
-            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper' }}>
-              <Typography variant="caption">{currentFontSize ? `${currentFontSize}px` : 'Default size'}</Typography>
-            </Box>
-            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', display: 'flex', alignItems: 'center', gap: 0.6 }}>
-              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: currentTextColor || '#111111', border: '1px solid', borderColor: 'divider' }} />
-              <Typography variant="caption">Text</Typography>
-            </Box>
-            <Box sx={{ px: 1, py: 0.4, borderRadius: 999, border: '1px solid', borderColor: 'divider', bgcolor: 'background.paper', display: 'flex', alignItems: 'center', gap: 0.6 }}>
-              <Box sx={{ width: 12, height: 12, borderRadius: '50%', bgcolor: currentBackgroundColor || 'transparent', border: '1px solid', borderColor: 'divider' }} />
-              <Typography variant="caption">Background</Typography>
-            </Box>
-            {(editor.isActive('orderedList') || editor.isActive('bulletList')) && (
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                List styles now start a fresh list block so previous bullets and numbering stay unchanged.
-              </Typography>
-            )}
-            {editor.isActive('table') && (
-              <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                Table editing is active. Use the toolbar buttons to add or remove rows and columns around the selected cell.
-              </Typography>
-            )}
           </Box>
           <ImageResizer editor={editor} />
         </>
@@ -1564,7 +1555,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
 
       <style>{`
         .tiptap-editor {
-          width: min(100%, 920px);
+          width: min(100%, 1020px);
           min-height: ${editorPageMinHeight};
           margin: 0 auto;
           outline:none;
