@@ -827,15 +827,34 @@ const NoteManager = () => {
             dividers
             sx={{
               p: 0,
-              display: 'flex',
-              flexDirection: 'column',
+              display: 'grid',
+              gridTemplateColumns: { xs: '1fr', lg: '360px minmax(0, 1fr)' },
+              gap: 0,
               overflow: 'hidden',
               minHeight: 0,
             }}
           >
-            <Box sx={{ px: 3, pt: 3, pb: 2, flexShrink: 0 }}>
-              <Grid container spacing={3}>
-                <Grid item xs={12}>
+            <Box
+              sx={{
+                borderRight: { xs: 'none', lg: 1 },
+                borderBottom: { xs: 1, lg: 'none' },
+                borderColor: 'divider',
+                p: 3,
+                overflowY: 'auto',
+                minHeight: 0,
+                bgcolor: 'background.default',
+              }}
+            >
+              <Stack spacing={3}>
+                <Box>
+                  <Typography variant="h6" fontWeight="bold" gutterBottom>
+                    Note Setup
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Configure the note title, where it belongs, and when it becomes visible.
+                  </Typography>
+                </Box>
+
                 <FastTextField
                   fullWidth
                   label="Note Title *"
@@ -846,21 +865,19 @@ const NoteManager = () => {
                   required
                   disabled={actionLoading}
                 />
-              </Grid>
 
-              <ContentAssignmentFields
-                categories={categories}
-                courses={courses}
-                chapters={chapters}
-                values={formData}
-                onChange={handleAssignmentChange}
-                disabled={actionLoading}
-                showCategory
-                showCourse
-                showChapter
-              />
+                <ContentAssignmentFields
+                  categories={categories}
+                  courses={courses}
+                  chapters={chapters}
+                  values={formData}
+                  onChange={handleAssignmentChange}
+                  disabled={actionLoading}
+                  showCategory
+                  showCourse
+                  showChapter
+                />
 
-              <Grid item xs={12}>
                 <SchedulePicker
                   enabled={scheduleEnabled}
                   onEnabledChange={(enabled) => {
@@ -875,24 +892,36 @@ const NoteManager = () => {
                   helperText="Pick when this note should become visible"
                   disabled={actionLoading}
                 />
-              </Grid>
-              </Grid>
+              </Stack>
             </Box>
 
             <Box
               sx={{
-                px: 3,
-                pb: 3,
-                flex: '1 1 auto',
-                minHeight: 0,
+                p: 3,
                 display: 'flex',
                 flexDirection: 'column',
+                minHeight: 0,
+                overflow: 'hidden',
               }}
             >
-              <Box sx={{ flexShrink: 0, pb: 1 }}>
-                <Typography variant="subtitle2" fontWeight="medium" gutterBottom>
-                  Content *
-                </Typography>
+              <Box
+                sx={{
+                  flexShrink: 0,
+                  pb: 2,
+                  display: 'flex',
+                  alignItems: 'flex-end',
+                  justifyContent: 'space-between',
+                  gap: 2,
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                    Content *
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    The toolbar stays fixed. Only the page surface scrolls while you write.
+                  </Typography>
+                </Box>
               </Box>
               <Paper
                 variant="outlined"
@@ -902,29 +931,19 @@ const NoteManager = () => {
                   boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
                   borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
                   p: 1,
-                  flex: '1 1 auto',
+                  flex: '1 1 0',
                   minHeight: 0,
                   overflow: 'hidden',
                 }}
               >
-                <Paper
-                  sx={{
-                    height: '100%',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    borderRadius: 2,
-                    overflow: 'hidden',
-                  }}
-                >
-                  <TiptapEditor
-                    value={formData.content}
-                    onChange={handleContentChange}
-                    placeholder="Start writing your note content here..."
-                    height={980}
-                    fullHeight
-                    readOnly={actionLoading}
-                  />
-                </Paper>
+                <TiptapEditor
+                  value={formData.content}
+                  onChange={handleContentChange}
+                  placeholder="Start writing your note content here..."
+                  height={980}
+                  fullHeight
+                  readOnly={actionLoading}
+                />
               </Paper>
             </Box>
           </DialogContent>

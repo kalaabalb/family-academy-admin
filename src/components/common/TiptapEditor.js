@@ -27,6 +27,7 @@ import {
   TextField,
   Button,
   Stack,
+  Chip,
   alpha,
   useTheme,
   Slider,
@@ -1113,7 +1114,9 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
   const currentFontLabel =
     FONT_FAMILIES.find((font) => font.value === currentFontFamily)?.label || 'Default font';
   const editorViewportHeight = Math.max(height, 940);
-  const editorPageMinHeight = Math.max(editorViewportHeight - 56, 1120);
+  const editorPageMinHeight = fullHeight
+    ? 'max(1120px, calc(100vh - 330px))'
+    : `${Math.max(editorViewportHeight - 56, 1120)}px`;
 
   if (!editor) return null;
 
@@ -1211,6 +1214,30 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('right').run()} active={editor.isActive({ textAlign: 'right' })} title="Align Right"><FormatAlignRight fontSize="small"/></ToolbarButton>
             <ToolbarButton onClick={() => editor.chain().focus().setTextAlign('justify').run()} active={editor.isActive({ textAlign: 'justify' })} title="Justify"><FormatAlignJustify fontSize="small"/></ToolbarButton>
             <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
+            {/* Visible bullet style selector */}
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              {BULLET_LIST_TYPES.map((type) => (
+                <Tooltip key={type.value} title={type.label} arrow>
+                  <Chip
+                    label={
+                      <Typography sx={{ fontWeight: 800, minWidth: 14, textAlign: 'center' }}>
+                        {type.symbol}
+                      </Typography>
+                    }
+                    clickable
+                    color={currentBulletListType === type.value ? 'primary' : 'default'}
+                    variant={currentBulletListType === type.value ? 'filled' : 'outlined'}
+                    onClick={() => applyBulletListType(type.value)}
+                    sx={{
+                      height: 32,
+                      borderRadius: 1.5,
+                      '& .MuiChip-label': { px: 1.2, py: 0 },
+                    }}
+                  />
+                </Tooltip>
+              ))}
+            </Stack>
+            <Divider orientation="vertical" flexItem sx={{ mx:1 }} />
             {/* FIX 3: Bullet list with type selector */}
             <Tooltip title="Bullet List" arrow>
               <Box component="span" sx={{ display: 'inline-block' }}>
@@ -1269,23 +1296,41 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
               <PhotoCamera fontSize="small"/>
             </ToolbarButton>
           </Box>
-          <Box
-            sx={{
-              position: 'sticky',
-              top: toolbarHeight || 58,
-              zIndex: 3,
-              px: 1.25,
-              py: 0.75,
-              borderBottom: 1,
-              borderColor: 'divider',
-              bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(25,118,210,0.05)',
-              backdropFilter: 'blur(8px)',
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: 0.75,
-              alignItems: 'center',
-            }}
-          >
+            <Box
+              sx={{
+                position: 'sticky',
+                top: toolbarHeight || 58,
+                zIndex: 3,
+                px: 1.25,
+                py: 0.75,
+                borderBottom: 1,
+                borderColor: 'divider',
+                bgcolor: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(25,118,210,0.05)',
+                backdropFilter: 'blur(8px)',
+                display: 'flex',
+                flexWrap: 'wrap',
+                gap: 0.75,
+                alignItems: 'center',
+              }}
+            >
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+              Bullets
+            </Typography>
+            <Stack direction="row" spacing={0.5} sx={{ alignItems: 'center', flexWrap: 'wrap' }}>
+              {BULLET_LIST_TYPES.map((type) => (
+                <Chip
+                  key={`quick-${type.value}`}
+                  size="small"
+                  label={type.symbol}
+                  clickable
+                  color={currentBulletListType === type.value ? 'primary' : 'default'}
+                  variant={currentBulletListType === type.value ? 'filled' : 'outlined'}
+                  onClick={() => applyBulletListType(type.value)}
+                  sx={{ fontWeight: 800, minWidth: 38 }}
+                />
+              ))}
+            </Stack>
+            <Divider orientation="vertical" flexItem sx={{ mx: 0.75 }} />
             <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
               Active style
             </Typography>
@@ -1456,13 +1501,16 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
 
       <Box
         sx={{
-          p: 2.5,
+          p: fullHeight ? 3 : 2.5,
           bgcolor: isDark ? 'grey.900' : 'background.paper',
           borderRadius: 2,
           flex: fullHeight ? '1 1 auto' : '0 0 auto',
           minHeight: fullHeight ? 0 : editorViewportHeight,
           maxHeight: fullHeight ? 'none' : editorViewportHeight,
           overflowY: 'auto',
+          overflowX: 'hidden',
+          display: 'flex',
+          alignItems: 'flex-start',
         }}
       >
         {isUploadingImage && (
@@ -1476,7 +1524,7 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
       <style>{`
         .tiptap-editor {
           width: min(100%, 920px);
-          min-height: ${fullHeight ? '100%' : `${editorPageMinHeight}px`};
+          min-height: ${editorPageMinHeight};
           margin: 0 auto;
           outline:none;
           line-height:1.7;
