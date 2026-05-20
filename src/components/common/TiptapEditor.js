@@ -184,6 +184,9 @@ const BULLET_SYMBOL_TO_TYPE = {
   '✔': 'check',
 };
 
+const createUniqueListId = () =>
+  `list-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
 const NumberedListExtension = Extension.create({
   name: 'numberedListType',
   addGlobalAttributes() {
@@ -191,6 +194,13 @@ const NumberedListExtension = Extension.create({
       {
         types: ['orderedList'],
         attributes: {
+          listId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-list-id') || null,
+            renderHTML: (attributes) => (
+              attributes.listId ? { 'data-list-id': attributes.listId } : {}
+            ),
+          },
           listType: {
             default: '1',
             parseHTML: (element) => {
@@ -212,8 +222,11 @@ const NumberedListExtension = Extension.create({
   },
   addCommands() {
     return {
-      setOrderedListType: (type) => ({ commands }) => {
-        return commands.updateAttributes('orderedList', { listType: type });
+      setOrderedListType: (type, listId) => ({ commands }) => {
+        return commands.updateAttributes('orderedList', {
+          listType: type,
+          ...(listId ? { listId } : {}),
+        });
       },
     };
   },
@@ -231,6 +244,13 @@ const BulletListTypeExtension = Extension.create({
       {
         types: ['bulletList'],
         attributes: {
+          listId: {
+            default: null,
+            parseHTML: (element) => element.getAttribute('data-list-id') || null,
+            renderHTML: (attributes) => (
+              attributes.listId ? { 'data-list-id': attributes.listId } : {}
+            ),
+          },
           listType: {
             default: 'filled-circle',
             parseHTML: (element) => {
@@ -249,14 +269,14 @@ const BulletListTypeExtension = Extension.create({
   },
   addCommands() {
     return {
-      setBulletListType: (type) => ({ commands, editor }) => {
+      setBulletListType: (type, listId) => ({ commands }) => {
         return commands.insertContent({
           type: 'bulletList',
-          attrs: { listType: type },
+          attrs: { listType: type, ...(listId ? { listId } : {}) },
           content: [{ type: 'listItem', content: [{ type: 'paragraph', content: [] }] }],
         });
       },
-      updateBulletListType: (type) => ({ commands, editor }) => {
+      updateBulletListType: (type, listId) => ({ commands, editor }) => {
         const { state } = editor;
         const { selection } = state;
         const { $from } = selection;
@@ -274,7 +294,10 @@ const BulletListTypeExtension = Extension.create({
         }
         
         if (node && node.type.name === 'bulletList') {
-          return commands.updateAttributes('bulletList', { listType: type });
+          return commands.updateAttributes('bulletList', {
+            listType: type,
+            ...(listId ? { listId } : {}),
+          });
         }
         return false;
       },
@@ -1050,8 +1073,10 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
   }, [editor]);
 
   const applyBulletListType = (type) => {
+    const nextListId = createUniqueListId();
     const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
     const shouldStartNewList = editor.state.selection.empty && inAnyList;
+    const wasActiveBulletList = editor.isActive('bulletList');
 
     if (shouldStartNewList) {
       startFreshListBlock();
@@ -1065,13 +1090,22 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
       editor.chain().focus().toggleBulletList().run();
     }
 
-    editor.chain().focus().updateAttributes('bulletList', { listType: type }).run();
+    editor
+      .chain()
+      .focus()
+      .updateAttributes('bulletList', {
+        listType: type,
+        listId: shouldStartNewList || !wasActiveBulletList ? nextListId : editor.getAttributes('bulletList')?.listId || nextListId,
+      })
+      .run();
     setBulletListTypeAnchorEl(null);
   };
 
   const applyNumberedListType = (type) => {
+    const nextListId = createUniqueListId();
     const inAnyList = editor.isActive('bulletList') || editor.isActive('orderedList');
     const shouldStartNewList = editor.state.selection.empty && inAnyList;
+    const wasActiveOrderedList = editor.isActive('orderedList');
 
     if (shouldStartNewList) {
       startFreshListBlock();
@@ -1085,7 +1119,14 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
       editor.chain().focus().toggleOrderedList().run();
     }
 
-    editor.chain().focus().updateAttributes('orderedList', { listType: type }).run();
+    editor
+      .chain()
+      .focus()
+      .updateAttributes('orderedList', {
+        listType: type,
+        listId: shouldStartNewList || !wasActiveOrderedList ? nextListId : editor.getAttributes('orderedList')?.listId || nextListId,
+      })
+      .run();
     setNumberedListTypeAnchorEl(null);
   };
 
