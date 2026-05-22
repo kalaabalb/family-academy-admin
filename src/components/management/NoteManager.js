@@ -948,6 +948,7 @@ const NoteManager = () => {
                 }}
               >
                 <TiptapEditor
+                  key={isEditing ? `note-edit-${selectedNote?.id || 'current'}` : 'note-create'}
                   value={formData.content}
                   onChange={handleContentChange}
                   placeholder="Start writing your note content here..."
