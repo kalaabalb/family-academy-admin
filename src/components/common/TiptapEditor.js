@@ -1555,7 +1555,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
 
       <style>{`
         .tiptap-editor {
-          width: min(100%, 1020px);
+          width: 100%;
+          max-width: 1080px;
           min-height: ${editorPageMinHeight};
           margin: 0 auto;
           outline:none;
@@ -1576,8 +1577,12 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
           margin: 0 0 1em 0;
           padding-left: 1.75em;
         }
+        .tiptap-editor li {
+          position: relative;
+        }
         .tiptap-editor li > p {
-          margin: 0.15em 0;
+          display: inline;
+          margin: 0;
         }
         .tiptap-editor img, .tiptap-editor .tiptap-image {
           max-width: 100%;
@@ -1602,14 +1607,16 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
           padding-left: 1.9em;
         }
         .tiptap-editor ul[data-list-type] > li {
-          position: relative;
+          padding-left: 0.15em;
         }
         .tiptap-editor ul[data-list-type] > li::before {
-          margin-left: -1.5em;
-          margin-right: 0.5em;
-          display: inline-block;
+          position: absolute;
+          left: -1.55em;
+          top: 0.02em;
+          display: block;
           width: 1.2em;
           font-weight: 700;
+          text-align: center;
         }
         .tiptap-editor ul[data-list-type="diamond"] > li::before { content: "❖"; }
         .tiptap-editor ul[data-list-type="hand"] > li::before { content: "☞"; }

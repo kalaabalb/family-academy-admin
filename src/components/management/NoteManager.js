@@ -32,10 +32,14 @@ import {
   Avatar,
   Divider,
   Stack,
+  Tabs,
+  Tab,
   CircularProgress,
   InputAdornment,
   LinearProgress,
   FormHelperText,
+  useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   FilterList,
@@ -63,6 +67,8 @@ import DetailRow from '../common/DetailRow';
 import { devError } from '../../utils/devLogger';
 
 const NoteManager = () => {
+  const theme = useTheme();
+  const useTabbedWorkspace = useMediaQuery(theme.breakpoints.down('lg'));
   const { user, isAdmin, isTeacher } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
   const { getCachedData, getCacheKey, invalidateCache } = useUsers();
@@ -109,6 +115,7 @@ const NoteManager = () => {
     release_date: null,
   });
   const [scheduleEnabled, setScheduleEnabled] = useState(false);
+  const [editorWorkspaceTab, setEditorWorkspaceTab] = useState('setup');
 
   const getFriendlyFormError = (error, fallback) =>
     error?.userMessage || error?.response?.data?.message || fallback;
@@ -296,6 +303,7 @@ const NoteManager = () => {
       release_date: null,
     });
     setScheduleEnabled(false);
+    setEditorWorkspaceTab('setup');
     setIsEditing(false);
     setSelectedNote(null);
   };
@@ -401,6 +409,7 @@ const NoteManager = () => {
       release_date: note.release_date ? new Date(note.release_date) : null,
     });
     setScheduleEnabled(!!note.release_date);
+    setEditorWorkspaceTab(useTabbedWorkspace ? 'editor' : 'setup');
     
     setFormOpen(true);
   };
@@ -642,6 +651,7 @@ const NoteManager = () => {
                 startIcon={<Add />}
                 onClick={() => {
                   resetForm();
+                  setEditorWorkspaceTab('setup');
                   setFormOpen(true);
                 }}
                 disabled={loading || actionLoading}
@@ -797,8 +807,8 @@ const NoteManager = () => {
           <DialogTitle
             sx={{
               m: 0,
-              p: 3,
-              pb: 2,
+              p: 2,
+              pb: 1.5,
               borderBottom: 1,
               borderColor: 'divider',
               flexShrink: 0,
@@ -828,18 +838,39 @@ const NoteManager = () => {
             sx={{
               p: 0,
               display: 'grid',
-              gridTemplateColumns: { xs: '1fr', lg: '360px minmax(0, 1fr)' },
+              gridTemplateColumns: useTabbedWorkspace ? '1fr' : { xs: '1fr', lg: '360px minmax(0, 1fr)' },
               gap: 0,
               overflow: 'hidden',
               minHeight: 0,
             }}
           >
+            {useTabbedWorkspace && (
+              <Box
+                sx={{
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  px: 2,
+                  pt: 1,
+                  flexShrink: 0,
+                }}
+              >
+                <Tabs
+                  value={editorWorkspaceTab}
+                  onChange={(_, nextValue) => setEditorWorkspaceTab(nextValue)}
+                  variant="fullWidth"
+                >
+                  <Tab value="setup" label="Note Setup" />
+                  <Tab value="editor" label="Editor" />
+                </Tabs>
+              </Box>
+            )}
             <Box
               sx={{
+                display: !useTabbedWorkspace || editorWorkspaceTab === 'setup' ? 'block' : 'none',
                 borderRight: { xs: 'none', lg: 1 },
                 borderBottom: { xs: 1, lg: 'none' },
                 borderColor: 'divider',
-                p: 3,
+                p: 2.25,
                 overflowY: 'auto',
                 minHeight: 0,
                 bgcolor: 'background.default',
@@ -897,8 +928,8 @@ const NoteManager = () => {
 
             <Box
               sx={{
-                p: 3,
-                display: 'flex',
+                display: !useTabbedWorkspace || editorWorkspaceTab === 'editor' ? 'flex' : 'none',
+                p: 2,
                 flexDirection: 'column',
                 minHeight: 0,
                 overflow: 'hidden',
@@ -911,7 +942,7 @@ const NoteManager = () => {
                   bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.900' : 'background.paper',
                   boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
                   borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
-                  p: 1,
+                  p: 0.75,
                   flex: '1 1 0',
                   minHeight: 0,
                   overflow: 'hidden',
@@ -931,8 +962,8 @@ const NoteManager = () => {
           
           <DialogActions
             sx={{
-              p: 3,
-              pt: 2,
+              p: 2,
+              pt: 1.25,
               borderTop: 1,
               borderColor: 'divider',
               flexShrink: 0,
