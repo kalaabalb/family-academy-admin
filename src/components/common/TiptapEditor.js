@@ -1543,6 +1543,11 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
           overflowX: 'hidden',
           display: 'flex',
           alignItems: 'flex-start',
+          '& > div': {
+            width: '100%',
+            display: 'flex',
+            justifyContent: 'center',
+          },
         }}
       >
         {isUploadingImage && (
@@ -1555,7 +1560,8 @@ const TiptapEditor = ({ value='', onChange, readOnly=false, height=400, fullHeig
 
       <style>{`
         .tiptap-editor {
-          width: 100%;
+          width: min(100%, 1080px);
+          min-width: min(100%, 820px);
           max-width: 1080px;
           min-height: ${editorPageMinHeight};
           margin: 0 auto;

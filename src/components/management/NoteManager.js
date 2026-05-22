@@ -837,8 +837,9 @@ const NoteManager = () => {
             dividers
             sx={{
               p: 0,
-              display: 'grid',
-              gridTemplateColumns: useTabbedWorkspace ? '1fr' : { xs: '1fr', lg: '360px minmax(0, 1fr)' },
+              display: useTabbedWorkspace ? 'flex' : 'grid',
+              flexDirection: useTabbedWorkspace ? 'column' : undefined,
+              gridTemplateColumns: useTabbedWorkspace ? undefined : { xs: '1fr', lg: '360px minmax(0, 1fr)' },
               gap: 0,
               overflow: 'hidden',
               minHeight: 0,
@@ -880,9 +881,6 @@ const NoteManager = () => {
                 <Box>
                   <Typography variant="h6" fontWeight="bold" gutterBottom>
                     Note Setup
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary">
-                    Configure the note title, where it belongs, and when it becomes visible.
                   </Typography>
                 </Box>
 
@@ -930,6 +928,7 @@ const NoteManager = () => {
               sx={{
                 display: !useTabbedWorkspace || editorWorkspaceTab === 'editor' ? 'flex' : 'none',
                 p: 2,
+                flex: '1 1 auto',
                 flexDirection: 'column',
                 minHeight: 0,
                 overflow: 'hidden',
