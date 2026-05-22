@@ -1064,9 +1064,51 @@ const NoteManager = () => {
                     overflow: 'auto',
                     boxShadow: (theme) => theme.palette.mode === 'dark' ? 3 : 1,
                     borderColor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'divider',
+                    '& .note-preview-content table': {
+                      width: '100%',
+                      borderCollapse: 'collapse',
+                      tableLayout: 'fixed',
+                      my: 2,
+                    },
+                    '& .note-preview-content th, & .note-preview-content td': {
+                      border: '1px solid',
+                      borderColor: 'divider',
+                      p: 1.25,
+                      verticalAlign: 'top',
+                      wordBreak: 'break-word',
+                    },
+                    '& .note-preview-content th': {
+                      bgcolor: (theme) => theme.palette.mode === 'dark' ? 'grey.800' : 'grey.100',
+                    },
+                    '& .note-preview-content ul[data-list-type]': {
+                      listStyle: 'none',
+                      pl: 0,
+                      ml: 0,
+                    },
+                    '& .note-preview-content ul[data-list-type] > li': {
+                      position: 'relative',
+                      pl: 4,
+                      mb: 0.75,
+                    },
+                    '& .note-preview-content ul[data-list-type="diamond"] > li::before': { content: '"❖"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="hand"] > li::before': { content: '"☞"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="dash"] > li::before': { content: '"—"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="hollow-circle"] > li::before': { content: '"○"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="square"] > li::before': { content: '"■"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="filled-circle"] > li::before': { content: '"●"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="double-arrow"] > li::before': { content: '"⇒"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ul[data-list-type="check"] > li::before': { content: '"✓"', position: 'absolute', left: 0, fontWeight: 700 },
+                    '& .note-preview-content ol[data-list-type="1"], & .note-preview-content ol:not([data-list-type])': { listStyleType: 'decimal' },
+                    '& .note-preview-content ol[data-list-type="a"]': { listStyleType: 'lower-alpha' },
+                    '& .note-preview-content ol[data-list-type="A"]': { listStyleType: 'upper-alpha' },
+                    '& .note-preview-content ol[data-list-type="i"]': { listStyleType: 'lower-roman' },
+                    '& .note-preview-content ol[data-list-type="I"]': { listStyleType: 'upper-roman' },
                   }}
                 >
-                  <div dangerouslySetInnerHTML={{ __html: previewNote.content || '' }} />
+                  <div
+                    className="note-preview-content"
+                    dangerouslySetInnerHTML={{ __html: previewNote.content || '' }}
+                  />
                 </Paper>
               </Box>
             )}
