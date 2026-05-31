@@ -1,6 +1,6 @@
 {
   "short_name": "Family Academy",
-  "name": "Family Academy Admin Panel",
+  "name": "Family Academy",
   "icons": [
     {
       "src": "family-academy-brand-logo.png",
@@ -11,6 +11,6 @@
   ],
   "start_url": ".",
   "display": "standalone",
-  "theme_color": "#1976d2",
-  "background_color": "#ffffff"
+  "theme_color": "#111927",
+  "background_color": "#111927"
 }

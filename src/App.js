@@ -14,6 +14,7 @@ import AdminDashboard from './components/dashboard/AdminDashboard';
 import TeacherDashboard from './components/dashboard/TeacherDashboard';
 import Layout from './components/common/Layout';
 import Loading from './components/common/Loading';
+import LandingPage from './components/landing/LandingPage';
 
 import getTheme from './theme';
 import ErrorBoundary from './components/common/ErrorBoundary';
@@ -85,7 +86,8 @@ const AppContent = () => {
                 <Routes>
                   <Route path="/login" element={<Login />} />
                   
-                  <Route path="/" element={
+                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/app" element={
                     <PrivateRoute>
                       <Navigate to="/dashboard" />
                     </PrivateRoute>
@@ -284,9 +286,7 @@ const AppContent = () => {
                 
                 {/* Fallback route */}
                 <Route path="*" element={
-                  <PrivateRoute>
-                    <Navigate to="/dashboard" />
-                  </PrivateRoute>
+                  <Navigate to="/" replace />
                 } />
                 </Routes>
               </UserProvider> {/* Close UserProvider */}
