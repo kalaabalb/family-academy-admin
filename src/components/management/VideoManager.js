@@ -852,6 +852,8 @@ const VideoManager = () => {
           title="Videos"
           rowKey="id"
           searchable={false}
+          defaultOrder="desc"
+          defaultOrderBy="release_date"
         />
 
         <Dialog

@@ -732,6 +732,8 @@ const ChapterManager = () => {
         onRefresh={handleRefresh}
         title={`Chapters`}
         rowKey="id"
+        defaultOrder="desc"
+        defaultOrderBy="release_date"
       />
 
       {/* Add/Edit Chapter Dialog */}

@@ -1199,6 +1199,8 @@ const ExamManager = () => {
           onRefresh={handleRefresh}
           title={`Exams `}
           rowKey="id"
+          defaultOrder="desc"
+          defaultOrderBy="created_at"
         />
       )}
 
@@ -1497,6 +1499,8 @@ const ExamManager = () => {
               onRefresh={() => fetchExamQuestions(selectedExam.id, true)}
               title="Exam Questions"
               rowKey="id"
+              defaultOrder="desc"
+              defaultOrderBy="created_at"
             />
           )}
         </Box>

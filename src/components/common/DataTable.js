@@ -135,20 +135,69 @@ const DataTable = ({
     );
   }, [data, search, columns]);
 
+  const getSortValue = (row, column) => {
+    if (typeof column?.sortValue === 'function') {
+      return column.sortValue(row);
+    }
+
+    if (column?.sortField) {
+      return row?.[column.sortField];
+    }
+
+    return row?.[column?.field];
+  };
+
+  const compareValues = (aValue, bValue, column) => {
+    const aEmpty = aValue === null || aValue === undefined || aValue === '';
+    const bEmpty = bValue === null || bValue === undefined || bValue === '';
+
+    if (aEmpty && bEmpty) return 0;
+    if (aEmpty) return 1;
+    if (bEmpty) return -1;
+
+    const aDateLike = column?.type === 'date' || column?.type === 'datetime';
+    const bDateLike = column?.type === 'date' || column?.type === 'datetime';
+
+    if (aDateLike || bDateLike) {
+      const aTime = new Date(aValue).getTime();
+      const bTime = new Date(bValue).getTime();
+      if (!Number.isNaN(aTime) && !Number.isNaN(bTime)) {
+        return aTime - bTime;
+      }
+    }
+
+    const aNumber = typeof aValue === 'number' ? aValue : Number(aValue);
+    const bNumber = typeof bValue === 'number' ? bValue : Number(bValue);
+    const aIsNumeric = Number.isFinite(aNumber) && String(aValue).trim() !== '';
+    const bIsNumeric = Number.isFinite(bNumber) && String(bValue).trim() !== '';
+
+    if (aIsNumeric && bIsNumeric) {
+      return aNumber - bNumber;
+    }
+
+    if (typeof aValue === 'boolean' || typeof bValue === 'boolean') {
+      return Number(Boolean(aValue)) - Number(Boolean(bValue));
+    }
+
+    return String(aValue).localeCompare(String(bValue), undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  };
+
   const sortedData = useMemo(() => {
     if (!orderBy) return filteredData;
+    const sortColumn = columns.find((column) => column.field === orderBy);
     
     return [...filteredData].sort((a, b) => {
-      const aValue = a[orderBy];
-      const bValue = b[orderBy];
-      
-      if (aValue == null || bValue == null) return 0;
-      
-      if (aValue < bValue) return order === 'asc' ? -1 : 1;
-      if (aValue > bValue) return order === 'asc' ? 1 : -1;
-      return 0;
+      const aValue = getSortValue(a, sortColumn);
+      const bValue = getSortValue(b, sortColumn);
+      const comparison = compareValues(aValue, bValue, sortColumn);
+
+      if (comparison === 0) return 0;
+      return order === 'asc' ? comparison : -comparison;
     });
-  }, [filteredData, orderBy, order]);
+  }, [filteredData, orderBy, order, columns]);
 
   const paginatedData = useMemo(
     () => (

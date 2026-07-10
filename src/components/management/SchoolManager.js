@@ -24,13 +24,16 @@ import {
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
+import usersApi from '../../api/users';
 import schoolsApi from '../../api/schools';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
 import FastTextField from '../common/FastTextField';
 import ManagementPageHeader from '../common/ManagementPageHeader';
 import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
 import {
+  renderCountChip,
   renderPrimaryCell,
   renderTableDate,
   renderTableId,
@@ -43,6 +46,7 @@ const SchoolManager = () => {
   const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [schools, setSchools] = useState([]);
+  const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(false);
   const [formOpen, setFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -66,13 +70,21 @@ const SchoolManager = () => {
     try {
       setLoading(true);
       
-      const data = await getCachedData(
-        schoolsCacheKey,
-        () => schoolsApi.getAllSchools(),
-        { forceRefresh }
-      );
+      const [schoolsData, usersData] = await Promise.all([
+        getCachedData(
+          schoolsCacheKey,
+          () => schoolsApi.getAllSchools(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'users-school-counts',
+          () => usersApi.getAllUsers({ limit: 1000 }),
+          { forceRefresh }
+        ),
+      ]);
       
-      setSchools(data || []);
+      setSchools(schoolsData || []);
+      setUsers(usersData || []);
     } catch (error) {
       devError('Failed to fetch schools:', error);
       showError('Failed to load schools');
@@ -179,6 +191,12 @@ const SchoolManager = () => {
       render: (value) => renderPrimaryCell({ primary: value }),
     },
     {
+      field: 'student_count',
+      headerName: 'Students',
+      width: 110,
+      render: (value) => renderCountChip(value, { color: 'success' }),
+    },
+    {
       field: 'created_at',
       headerName: 'Created At',
       width: 150,
@@ -192,13 +210,36 @@ const SchoolManager = () => {
     },
   ];
 
+  const enrichedSchools = useMemo(() => {
+    const studentCounts = new Map();
+
+    users.forEach((user) => {
+      if (!user?.school_id) return;
+      if (user.role && user.role !== 'student') return;
+      const schoolId = Number(user.school_id);
+      studentCounts.set(schoolId, (studentCounts.get(schoolId) || 0) + 1);
+    });
+
+    return schools
+      .map((school) => ({
+        ...school,
+        student_count: studentCounts.get(Number(school.id)) || 0,
+      }))
+      .sort((a, b) => {
+        if ((b.student_count || 0) !== (a.student_count || 0)) {
+          return (b.student_count || 0) - (a.student_count || 0);
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+  }, [schools, users]);
+
   const filteredSchools = useMemo(() => {
-    if (!searchQuery) return schools;
+    if (!searchQuery) return enrichedSchools;
     const query = searchQuery.toLowerCase();
-    return schools.filter((school) =>
+    return enrichedSchools.filter((school) =>
       school.name?.toLowerCase().includes(query)
     );
-  }, [schools, searchQuery]);
+  }, [enrichedSchools, searchQuery]);
 
   if (!isAdmin()) {
     return (
@@ -251,6 +292,14 @@ const SchoolManager = () => {
         placeholder="Search schools by name..."
       />
 
+      <SummaryStrip
+        items={[
+          { label: 'Total Schools', value: schools.length, color: 'primary' },
+          { label: 'Total Students', value: users.filter((user) => user.role === 'student' && user.school_id).length, color: 'success' },
+          { label: 'Top School', value: filteredSchools[0] ? `${filteredSchools[0].name} (${filteredSchools[0].student_count || 0})` : '-', color: 'secondary' },
+        ]}
+      />
+
       {/* Schools Table */}
       <DataTable
         showToolbar={false}
@@ -263,6 +312,8 @@ const SchoolManager = () => {
         title="Schools"
         rowKey="id"
         searchable={false}
+        defaultOrder="desc"
+        defaultOrderBy="student_count"
       />
 
       {/* Add/Edit School Dialog */}

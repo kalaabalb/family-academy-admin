@@ -582,6 +582,8 @@ const CourseManager = () => {
         title={`Courses `}
         rowKey="id"
         searchable={false}
+        defaultOrder="desc"
+        defaultOrderBy="created_at"
       />
 
       {/* Add/Edit Course Dialog */}

@@ -507,7 +507,20 @@ const UserManager = () => {
   };
 
   const filteredUsers = useMemo(() => {
-    return users.filter(user => {
+    const rankedUsers = [...users]
+      .map((entry) => ({
+        ...entry,
+        progress_score: (Number(entry.streak_count) || 0) * 1000 + Math.round(Number(entry.total_study_time) || 0),
+      }))
+      .sort((a, b) => {
+        if (b.progress_score !== a.progress_score) return b.progress_score - a.progress_score;
+        if ((Number(b.streak_count) || 0) !== (Number(a.streak_count) || 0)) {
+          return (Number(b.streak_count) || 0) - (Number(a.streak_count) || 0);
+        }
+        return (Number(b.total_study_time) || 0) - (Number(a.total_study_time) || 0);
+      });
+
+    return rankedUsers.filter(user => {
       if (filters.school_id && user.school_id !== parseInt(filters.school_id)) return false;
       if (filters.status && user.account_status !== filters.status) return false;
       if (filters.parent_linked === 'yes' && !user.parent_linked) return false;
@@ -593,6 +606,16 @@ const UserManager = () => {
       headerName: 'Streak',
       width: 80,
       render: (value) => renderCountChip(value, { color: 'warning' }),
+    },
+    {
+      field: 'progress_score',
+      headerName: 'Progress',
+      width: 150,
+      render: (value, row) => renderPrimaryCell({
+        primary: `Score ${Number(value) || 0}`,
+        secondary: `Streak ${row.streak_count || 0} • ${Math.round((row.total_study_time || 0) / 60)}h`,
+        primaryWeight: 700,
+      }),
     },
     {
       field: 'total_study_time',
@@ -750,7 +773,7 @@ const UserManager = () => {
           { label: 'Unpaid', value: stats.unpaid, color: 'warning' },
           { label: 'Expired', value: stats.expired, color: 'error' },
           { label: 'Parents Linked', value: stats.withParents, color: 'info' },
-          { label: 'Average Streak', value: stats.avgStreak, color: 'secondary' },
+          { label: 'Top Learner', value: filteredUsers[0] ? `${filteredUsers[0].username} (${filteredUsers[0].streak_count || 0})` : '-', color: 'secondary' },
         ]}
       />
 
@@ -852,6 +875,8 @@ const UserManager = () => {
         onRefresh={handleRefresh}
         title="Users"
         rowKey="id"
+        defaultOrder="desc"
+        defaultOrderBy="progress_score"
       />
 
       {/* User Details Modal */}

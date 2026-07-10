@@ -4,9 +4,15 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
 import teachersApi from '../../api/teachers';
 import coursesApi from '../../api/courses';
+import notesApi from '../../api/notes';
+import chaptersApi from '../../api/chapters';
+import videosApi from '../../api/videos';
+import examsApi from '../../api/exams';
+import questionsApi from '../../api/questions';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
 import FastTextField from '../common/FastTextField';
+import SummaryStrip from '../common/SummaryStrip';
 import {
   renderCountChip,
   renderPrimaryCell,
@@ -113,20 +119,59 @@ const TeacherManager = () => {
       setLoading(true);
       setError('');
       
-      const teachersData = await getCachedData(
-        teachersCacheKey,
-        () => teachersApi.getAllTeachers(),
-        { forceRefresh }
-      );
-      
-      const coursesData = await getCachedData(
-        coursesCacheKey,
-        () => coursesApi.getAllCourses(),
-        { forceRefresh }
-      );
+      const [teachersData, coursesData, notesData, chaptersData, videosData, examsData, questionsData] = await Promise.all([
+        getCachedData(
+          teachersCacheKey,
+          () => teachersApi.getAllTeachers(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          coursesCacheKey,
+          () => coursesApi.getAllCourses(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'teacher-content-notes',
+          () => notesApi.getAllNotes(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'teacher-content-chapters',
+          () => chaptersApi.getAllChapters(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'teacher-content-videos',
+          () => videosApi.getAllVideos(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'teacher-content-exams',
+          () => examsApi.getAllExams(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          'teacher-content-questions',
+          () => questionsApi.getAllQuestions(),
+          { forceRefresh }
+        ),
+      ]);
       
       const teachersList = teachersData || [];
       const coursesList = coursesData || [];
+      const contentCountByTeacher = new Map();
+
+      const addContent = (teacherId, amount = 1) => {
+        if (!teacherId) return;
+        const id = Number(teacherId);
+        contentCountByTeacher.set(id, (contentCountByTeacher.get(id) || 0) + amount);
+      };
+
+      (notesData || []).forEach((item) => addContent(item.created_by));
+      (chaptersData || []).forEach((item) => addContent(item.created_by));
+      (videosData || []).forEach((item) => addContent(item.uploaded_by ?? item.created_by));
+      (examsData || []).forEach((item) => addContent(item.created_by));
+      (questionsData || []).forEach((item) => addContent(item.created_by));
       
       // Enrich teachers with course names
       const enrichedTeachers = teachersList.map(teacher => {
@@ -146,10 +191,18 @@ const TeacherManager = () => {
           assigned_course_ids: assignedCourseIds,
           assigned_course_names: assignedCourses.join(', ') || 'No courses assigned',
           course_count: assignedCourseIds.length,
+          material_count: contentCountByTeacher.get(Number(teacher.id)) || 0,
         };
       });
       
-      setTeachers(enrichedTeachers);
+      const sortedTeachers = [...enrichedTeachers].sort((a, b) => {
+        if ((b.material_count || 0) !== (a.material_count || 0)) {
+          return (b.material_count || 0) - (a.material_count || 0);
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+
+      setTeachers(sortedTeachers);
       setCourses(coursesList);
       
     } catch (err) {
@@ -429,6 +482,16 @@ const TeacherManager = () => {
       render: (value) => renderCountChip(value, { color: 'primary' }),
     },
     {
+      field: 'material_count',
+      headerName: 'Materials',
+      width: 120,
+      render: (value, row) => renderPrimaryCell({
+        primary: `${value || 0} items`,
+        secondary: row.course_count ? `${row.course_count} courses` : 'No courses',
+        primaryWeight: 700,
+      }),
+    },
+    {
       field: 'assigned_course_names',
       headerName: 'Assigned Courses',
       flex: 1,
@@ -558,6 +621,14 @@ const TeacherManager = () => {
         </Stack>
       </Box>
 
+      <SummaryStrip
+        items={[
+          { label: 'Total Teachers', value: teachers.length, color: 'primary' },
+          { label: 'Active', value: teachers.filter((teacher) => teacher.status === 'active').length, color: 'success' },
+          { label: 'Top Creator', value: teachers[0] ? `${teachers[0].name} (${teachers[0].material_count || 0})` : '-', color: 'secondary' },
+        ]}
+      />
+
       {/* Loading Indicator */}
       {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
 
@@ -605,6 +676,8 @@ const TeacherManager = () => {
         onRefresh={handleRefresh}
         title={`Teachers `}
         rowKey="id"
+        defaultOrder="desc"
+        defaultOrderBy="material_count"
       />
 
       {/* Add/Edit Teacher Dialog */}

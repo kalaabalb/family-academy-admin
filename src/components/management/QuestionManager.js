@@ -977,6 +977,8 @@ const QuestionManager = () => {
         onRefresh={handleRefresh}
         title={`Practice Questions `}
         rowKey="id"
+        defaultOrder="desc"
+        defaultOrderBy="created_at"
       />
 
       <Dialog

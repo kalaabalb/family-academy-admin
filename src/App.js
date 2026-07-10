@@ -85,8 +85,8 @@ const AppContent = () => {
               <UserProvider> {/* Add this wrapper */}
                 <Routes>
                   <Route path="/login" element={<Login />} />
-                  
-                  <Route path="/" element={<LandingPage />} />
+                  <Route path="/" element={<Navigate to="/login" replace />} />
+                  <Route path="/landingpage" element={<LandingPage />} />
                   <Route path="/app" element={
                     <PrivateRoute>
                       <Navigate to="/dashboard" />

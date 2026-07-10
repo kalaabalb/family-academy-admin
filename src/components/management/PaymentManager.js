@@ -126,6 +126,17 @@ const PaymentManager = () => {
     setRejectionReason('');
   };
 
+  const getReviewPriority = (payment) => {
+    const createdAt = new Date(payment?.created_at || 0).getTime() || 0;
+    const statusWeight = payment?.status === 'pending'
+      ? 2e13
+      : payment?.status === 'verified'
+        ? 1e13
+        : 0;
+
+    return statusWeight + createdAt;
+  };
+
   // Cache keys
   const paymentsCacheKey = 'payments';
   const categoriesCacheKey = 'categories';
@@ -155,18 +166,24 @@ const PaymentManager = () => {
       );
       
       const paymentsList = paymentsData || [];
-      setPayments(paymentsList);
-      setFilteredPayments(paymentsList);
-      setVisiblePayments(paymentsList.slice(0, 10));
+      const enrichedPayments = paymentsList.map((payment) => ({
+        ...payment,
+        review_priority: getReviewPriority(payment),
+      }));
+      const sortedPayments = [...enrichedPayments].sort((a, b) => b.review_priority - a.review_priority);
+
+      setPayments(enrichedPayments);
+      setFilteredPayments(sortedPayments);
+      setVisiblePayments(sortedPayments.slice(0, 10));
       setCategories(categoriesData || []);
       setUsers(usersData || []);
       
       // Calculate stats
-      const total = paymentsList.length;
-      const pending = paymentsList.filter(p => p.status === 'pending').length;
-      const verified = paymentsList.filter(p => p.status === 'verified').length;
-      const rejected = paymentsList.filter(p => p.status === 'rejected').length;
-      const totalAmount = paymentsList
+      const total = enrichedPayments.length;
+      const pending = enrichedPayments.filter(p => p.status === 'pending').length;
+      const verified = enrichedPayments.filter(p => p.status === 'verified').length;
+      const rejected = enrichedPayments.filter(p => p.status === 'rejected').length;
+      const totalAmount = enrichedPayments
         .filter(p => p.status === 'verified')
         .reduce((sum, p) => sum + parseFloat(p.amount || 0), 0);
       
@@ -231,7 +248,15 @@ const PaymentManager = () => {
       filtered = filtered.filter(p => new Date(p.created_at) <= toDate);
     }
     
-    setFilteredPayments(filtered);
+    const prioritized = filtered
+      .map((payment) => ({
+        ...payment,
+        review_priority: getReviewPriority(payment),
+      }))
+      .sort((a, b) => b.review_priority - a.review_priority);
+
+    setFilteredPayments(prioritized);
+    setVisiblePayments(prioritized.slice(0, 10));
   };
 
   const handleFilterChange = (e) => {
@@ -483,6 +508,16 @@ const PaymentManager = () => {
       render: (value, row) => renderPrimaryCell({
         primary: row.user_username || 'Unknown User',
         secondary: row.user_id ? `User ID: ${row.user_id}` : null,
+      }),
+    },
+    {
+      field: 'review_priority',
+      headerName: 'Queue',
+      width: 140,
+      render: (value, row) => renderPrimaryCell({
+        primary: row.status === 'pending' ? 'Pending first' : row.status === 'verified' ? 'Verified' : 'Rejected',
+        secondary: `Created ${formatDate(row.created_at)}`,
+        primaryWeight: 700,
       }),
     },
     {
@@ -814,13 +849,13 @@ const PaymentManager = () => {
         data={filteredPayments}
         loading={loading}
         onRefresh={handleRefresh}
-        title="Payments"
-        rowKey="id"
-        searchable={false}
-        onVisibleRowsChange={setVisiblePayments}
-        defaultOrderBy="created_at"
-        defaultOrder="desc"
-      />
+      title="Payments"
+      rowKey="id"
+      searchable={false}
+      onVisibleRowsChange={setVisiblePayments}
+      defaultOrderBy="review_priority"
+      defaultOrder="desc"
+    />
 
       {/* View Details Dialog */}
       <Dialog

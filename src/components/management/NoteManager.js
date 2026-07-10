@@ -788,6 +788,8 @@ const NoteManager = () => {
           onRefresh={handleRefresh}
           title={`Notes `}
           rowKey="id"
+          defaultOrder="desc"
+          defaultOrderBy="release_date"
         />
 
         <Dialog
