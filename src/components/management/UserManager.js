@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
@@ -117,6 +117,183 @@ const formatStatusLabel = (value) =>
         .replace(/\b\w/g, (char) => char.toUpperCase())
     : '-';
 
+const DETAIL_CACHE_TTL = 5 * 60 * 1000;
+
+const getRowTimestamp = (row) => {
+  const raw =
+    row?.last_accessed ||
+    row?.updated_at ||
+    row?.completed_at ||
+    row?.earned_at ||
+    row?.created_at ||
+    row?.date ||
+    null;
+  const value = raw ? new Date(raw).getTime() : 0;
+  return Number.isFinite(value) ? value : 0;
+};
+
+const formatAchievementType = (achievementType) =>
+  String(achievementType || '')
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase())
+    .trim() || 'Achievement';
+
+const buildProgressFallback = (rows, user = {}) => {
+  const normalizedRows = Array.isArray(rows) ? rows : [];
+  const sortedRows = [...normalizedRows].sort((a, b) => getRowTimestamp(b) - getRowTimestamp(a));
+  const totalQuestionsAttempted = sortedRows.reduce((sum, row) => sum + (Number(row.questions_attempted) || 0), 0);
+  const totalQuestionsCorrect = sortedRows.reduce((sum, row) => sum + (Number(row.questions_correct) || 0), 0);
+  const completedChapters = sortedRows.filter((row) => row.completed).length;
+  const averageVideoProgress = sortedRows.length
+    ? sortedRows.reduce((sum, row) => sum + (Number(row.video_progress) || 0), 0) / sortedRows.length
+    : 0;
+  const videoMilestones = sortedRows.filter((row) => (Number(row.video_progress) || 0) >= 90).length;
+  const notesViewed = sortedRows.filter((row) => row.notes_viewed).length;
+  const categoryCount = new Set(sortedRows.map((row) => row.course_id || row.chapter_id).filter(Boolean)).size;
+
+  return {
+    chapters: sortedRows,
+    recent_activity: sortedRows.slice(0, 10),
+    stats: {
+      total_chapters_started: sortedRows.length,
+      chapters_completed: completedChapters,
+      total_questions_attempted: totalQuestionsAttempted,
+      total_questions_correct: totalQuestionsCorrect,
+      study_time_hours: Math.round(((Number(user.total_study_time) || 0) / 60) * 10) / 10,
+      average_video_progress: Math.round(averageVideoProgress * 100) / 100,
+      videos_completed: videoMilestones,
+      notes_viewed: notesViewed,
+      categories_started: categoryCount,
+    },
+  };
+};
+
+const buildSyntheticAchievements = ({ user = {}, progress = {}, streaks = {}, exams = [], payments = [], subscriptions = [] }) => {
+  const achievements = [];
+  const seen = new Set();
+  const addAchievement = (achievement_type, title, message, earned_at = new Date().toISOString()) => {
+    const key = `${achievement_type}:${title}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    achievements.push({
+      id: `synthetic-${achievement_type}-${title}`,
+      achievement_type,
+      title,
+      message,
+      earned_at,
+      synthetic: true,
+    });
+  };
+
+  const streakCount = Number(user.streak_count) || 0;
+  const studyTimeHours = Math.round(((Number(user.total_study_time) || 0) / 60) * 10) / 10;
+  const totalStarted = Number(progress?.stats?.total_chapters_started) || 0;
+  const completedChapters = Number(progress?.stats?.chapters_completed) || 0;
+  const questionsAttempted = Number(progress?.stats?.total_questions_attempted) || 0;
+  const questionsCorrect = Number(progress?.stats?.total_questions_correct) || 0;
+  const examCount = Array.isArray(exams) ? exams.length : 0;
+  const passedExams = Array.isArray(exams)
+    ? exams.filter((exam) => {
+        const score = Number(exam.score) || 0;
+        const passMark = Number(exam.passing_score) || 50;
+        return score >= passMark;
+      }).length
+    : 0;
+  const paymentCount = Array.isArray(payments) ? payments.length : 0;
+  const activeSubscriptions = Array.isArray(subscriptions)
+    ? subscriptions.filter((subscription) => subscription.status === 'active').length
+    : 0;
+  const streakHistoryCount = Array.isArray(streaks?.history) ? streaks.history.length : 0;
+  const bestScore = Array.isArray(exams)
+    ? exams.reduce((max, exam) => Math.max(max, Number(exam.score) || 0), 0)
+    : 0;
+
+  if (paymentCount > 0) {
+    addAchievement(
+      'first_payment',
+      'First Payment',
+      'The learner has completed at least one payment.'
+    );
+  }
+  if (paymentCount >= 3) {
+    addAchievement(
+      'payment_milestone',
+      'Committed Learner',
+      'Three or more payments show continued commitment.'
+    );
+  }
+  if (activeSubscriptions > 0) {
+    addAchievement(
+      'active_subscription',
+      'Active Access',
+      'The learner currently has an active subscription.'
+    );
+  }
+  if (streakCount >= 3) {
+    addAchievement('streak_3', '3-Day Streak', 'Three consecutive learning days achieved.');
+  }
+  if (streakCount >= 7) {
+    addAchievement('streak_7', '7-Day Streak', 'A full week of consistent learning.');
+  }
+  if (streakCount >= 14) {
+    addAchievement('streak_14', '14-Day Streak', 'Two weeks of steady learning.');
+  }
+  if (streakCount >= 30) {
+    addAchievement('streak_30', '30-Day Streak', 'A month of uninterrupted learning.');
+  }
+  if (studyTimeHours >= 5) {
+    addAchievement('study_hours_5', 'Five Study Hours', 'The learner has invested at least five hours.');
+  }
+  if (studyTimeHours >= 20) {
+    addAchievement('study_hours_20', 'Twenty Study Hours', 'The learner has invested at least twenty hours.');
+  }
+  if (totalStarted > 0) {
+    addAchievement('chapter_started', 'First Chapter Started', 'Learning activity has started.');
+  }
+  if (completedChapters > 0) {
+    addAchievement('chapter_completed', 'Chapter Finisher', 'At least one chapter has been completed.');
+  }
+  if (questionsAttempted > 0) {
+    addAchievement('practice_started', 'Practice Solver', 'Practice questions have been attempted.');
+  }
+  if (questionsAttempted >= 25) {
+    addAchievement('practice_milestone', 'Question Explorer', 'A strong amount of practice has been completed.');
+  }
+  if (questionsAttempted > 0 && questionsCorrect >= Math.max(10, Math.floor(questionsAttempted * 0.7))) {
+    addAchievement('accuracy', 'Sharp Accuracy', 'The learner is answering practice questions well.');
+  }
+  if (Array.isArray(progress?.recent_activity) && progress.recent_activity.some((row) => (Number(row.video_progress) || 0) >= 90)) {
+    addAchievement('video_completion', 'Video Finisher', 'At least one video is nearly or fully completed.');
+  }
+  if (Array.isArray(progress?.recent_activity) && progress.recent_activity.some((row) => row.notes_viewed)) {
+    addAchievement('note_reader', 'Note Reader', 'Notes have been opened and read.');
+  }
+  if (examCount > 0) {
+    addAchievement('exam_taker', 'Exam Taker', 'The learner has taken at least one exam.');
+  }
+  if (passedExams > 0) {
+    addAchievement('exam_pass', 'Exam Passer', 'At least one exam has been passed.');
+  }
+  if (bestScore >= 80) {
+    addAchievement('high_score', 'High Scorer', 'An exam score of 80 or above was reached.');
+  }
+  if (streakHistoryCount > 0) {
+    addAchievement('streak_history', 'Streak Tracker', 'The streak history is being recorded.');
+  }
+  if (user.parent_linked) {
+    addAchievement('parent_linked', 'Parent Connected', 'This learner is linked to a parent account.');
+  }
+
+  return achievements
+    .sort((a, b) => getRowTimestamp(b) - getRowTimestamp(a))
+    .map((achievement, index) => ({
+      ...achievement,
+      id: achievement.id || `synthetic-${index}`,
+      title: achievement.title || formatAchievementType(achievement.achievement_type),
+      message: achievement.message || 'Achievement earned.',
+    }));
+};
+
 const UserManager = () => {
   const { isAdmin, user } = useAuth();
   const { success: showSuccess, error: showError } = useNotification();
@@ -129,7 +306,9 @@ const UserManager = () => {
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadingDetails, setLoadingDetails] = useState(false);
+  const [detailsRefreshing, setDetailsRefreshing] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [parentReportLoading, setParentReportLoading] = useState(false);
   
   const [selectedUser, setSelectedUser] = useState(null);
   const [userDetails, setUserDetails] = useState(null);
@@ -140,6 +319,8 @@ const UserManager = () => {
   
   // Track which user is being viewed (for button fading)
   const [viewingUserId, setViewingUserId] = useState(null);
+  const userDetailsCacheRef = useRef(new Map());
+  const detailRequestIdRef = useRef(0);
   
   // Expanded sections for progress
   const [expandedChapters, setExpandedChapters] = useState({});
@@ -254,12 +435,31 @@ const UserManager = () => {
     }
   }, [isAdmin, fetchData]);
 
-  const loadUserDetails = async (userId) => {
-    try {
-      setLoadingDetails(true);
-      setViewingUserId(userId); // Set which user is being viewed
+  const loadUserDetails = useCallback(async (userId, options = {}) => {
+    const { forceRefresh = false } = options;
+    const requestId = detailRequestIdRef.current + 1;
+    detailRequestIdRef.current = requestId;
+    const cachedEntry = userDetailsCacheRef.current.get(userId);
+    const cachedDetails = cachedEntry?.details || null;
+    const shouldUseCache = Boolean(cachedDetails) && !forceRefresh;
+
+    if (shouldUseCache) {
+      setUserDetails(cachedDetails);
+      setSelectedUser(userId);
       setViewModalOpen(true);
-      
+      setTabValue(0);
+      setSubscriptionsPage(0);
+      setPaymentsPage(0);
+      setExamsPage(0);
+      setProgressPage(0);
+      setDetailsRefreshing(true);
+    } else {
+      setLoadingDetails(true);
+      setViewingUserId(userId);
+      setViewModalOpen(true);
+    }
+
+    try {
       const [
         userRes,
         userProgressRes,
@@ -267,90 +467,81 @@ const UserManager = () => {
         userAchievementsRes,
       ] = await Promise.allSettled([
         usersApi.getUserDetails(userId),
-        usersApi.getUserProgress(userId).catch(err => {
-          return { data: { data: {} } };
-        }),
-        usersApi.getUserStreak(userId).catch(err => {
-          return { data: { data: { history: [] } } };
-        }),
-        usersApi.getUserAchievements(userId).catch(err => {
-          return { data: { data: [] } };
-        }),
+        usersApi.getUserProgress(userId).catch(() => ({ data: { data: {} } })),
+        usersApi.getUserStreak(userId).catch(() => ({ data: { data: { history: [] } } })),
+        usersApi.getUserAchievements(userId).catch(() => ({ data: { data: [] } })),
       ]);
-      
+
       let userData = {};
       let subscriptionsData = [];
       let paymentsData = [];
       let examsData = [];
-      
+      let detailProgressRows = [];
+
       if (userRes.status === 'fulfilled') {
         const responseData = userRes.value.data.data || {};
-        
+
         userData = responseData.user || responseData || {};
-        
-        if (responseData.subscriptions && Array.isArray(responseData.subscriptions)) {
-          subscriptionsData = responseData.subscriptions;
-        }
-        
-        if (responseData.payments && Array.isArray(responseData.payments)) {
-          paymentsData = responseData.payments;
-        }
-        
-        if (responseData.exams && Array.isArray(responseData.exams)) {
-          examsData = responseData.exams;
-        }
+        subscriptionsData = Array.isArray(responseData.subscriptions) ? responseData.subscriptions : [];
+        paymentsData = Array.isArray(responseData.payments) ? responseData.payments : [];
+        examsData = Array.isArray(responseData.exams) ? responseData.exams : [];
+        detailProgressRows = Array.isArray(responseData.progress) ? responseData.progress : [];
       }
-      
+
       let progressData = {
         chapters: [],
+        recent_activity: [],
         stats: {
           total_chapters_started: 0,
           chapters_completed: 0,
           total_questions_attempted: 0,
-          study_time_hours: 0
-        }
+          total_questions_correct: 0,
+          study_time_hours: Math.round((Number(userData.total_study_time) || 0) / 60),
+        },
       };
-      
+
       if (userProgressRes.status === 'fulfilled') {
         const progressResponse = userProgressRes.value.data.data || {};
-        
+
         if (progressResponse.chapters && Array.isArray(progressResponse.chapters)) {
           progressData = progressResponse;
         } else if (progressResponse.data && progressResponse.data.chapters) {
           progressData = progressResponse.data;
         } else if (Array.isArray(progressResponse)) {
-          progressData.chapters = progressResponse;
-          progressData.stats = {
-            total_chapters_started: progressResponse.length,
-            chapters_completed: progressResponse.filter(c => c.completed).length,
-            total_questions_attempted: progressResponse.reduce((sum, c) => sum + (c.questions_attempted || 0), 0),
-            study_time_hours: Math.round((userData.total_study_time || 0) / 60)
-          };
+          progressData = buildProgressFallback(progressResponse, userData);
         } else if (progressResponse.overall || progressResponse.recent_activity) {
-          progressData.stats = {
-            total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
-            chapters_completed: progressResponse.overall?.chapters_completed || 0,
-            total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
-            study_time_hours: progressResponse.overall?.study_time_hours || 0
+          progressData = {
+            chapters: Array.isArray(progressResponse.recent_activity) ? progressResponse.recent_activity : [],
+            recent_activity: Array.isArray(progressResponse.recent_activity) ? progressResponse.recent_activity : [],
+            stats: {
+              total_chapters_started: progressResponse.overall?.total_chapters_attempted || 0,
+              chapters_completed: progressResponse.overall?.chapters_completed || 0,
+              total_questions_attempted: progressResponse.overall?.total_questions_attempted || 0,
+              total_questions_correct: progressResponse.overall?.total_questions_correct || 0,
+              study_time_hours: progressResponse.overall?.study_time_hours || 0,
+            },
           };
-          
-          if (progressResponse.recent_activity && Array.isArray(progressResponse.recent_activity)) {
-            progressData.chapters = progressResponse.recent_activity;
-          }
         }
-        
       }
-      
+
+      if (
+        (!progressData.chapters || progressData.chapters.length === 0) &&
+        detailProgressRows.length > 0
+      ) {
+        progressData = buildProgressFallback(detailProgressRows, userData);
+      }
+
       let streakData = { history: [] };
       if (userStreakRes.status === 'fulfilled') {
         streakData = userStreakRes.value.data.data || streakData;
       }
-      
+
       let achievementsData = [];
       if (userAchievementsRes.status === 'fulfilled') {
-        achievementsData = userAchievementsRes.value.data.data || [];
+        const rawAchievements = userAchievementsRes.value.data.data || [];
+        achievementsData = Array.isArray(rawAchievements) ? rawAchievements : [];
       }
-      
+
       if (paymentsData.length === 0) {
         try {
           const paymentsRes = await paymentsApi.getAllPayments({ user_id: userId });
@@ -358,9 +549,10 @@ const UserManager = () => {
             paymentsData = paymentsRes.data.data.filter(p => p.user_id === parseInt(userId));
           }
         } catch (err) {
+          void err;
         }
       }
-      
+
       if (examsData.length === 0) {
         try {
           const examsRes = await examResultsApi.getExamResultsByUser(userId);
@@ -373,7 +565,27 @@ const UserManager = () => {
           }
         }
       }
-      
+
+      const syntheticAchievements = buildSyntheticAchievements({
+        user: userData,
+        progress: progressData,
+        streaks: streakData,
+        exams: examsData,
+        payments: paymentsData,
+        subscriptions: subscriptionsData,
+      });
+
+      const mergedAchievements = [
+        ...achievementsData,
+        ...syntheticAchievements,
+      ].reduce((acc, achievement) => {
+        const key = `${achievement.achievement_type || 'achievement'}:${achievement.title || ''}`;
+        if (!acc.some((item) => `${item.achievement_type || 'achievement'}:${item.title || ''}` === key)) {
+          acc.push(achievement);
+        }
+        return acc;
+      }, []).sort((a, b) => getRowTimestamp(b) - getRowTimestamp(a));
+
       const details = {
         user: userData,
         subscriptions: subscriptionsData,
@@ -381,9 +593,18 @@ const UserManager = () => {
         exams: examsData,
         progress: progressData,
         streaks: streakData,
-        achievements: achievementsData,
+        achievements: mergedAchievements,
       };
-      
+
+      if (detailRequestIdRef.current !== requestId) {
+        return;
+      }
+
+      userDetailsCacheRef.current.set(userId, {
+        details,
+        loadedAt: Date.now(),
+      });
+
       setUserDetails(details);
       setSelectedUser(userId);
       setTabValue(0);
@@ -391,18 +612,55 @@ const UserManager = () => {
       setPaymentsPage(0);
       setExamsPage(0);
       setProgressPage(0);
-      
+
+      if (details.user?.parent_linked && (details.progress?.stats?.total_chapters_started > 0 || details.achievements.length > 0)) {
+        const reportKey = `fa_admin_last_parent_progress_sent_${userId}`;
+        const lastSentAt = Number(localStorage.getItem(reportKey) || 0);
+        const reportIsFresh = lastSentAt && (Date.now() - lastSentAt) < (12 * 60 * 60 * 1000);
+
+        if (!reportIsFresh) {
+          usersApi.sendProgressToParent(userId)
+            .then(() => {
+              localStorage.setItem(reportKey, String(Date.now()));
+            })
+            .catch((err) => {
+              devError('Failed to send parent progress report:', err);
+            });
+        }
+      }
     } catch (err) {
       if (process.env.NODE_ENV !== 'production') {
         devError('Failed to load user details:', err);
       }
-      showError('Failed to load user details');
-      setViewModalOpen(false);
+
+      if (!cachedDetails && detailRequestIdRef.current === requestId) {
+        showError('Failed to load user details');
+        setViewModalOpen(false);
+      }
     } finally {
-      setLoadingDetails(false);
-      setViewingUserId(null); // Clear viewing user after loading
+      if (detailRequestIdRef.current === requestId) {
+        setLoadingDetails(false);
+        setDetailsRefreshing(false);
+        setViewingUserId(null);
+      }
     }
-  };
+  }, [showError]);
+
+  const handleSendProgressToParent = useCallback(async () => {
+    const targetUserId = userDetails?.user?.id;
+    if (!targetUserId || !userDetails?.user?.parent_linked) return;
+
+    try {
+      setParentReportLoading(true);
+      await usersApi.sendProgressToParent(targetUserId);
+      showSuccess('Progress report sent to parent');
+    } catch (err) {
+      devError('Failed to send progress to parent:', err);
+      showError(getFriendlyActionError(err, 'Failed to send progress to parent'));
+    } finally {
+      setParentReportLoading(false);
+    }
+  }, [showError, showSuccess, userDetails]);
 
   const toggleChapterExpand = (chapterId) => {
     setExpandedChapters(prev => ({
@@ -930,6 +1188,9 @@ const UserManager = () => {
             </DialogTitle>
 
             <DialogContent sx={{ p: 0 }}>
+              {detailsRefreshing && !loadingDetails && (
+                <LinearProgress sx={{ height: 3 }} />
+              )}
               <Tabs
                 value={tabValue}
                 onChange={(e, newValue) => setTabValue(newValue)}
@@ -993,6 +1254,16 @@ const UserManager = () => {
                               color="info"
                               size="small"
                             />
+                            <Button
+                              size="small"
+                              variant="outlined"
+                              startIcon={<CloudUpload />}
+                              onClick={handleSendProgressToParent}
+                              disabled={parentReportLoading}
+                              sx={{ ml: 1, borderRadius: 2 }}
+                            >
+                              {parentReportLoading ? 'Sending...' : 'Send Progress'}
+                            </Button>
                           </Box>
                         )}
                       </Card>

@@ -274,6 +274,14 @@ const DeviceManager = () => {
       render: (value) => renderTableId(value),
     },
     {
+      field: 'source_table',
+      headerName: 'Source',
+      width: 110,
+      render: (value, row) => renderTableChip(value === 'users' ? 'User Record' : 'Device Record', {
+        color: value === 'users' ? 'primary' : 'info',
+      }),
+    },
+    {
       field: 'device_id',
       headerName: 'Device ID',
       width: 200,
@@ -288,7 +296,10 @@ const DeviceManager = () => {
       width: 150,
       render: (value, row) => renderPrimaryCell({
         primary: value || 'Unknown',
-        secondary: row.user_id ? `User ID: ${row.user_id}` : null,
+        secondary: [
+          row.user_id ? `User ID: ${row.user_id}` : null,
+          row.source_id ? `Record ID: ${row.source_id}` : null,
+        ].filter(Boolean).join(' • '),
       }),
     },
     {
