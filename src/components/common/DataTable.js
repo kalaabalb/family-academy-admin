@@ -76,6 +76,7 @@ const DataTable = ({
   const [order, setOrder] = useState(defaultOrder);
   const [orderBy, setOrderBy] = useState(defaultOrderBy || columns[0]?.field || '');
   const tableContainerRef = useRef(null);
+  const lastStableDataRef = useRef(Array.isArray(data) ? data : []);
   const dragStateRef = useRef({
     isDragging: false,
     startX: 0,
@@ -99,7 +100,7 @@ const DataTable = ({
 
   const handleSelectAll = () => {
     if (onSelect) {
-      const allIds = filteredData().slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
+      const allIds = filteredData.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage)
         .map(row => row[rowKey]);
       
       if (selectedRows.length === allIds.length) {
@@ -119,11 +120,25 @@ const DataTable = ({
     }
   };
 
+  useEffect(() => {
+    if (!loading) {
+      lastStableDataRef.current = Array.isArray(data) ? data : [];
+    }
+  }, [data, loading]);
+
+  const sourceData = useMemo(() => {
+    const currentData = Array.isArray(data) ? data : [];
+    if (loading && currentData.length === 0 && lastStableDataRef.current.length > 0) {
+      return lastStableDataRef.current;
+    }
+    return currentData;
+  }, [data, loading]);
+
   const filteredData = useMemo(() => {
-    if (!search) return data;
+    if (!search) return sourceData;
     
     const searchLower = search.toLowerCase();
-    return data.filter((row) =>
+    return sourceData.filter((row) =>
       columns.some((col) => {
         if (col.searchable === false) return false;
         
@@ -133,7 +148,7 @@ const DataTable = ({
         return String(value).toLowerCase().includes(searchLower);
       })
     );
-  }, [data, search, columns]);
+  }, [sourceData, search, columns]);
 
   const getSortValue = (row, column) => {
     if (typeof column?.sortValue === 'function') {
@@ -491,7 +506,7 @@ const DataTable = ({
       )}
 
       {/* Optional inline loading bar for table-only loading states */}
-      {showInlineLoadingBar && loading && data.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
+      {showInlineLoadingBar && loading && sourceData.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
 
       {/* Table */}
       <TableContainer
@@ -589,7 +604,7 @@ const DataTable = ({
           </TableHead>
           
           <TableBody>
-            {loading && data.length === 0 ? (
+            {loading && sourceData.length === 0 ? (
               <TableRow>
                 <TableCell 
                   colSpan={columns.length + (selectable ? 1 : 0) + ((onView || onEdit || onDelete) ? 1 : 0)} 
