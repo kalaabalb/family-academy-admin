@@ -114,3 +114,51 @@ export const renderCountChip = (value, options = {}) => {
     />
   );
 };
+
+export const renderCurrencyCell = (value, options = {}) => {
+  const {
+    currencyLabel = 'Birr',
+    symbol = 'Br',
+    fallback = '-',
+    color = 'text.primary',
+  } = options;
+
+  if (value === null || value === undefined || value === '') {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        {fallback}
+      </Typography>
+    );
+  }
+
+  const safeValue = Number(value);
+  const formatted = Number.isFinite(safeValue)
+    ? new Intl.NumberFormat('en-ET', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }).format(safeValue)
+    : String(value);
+
+  return (
+    <Box sx={{ display: 'inline-flex', alignItems: 'center', gap: 0.75, whiteSpace: 'nowrap' }}>
+      <Typography
+        variant="caption"
+        fontWeight={800}
+        sx={{
+          px: 0.75,
+          py: 0.25,
+          borderRadius: 999,
+          border: '1px solid',
+          borderColor: 'divider',
+          color: 'text.secondary',
+          lineHeight: 1,
+        }}
+      >
+        {symbol}
+      </Typography>
+      <Typography variant="body2" fontWeight={700} color={color}>
+        {formatted} {currencyLabel}
+      </Typography>
+    </Box>
+  );
+};

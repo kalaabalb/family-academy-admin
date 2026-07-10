@@ -18,11 +18,12 @@ export const useAuth = () => {
 
 // Session timeout values
 const SESSION_TIMEOUT_SHORT = 30 * 60 * 1000; // 30 minutes
-const SESSION_TIMEOUT_LONG = 7 * 24 * 60 * 60 * 1000; // 7 days
+const SESSION_TIMEOUT_LONG = 24 * 60 * 60 * 1000; // 24 hours
 const STORAGE_KEYS = {
   token: 'fa_admin_token',
   user: 'fa_admin_user',
   refreshToken: 'fa_admin_refresh_token',
+  loginAt: 'fa_admin_login_at',
 };
 
 // Cookie options
@@ -99,6 +100,7 @@ export const AuthProvider = ({ children }) => {
 
     storageTarget.setItem(STORAGE_KEYS.token, token);
     storageTarget.setItem(STORAGE_KEYS.user, JSON.stringify(userToSave));
+    storageTarget.setItem(STORAGE_KEYS.loginAt, String(Date.now()));
     if (refreshToken) {
       storageTarget.setItem(STORAGE_KEYS.refreshToken, refreshToken);
     } else {
@@ -121,8 +123,10 @@ export const AuthProvider = ({ children }) => {
     // Clear any old storage
     localStorage.removeItem('token');
     localStorage.removeItem('user');
+    localStorage.removeItem(STORAGE_KEYS.loginAt);
     sessionStorage.removeItem('token');
     sessionStorage.removeItem('user');
+    sessionStorage.removeItem(STORAGE_KEYS.loginAt);
   }, []);
 
   // Clear all auth data
@@ -133,9 +137,11 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem(STORAGE_KEYS.token);
     localStorage.removeItem(STORAGE_KEYS.user);
     localStorage.removeItem(STORAGE_KEYS.refreshToken);
+    localStorage.removeItem(STORAGE_KEYS.loginAt);
     sessionStorage.removeItem(STORAGE_KEYS.token);
     sessionStorage.removeItem(STORAGE_KEYS.user);
     sessionStorage.removeItem(STORAGE_KEYS.refreshToken);
+    sessionStorage.removeItem(STORAGE_KEYS.loginAt);
     cacheManager.clear();
   }, []);
 
@@ -180,37 +186,39 @@ export const AuthProvider = ({ children }) => {
     const initializeAuth = async () => {
       try {
         const cookieData = loadUserFromCookies();
-        
-        if (cookieData) {
-          setUser(cookieData.user);
-          setIsAuthenticated(true);
-          const rememberMe = !!localStorage.getItem(STORAGE_KEYS.token);
-          resetSessionTimeout(rememberMe);
+
+        if (!cookieData) {
+          return;
         }
+
+        const loginAtRaw =
+          localStorage.getItem(STORAGE_KEYS.loginAt) ||
+          sessionStorage.getItem(STORAGE_KEYS.loginAt) ||
+          Cookies.get(STORAGE_KEYS.loginAt);
+        const loginAt = Number(loginAtRaw || 0);
+
+        if (loginAt && Date.now() - loginAt > SESSION_TIMEOUT_LONG) {
+          clearAuthData();
+          return;
+        }
+
+        await authApi.validateToken();
+
+        setUser(cookieData.user);
+        setIsAuthenticated(true);
+        const rememberMe = !!localStorage.getItem(STORAGE_KEYS.token);
+        resetSessionTimeout(rememberMe);
       } catch (error) {
         logAuthError('Error loading user:', error);
         clearAuthData();
+        setUser(null);
+        setIsAuthenticated(false);
       } finally {
         setLoading(false);
       }
     };
 
-    initializeAuth();
-
-    const validateExistingSession = async () => {
-      const cookieData = loadUserFromCookies();
-      if (!cookieData) {
-        return;
-      }
-
-      try {
-        await authApi.validateToken();
-      } catch (error) {
-        finalizeLogout();
-      }
-    };
-
-    void validateExistingSession();
+    void initializeAuth();
 
     const handleForcedLogout = () => {
       finalizeLogout();

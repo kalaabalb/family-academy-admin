@@ -14,6 +14,7 @@ import SummaryStrip from '../common/SummaryStrip';
 import DetailRow from '../common/DetailRow';
 import {
   formatLabel,
+  renderCurrencyCell,
   renderPrimaryCell,
   renderTableChip,
   renderTableDate,
@@ -57,10 +58,8 @@ import {
   Person,
   Category as CategoryIcon,
   AccessTime,
-  MonetizationOn,
   ArrowUpward,
   ArrowDownward,
-  AttachMoney,
   AccountBalance,
   CreditCard,
   Close,
@@ -488,9 +487,9 @@ const PaymentManager = () => {
       case 'credit_card':
         return <CreditCard fontSize="small" />;
       case 'mobile_money':
-        return <MonetizationOn fontSize="small" />;
+        return <Payment fontSize="small" />;
       default:
-        return <AttachMoney fontSize="small" />;
+        return <Payment fontSize="small" />;
     }
   };
 
@@ -533,11 +532,7 @@ const PaymentManager = () => {
       field: 'amount',
       headerName: 'Amount',
       width: 100,
-      render: (value) => (
-        <Typography variant="body2" fontWeight="bold" color="success.main">
-          {formatAmount(value)}
-        </Typography>
-      ),
+      render: (value) => renderCurrencyCell(value, { color: 'success.main' }),
     },
     {
       field: 'payment_type',

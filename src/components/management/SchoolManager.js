@@ -177,6 +177,15 @@ const SchoolManager = () => {
     fetchSchools(true);
   };
 
+  const getSchoolMatchKey = (item) => {
+    if (item?.school_id !== undefined && item?.school_id !== null && item?.school_id !== '') {
+      return `id:${Number(item.school_id)}`;
+    }
+
+    const schoolName = String(item?.school_name || '').trim().toLowerCase();
+    return schoolName ? `name:${schoolName}` : null;
+  };
+
   const columns = [
     {
       field: 'id',
@@ -214,16 +223,18 @@ const SchoolManager = () => {
     const studentCounts = new Map();
 
     users.forEach((user) => {
-      if (!user?.school_id) return;
-      if (user.role && user.role !== 'student') return;
-      const schoolId = Number(user.school_id);
-      studentCounts.set(schoolId, (studentCounts.get(schoolId) || 0) + 1);
+      const key = getSchoolMatchKey(user);
+      if (!key) return;
+      studentCounts.set(key, (studentCounts.get(key) || 0) + 1);
     });
 
     return schools
       .map((school) => ({
         ...school,
-        student_count: studentCounts.get(Number(school.id)) || 0,
+        student_count:
+          studentCounts.get(`id:${Number(school.id)}`) ||
+          studentCounts.get(`name:${String(school.name || '').trim().toLowerCase()}`) ||
+          0,
       }))
       .sort((a, b) => {
         if ((b.student_count || 0) !== (a.student_count || 0)) {
@@ -295,7 +306,7 @@ const SchoolManager = () => {
       <SummaryStrip
         items={[
           { label: 'Total Schools', value: schools.length, color: 'primary' },
-          { label: 'Total Students', value: users.filter((user) => user.role === 'student' && user.school_id).length, color: 'success' },
+          { label: 'Total Students', value: users.filter((user) => getSchoolMatchKey(user)).length, color: 'success' },
           { label: 'Top School', value: filteredSchools[0] ? `${filteredSchools[0].name} (${filteredSchools[0].student_count || 0})` : '-', color: 'secondary' },
         ]}
       />

@@ -4,13 +4,16 @@ import { useNotification } from '../../contexts/NotificationContext';
 import { useUsers } from '../../contexts/UserContext';
 import categoriesApi from '../../api/categories';
 import coursesApi from '../../api/courses';
+import subscriptionsApi from '../../api/subscriptions';
 import DataTable from '../common/DataTable';
 import ConfirmDialog from '../common/ConfirmDialog';
 import FastTextField from '../common/FastTextField';
 import ManagementPageHeader from '../common/ManagementPageHeader';
 import ManagementSearchToolbar from '../common/ManagementSearchToolbar';
+import SummaryStrip from '../common/SummaryStrip';
 import {
   renderCountChip,
+  renderCurrencyCell,
   renderPrimaryCell,
   renderTableChip,
   renderTableDate,
@@ -48,7 +51,6 @@ import {
   Refresh,
   CheckCircle,
   Pending,
-  MonetizationOn,
   AccessTime,
   Book,
   Image,
@@ -64,6 +66,7 @@ const CategoryManager = () => {
   const { getCachedData, getCacheKey, invalidateCache } = useUsers();
   
   const [categories, setCategories] = useState([]);
+  const [subscriptions, setSubscriptions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [error, setError] = useState('');
@@ -95,6 +98,7 @@ const CategoryManager = () => {
   // Cache keys
   const categoriesCacheKey = 'categories';
   const coursesCacheKey = 'courses';
+  const subscriptionsCacheKey = 'subscriptions';
 
   const fetchData = useCallback(async (forceRefresh = false) => {
     try {
@@ -102,20 +106,27 @@ const CategoryManager = () => {
       setError('');
       
       // Use cached data
-      const categoriesData = await getCachedData(
-        categoriesCacheKey,
-        () => categoriesApi.getAllCategories(),
-        { forceRefresh }
-      );
-      
-      const coursesData = await getCachedData(
-        coursesCacheKey,
-        () => coursesApi.getAllCourses(),
-        { forceRefresh }
-      );
+      const [categoriesData, coursesData, subscriptionsData] = await Promise.all([
+        getCachedData(
+          categoriesCacheKey,
+          () => categoriesApi.getAllCategories(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          coursesCacheKey,
+          () => coursesApi.getAllCourses(),
+          { forceRefresh }
+        ),
+        getCachedData(
+          subscriptionsCacheKey,
+          () => subscriptionsApi.getAllSubscriptions(),
+          { forceRefresh }
+        ),
+      ]);
       
       const categoryList = categoriesData || [];
       const courseList = coursesData || [];
+      const subscriptionList = subscriptionsData || [];
       
       // Get course counts for each category
       const categoryCourseCounts = {};
@@ -124,13 +135,33 @@ const CategoryManager = () => {
           categoryCourseCounts[course.category_id] = (categoryCourseCounts[course.category_id] || 0) + 1;
         }
       });
+
+      const categorySubscriptionCounts = {};
+      subscriptionList.forEach((subscription) => {
+        if (subscription?.category_id && subscription?.status === 'active') {
+          categorySubscriptionCounts[subscription.category_id] =
+            (categorySubscriptionCounts[subscription.category_id] || 0) + 1;
+        }
+      });
       
       const enrichedCategories = categoryList.map(category => ({
         ...category,
         course_count: categoryCourseCounts[category.id] || 0,
+        subscription_count: categorySubscriptionCounts[category.id] || 0,
       }));
       
-      setCategories(enrichedCategories);
+      const sortedCategories = [...enrichedCategories].sort((a, b) => {
+        if ((b.subscription_count || 0) !== (a.subscription_count || 0)) {
+          return (b.subscription_count || 0) - (a.subscription_count || 0);
+        }
+        if ((b.course_count || 0) !== (a.course_count || 0)) {
+          return (b.course_count || 0) - (a.course_count || 0);
+        }
+        return String(a.name || '').localeCompare(String(b.name || ''));
+      });
+      
+      setCategories(sortedCategories);
+      setSubscriptions(subscriptionList);
       
     } catch (err) {
       devError('Failed to fetch data:', err);
@@ -309,8 +340,11 @@ const CategoryManager = () => {
   };
 
   const formatPrice = (price) => {
-    if (!price && price !== 0) return '-';
-    return `${parseFloat(price).toLocaleString()} Birr`;
+    if (price === null || price === undefined || price === '') return '-';
+    return `${parseFloat(price).toLocaleString('en-ET', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })} Birr`;
   };
 
   // Filter categories based on search
@@ -322,6 +356,8 @@ const CategoryManager = () => {
       (cat.description && cat.description.toLowerCase().includes(query))
     );
   });
+
+  const topCategory = filteredCategories[0];
 
   const columns = [
     {
@@ -366,14 +402,9 @@ const CategoryManager = () => {
       field: 'price',
       headerName: 'Price',
       width: 120,
-      render: (value, row) => (
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          <MonetizationOn sx={{ fontSize: 16, color: 'text.secondary' }} />
-          <Typography variant="body2">
-            {row.status === 'active' ? formatPrice(value) : '-'}
-          </Typography>
-        </Box>
-      ),
+      render: (value, row) => (row.status === 'active'
+        ? renderCurrencyCell(value)
+        : renderCurrencyCell(null)),
     },
     {
       field: 'billing_cycle',
@@ -389,6 +420,12 @@ const CategoryManager = () => {
       headerName: 'Courses',
       width: 100,
       render: (value) => renderCountChip(value, { color: 'primary' }),
+    },
+    {
+      field: 'subscription_count',
+      headerName: 'Subscribers',
+      width: 120,
+      render: (value) => renderCountChip(value, { color: 'success' }),
     },
     {
       field: 'created_at',
@@ -501,6 +538,15 @@ const CategoryManager = () => {
         placeholder="Search categories by name or description..."
       />
 
+      <SummaryStrip
+        items={[
+          { label: 'Total Categories', value: categories.length, color: 'primary' },
+          { label: 'Active', value: categories.filter((category) => category.status === 'active').length, color: 'success' },
+          { label: 'Subscriptions', value: subscriptions.length, color: 'info' },
+          { label: 'Top Category', value: topCategory ? `${topCategory.name} (${topCategory.subscription_count || 0})` : '-', color: 'secondary' },
+        ]}
+      />
+
       {/* Categories Table */}
       <DataTable
         showToolbar={false}
@@ -511,6 +557,8 @@ const CategoryManager = () => {
         title={`Categories `}
         rowKey="id"
         searchable={false}
+        defaultOrder="desc"
+        defaultOrderBy="subscription_count"
       />
 
       {/* Add/Edit Category Dialog */}
