@@ -500,10 +500,11 @@ const Layout = ({ children }) => {
           overflowX: 'hidden',
         }}
       >
-        <Box
-          sx={{
-            bgcolor: 'background.paper',
-            borderRadius: 2,
+      <Box
+        key={location.pathname}
+        sx={{
+          bgcolor: 'background.paper',
+          borderRadius: 2,
             boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
             p: 3,
             minHeight: 'calc(100vh - 100px)',

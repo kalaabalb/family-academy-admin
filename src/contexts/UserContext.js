@@ -1,5 +1,5 @@
 import React, { createContext, useState, useContext, useCallback, useRef } from 'react';
-import { cacheManager, generateCacheKey, resolveCacheTTL } from '../api/utils';
+import { cacheManager, generateCacheKey, resolveCacheTTL, withTimeout } from '../api/utils';
 import { devError } from '../utils/devLogger';
 
 // Create context
@@ -20,6 +20,7 @@ export const UserProvider = ({ children }) => {
   const [selectedUser, setSelectedUser] = useState(null);
   const [loading, setLoading] = useState(false);
   const pendingRequestsRef = useRef(new Map());
+  const defaultRequestTimeout = 45000;
   
   // ============== CACHE MANAGEMENT ==============
   
@@ -36,6 +37,7 @@ export const UserProvider = ({ children }) => {
       ttl,
       preserveShape = false,
       staleOnError = true,
+      requestTimeout = defaultRequestTimeout,
     } = options;
     const effectiveTTL = resolveCacheTTL(key, ttl);
     
@@ -44,13 +46,26 @@ export const UserProvider = ({ children }) => {
       return cached ?? (preserveShape ? null : []);
     }
 
-    if (pendingRequestsRef.current.has(key)) {
-      return pendingRequestsRef.current.get(key);
+    const existingPending = pendingRequestsRef.current.get(key);
+    if (existingPending && !forceRefresh) {
+      const isStale =
+        Number.isFinite(existingPending.startedAt) &&
+        Number.isFinite(existingPending.requestTimeout) &&
+        Date.now() - existingPending.startedAt > existingPending.requestTimeout;
+
+      if (!isStale) {
+        return existingPending.promise;
+      }
+
+      pendingRequestsRef.current.delete(key);
+    } else if (forceRefresh && existingPending) {
+      pendingRequestsRef.current.delete(key);
     }
     
+    const requestToken = Symbol(key);
     const requestPromise = (async () => {
       try {
-        const response = await fetchFn();
+        const response = await withTimeout(fetchFn(), requestTimeout, key);
         let data = response;
 
         if (response?.data?.data) {
@@ -73,13 +88,21 @@ export const UserProvider = ({ children }) => {
 
         return preserveShape ? null : [];
       } finally {
-        pendingRequestsRef.current.delete(key);
+        const currentPending = pendingRequestsRef.current.get(key);
+        if (currentPending?.token === requestToken) {
+          pendingRequestsRef.current.delete(key);
+        }
       }
     })();
 
-    pendingRequestsRef.current.set(key, requestPromise);
+    pendingRequestsRef.current.set(key, {
+      promise: requestPromise,
+      startedAt: Date.now(),
+      requestTimeout,
+      token: requestToken,
+    });
     return requestPromise;
-  }, []);
+  }, [defaultRequestTimeout]);
 
   /**
    * Invalidate cache for specific keys or patterns

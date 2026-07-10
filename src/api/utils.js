@@ -204,6 +204,39 @@ export const generateId = () => {
 };
 
 /**
+ * Resolve a promise with a timeout guard.
+ * @param {Promise<any>} promise - Promise to guard
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @param {string} label - Debug label for the timed-out operation
+ * @returns {Promise<any>}
+ */
+export const withTimeout = (promise, timeoutMs = 45000, label = 'request') => {
+  const duration = Number(timeoutMs);
+  if (!Number.isFinite(duration) || duration <= 0) {
+    return promise;
+  }
+
+  let timeoutId;
+  const timeoutPromise = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      const error = new Error(`Timed out while waiting for ${label}.`);
+      error.code = 'ETIMEDOUT';
+      error.userMessage = 'The request took too long. Please try again.';
+      reject(error);
+    }, duration);
+  });
+
+  return Promise.race([
+    Promise.resolve(promise).finally(() => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    }),
+    timeoutPromise,
+  ]);
+};
+
+/**
  * Check if user has permission
  * @param {Object} user - User object
  * @param {string} permission - Permission to check
@@ -450,7 +483,7 @@ export const generateCacheKey = (base, params = {}) => {
  * @returns {Object} { data, loading, error, refresh, setData }
  */
 export const useCache = (cacheKey, fetchFn, options = {}) => {
-  const { ttl, initialData = null, onError } = options;
+  const { ttl, initialData = null, onError, requestTimeout = 45000 } = options;
   
   const [data, setData] = useState(initialData);
   const [loading, setLoading] = useState(false);
@@ -467,7 +500,7 @@ export const useCache = (cacheKey, fetchFn, options = {}) => {
     setError(null);
 
     try {
-      const result = await fetchFn();
+      const result = await withTimeout(fetchFn(), requestTimeout, cacheKey);
       // Ensure we always store an array for list data
       const processedResult = Array.isArray(result) ? result : (result || []);
       cacheManager.set(cacheKey, processedResult, ttl);
@@ -478,7 +511,7 @@ export const useCache = (cacheKey, fetchFn, options = {}) => {
     } finally {
       setLoading(false);
     }
-  }, [cacheKey, fetchFn, ttl, onError]);
+  }, [cacheKey, fetchFn, ttl, onError, requestTimeout]);
 
   const refresh = useCallback(() => {
     return loadData(true);
