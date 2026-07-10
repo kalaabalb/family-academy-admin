@@ -68,7 +68,13 @@ const DashboardPage = () => {
 const AppContent = () => {
   const { mode } = useThemeMode();
   const theme = useMemo(() => getTheme(mode), [mode]);
-  const routeLoadingFallback = null;
+  const routeLoadingFallback = (
+    <Loading
+      type="page"
+      title="Opening page"
+      message="Loading this section and preparing the workspace."
+    />
+  );
 
   return (
     <ErrorBoundary>
