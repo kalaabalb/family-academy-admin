@@ -1,5 +1,114 @@
 import React from 'react';
-import { Box, CircularProgress, Typography, Skeleton, Fade, LinearProgress } from '@mui/material';
+import { Box, Typography, Fade, Skeleton } from '@mui/material';
+
+const CreativeLoader = ({ size = 56, label = 'Loading' }) => (
+  <Box
+    data-testid="creative-loader"
+    aria-label={label}
+    role="img"
+    sx={{
+      position: 'relative',
+      width: size,
+      height: size,
+      mx: 'auto',
+      flexShrink: 0,
+    }}
+  >
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        borderRadius: '50%',
+        border: '2px solid',
+        borderColor: 'rgba(25, 118, 210, 0.18)',
+        borderTopColor: 'primary.main',
+        borderRightColor: 'secondary.main',
+        animation: 'loadingSpin 1.45s linear infinite',
+        boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.04) inset',
+        '@keyframes loadingSpin': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 8,
+        borderRadius: '50%',
+        border: '2px dashed',
+        borderColor: 'rgba(244, 67, 54, 0.22)',
+        animation: 'loadingSpinReverse 2.4s linear infinite',
+        '@keyframes loadingSpinReverse': {
+          '0%': { transform: 'rotate(360deg)' },
+          '100%': { transform: 'rotate(0deg)' },
+        },
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 18,
+        borderRadius: '50%',
+        bgcolor: 'background.paper',
+        boxShadow: '0 0 0 1px rgba(25, 118, 210, 0.08) inset, 0 8px 24px rgba(15, 23, 42, 0.12)',
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 22,
+        borderRadius: '50%',
+        bgcolor: 'primary.main',
+        opacity: 0.2,
+        animation: 'loadingPulse 1.8s ease-in-out infinite',
+        '@keyframes loadingPulse': {
+          '0%, 100%': { transform: 'scale(0.86)', opacity: 0.18 },
+          '50%': { transform: 'scale(1)', opacity: 0.38 },
+        },
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        top: '50%',
+        left: '50%',
+        width: size * 0.18,
+        height: size * 0.18,
+        borderRadius: '50%',
+        bgcolor: 'primary.main',
+        boxShadow: '0 0 18px rgba(25, 118, 210, 0.45)',
+        transform: 'translate(-50%, -50%)',
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        borderRadius: '50%',
+        animation: 'loadingOrbit 1.8s linear infinite',
+        '@keyframes loadingOrbit': {
+          '0%': { transform: 'rotate(0deg)' },
+          '100%': { transform: 'rotate(360deg)' },
+        },
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          top: 2,
+          left: '50%',
+          width: size * 0.13,
+          height: size * 0.13,
+          borderRadius: '50%',
+          bgcolor: 'secondary.main',
+          boxShadow: '0 0 14px rgba(244, 67, 54, 0.45)',
+          transform: 'translateX(-50%)',
+        }}
+      />
+    </Box>
+  </Box>
+);
 
 // Full screen loading
 const FullScreenLoading = ({
@@ -21,6 +130,11 @@ const FullScreenLoading = ({
         bgcolor: 'background.paper',
         zIndex: 9999,
         px: 3,
+        backgroundImage: `
+          radial-gradient(circle at 20% 20%, rgba(25, 118, 210, 0.14), transparent 28%),
+          radial-gradient(circle at 80% 30%, rgba(244, 67, 54, 0.10), transparent 24%),
+          radial-gradient(circle at 50% 80%, rgba(76, 175, 80, 0.08), transparent 24%)
+        `,
       }}
     >
       <Box
@@ -35,7 +149,7 @@ const FullScreenLoading = ({
         }}
       >
         <Box sx={{ display: 'flex', justifyContent: 'center', mb: 2.5 }}>
-          <CircularProgress size={44} />
+          <CreativeLoader size={64} label={title} />
         </Box>
         <Typography variant="h6" sx={{ textAlign: 'center', fontWeight: 700, mb: 1 }}>
           {title}
@@ -45,11 +159,6 @@ const FullScreenLoading = ({
             {message}
           </Typography>
         )}
-        <Box sx={{ mt: 3 }}>
-          <LinearProgress sx={{ height: 6, borderRadius: 999 }} />
-          <Skeleton variant="rounded" height={14} sx={{ mt: 2, borderRadius: 999 }} />
-          <Skeleton variant="rounded" width="72%" height={14} sx={{ mt: 1.5, borderRadius: 999 }} />
-        </Box>
       </Box>
     </Box>
   </Fade>
@@ -83,7 +192,7 @@ const PageLoading = ({
         }}
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
-          <CircularProgress size={30} />
+          <CreativeLoader size={40} label={title} />
           <Box sx={{ flex: 1 }}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               {title}
@@ -93,22 +202,15 @@ const PageLoading = ({
             </Typography>
           </Box>
         </Box>
-        <LinearProgress sx={{ height: 6, borderRadius: 999, mb: 2.5 }} />
-        <Skeleton variant="rounded" height={18} sx={{ borderRadius: 999, mb: 1.5 }} />
-        <Skeleton variant="rounded" width="78%" height={18} sx={{ borderRadius: 999, mb: 2.5 }} />
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 2 }}>
-          <Skeleton variant="rounded" height={72} sx={{ borderRadius: 2 }} />
-          <Skeleton variant="rounded" height={72} sx={{ borderRadius: 2 }} />
-        </Box>
       </Box>
     </Box>
   </Fade>
 );
 
-// Inline loading spinner
+// Inline loading glyph
 const InlineLoading = ({ message, size = 24 }) => (
   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, justifyContent: 'center', py: 2 }}>
-    <CircularProgress size={size} />
+    <CreativeLoader size={size} label={message || 'Loading'} />
     {message && (
       <Typography variant="body2" color="text.secondary">
         {message}
@@ -117,9 +219,11 @@ const InlineLoading = ({ message, size = 24 }) => (
   </Box>
 );
 
-// Button loading spinner
+// Button loading glyph
 const ButtonLoading = ({ size = 20 }) => (
-  <CircularProgress size={size} color="inherit" />
+  <Box sx={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+    <CreativeLoader size={size} label="Loading" />
+  </Box>
 );
 
 // Skeleton table rows

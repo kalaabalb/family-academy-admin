@@ -61,19 +61,6 @@ body {
 .mb-4 { margin-bottom: 1.5rem !important; }
 .mb-5 { margin-bottom: 2rem !important; }
 
-/* Loading states */
-.loading-shimmer {
-  background: linear-gradient(90deg, rgba(233, 228, 220, 0.9) 25%, rgba(243, 239, 232, 1) 50%, rgba(233, 228, 220, 0.9) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s infinite;
-  border-radius: 10px;
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
 /* Card hover effects */
 .card-hover {
   transition: all 0.3s ease;

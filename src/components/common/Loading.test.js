@@ -16,8 +16,6 @@ describe('Loading Component', () => {
 
   test('renders button loading', () => {
     render(<Loading type="button" />);
-    // Check for CircularProgress
-    const progress = document.querySelector('.MuiCircularProgress-root');
-    expect(progress).toBeInTheDocument();
+    expect(screen.getByTestId('creative-loader')).toBeInTheDocument();
   });
 });
