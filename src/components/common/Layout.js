@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import {
@@ -63,6 +63,7 @@ const Layout = ({ children }) => {
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [userMenuAnchor, setUserMenuAnchor] = useState(null);
+  const mainContentRef = useRef(null);
   
   // FIXED: Separate states for each collapsible section
   const [openSections, setOpenSections] = useState({
@@ -96,9 +97,14 @@ const Layout = ({ children }) => {
     }));
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
-  }, [location.pathname]);
+    document.documentElement.scrollTop = 0;
+    document.body.scrollTop = 0;
+    if (mainContentRef.current) {
+      mainContentRef.current.scrollTop = 0;
+    }
+  }, [location.key, location.pathname, location.search, location.hash]);
 
   // Admin Menu Items
   const adminMenuItems = [
@@ -337,9 +343,9 @@ const Layout = ({ children }) => {
             <Typography variant="body2" fontWeight="medium" noWrap>
               {user?.name || user?.username}
             </Typography>
-          <Typography variant="caption" color="text.secondary" noWrap>
-              {roleLabel}
-          </Typography>
+            <Typography variant="caption" color="text.secondary" noWrap>
+              Signed in as {roleLabel}
+            </Typography>
           </Box>
         </Box>
       </Box>
@@ -489,6 +495,7 @@ const Layout = ({ children }) => {
       {/* Main Content */}
       <Box
         component="main"
+        ref={mainContentRef}
         sx={{
           flexGrow: 1,
           minWidth: 0,
@@ -498,10 +505,11 @@ const Layout = ({ children }) => {
           minHeight: 'calc(100vh - 64px)',
           bgcolor: 'background.default',
           overflowX: 'hidden',
+          overflowY: 'auto',
         }}
       >
       <Box
-        key={location.pathname}
+        key={location.key || location.pathname}
         sx={{
           bgcolor: 'background.paper',
           borderRadius: 2,
