@@ -26,7 +26,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
+  
   Stack,
   Grid,
   Avatar,
@@ -36,6 +36,7 @@ import {
   InputAdornment,
   FormHelperText,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -749,7 +750,7 @@ const VideoManager = () => {
           }
         />
 
-        {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+        {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
         {error && (
           <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>
@@ -934,7 +935,7 @@ const VideoManager = () => {
                         <Typography variant="h6" gutterBottom>
                           Uploading video... {uploadProgress}%
                         </Typography>
-                        <LinearProgress 
+                        <TrainLoadingBar 
                           variant="determinate" 
                           value={uploadProgress} 
                           sx={{ height: 8, borderRadius: 4, mb: 2 }}

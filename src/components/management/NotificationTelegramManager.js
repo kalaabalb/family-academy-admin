@@ -41,7 +41,7 @@ import {
   CircularProgress,
   Tab,
   Tabs,
-  LinearProgress,
+  
   Avatar,
   Badge,
   Stack,
@@ -50,6 +50,7 @@ import {
   DialogContent,
   DialogActions,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import { alpha } from '@mui/material/styles';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -1208,7 +1209,7 @@ const NotificationTelegramManager = () => {
       />
 
       {/* Loading */}
-      {(loading || actionLoading) && <LinearProgress sx={{ mb: 3 }} />}
+      {(loading || actionLoading) && <TrainLoadingBar sx={{ mb: 3 }} />}
 
       <SummaryStrip
         items={[

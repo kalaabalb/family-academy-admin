@@ -51,7 +51,7 @@ import {
   TableHead,
   TableRow,
   Avatar,
-  LinearProgress,
+  
   Tooltip,
   Divider,
   InputAdornment,
@@ -68,6 +68,7 @@ import {
   Collapse,
   Stack,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Refresh,
   FilterList,
@@ -1022,7 +1023,7 @@ const UserManager = () => {
       />
 
       {/* Loading Indicator (only show the bar on initial load) */}
-      {loading && users.length === 0 && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && users.length === 0 && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       <SummaryStrip
         items={[
@@ -1189,7 +1190,7 @@ const UserManager = () => {
 
             <DialogContent sx={{ p: 0 }}>
               {detailsRefreshing && !loadingDetails && (
-                <LinearProgress sx={{ height: 3 }} />
+                <TrainLoadingBar sx={{ height: 3 }} />
               )}
               <Tabs
                 value={tabValue}
@@ -1427,7 +1428,7 @@ const UserManager = () => {
                                           <Typography variant="body2" color="text.secondary" gutterBottom>
                                             Video Progress
                                           </Typography>
-                                          <LinearProgress
+                                          <TrainLoadingBar
                                             variant="determinate"
                                             value={videoProgress}
                                             sx={{ height: 8, borderRadius: 4, mb: 1 }}
@@ -1441,7 +1442,7 @@ const UserManager = () => {
                                           <Typography variant="body2" color="text.secondary" gutterBottom>
                                             Questions Accuracy
                                           </Typography>
-                                          <LinearProgress
+                                          <TrainLoadingBar
                                             variant="determinate"
                                             value={accuracy}
                                             sx={{ height: 8, borderRadius: 4, mb: 1 }}
@@ -1794,7 +1795,7 @@ const UserManager = () => {
                                       </TableCell>
                                       <TableCell>
                                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                          <LinearProgress
+                                          <TrainLoadingBar
                                             variant="determinate"
                                             value={scoreValue}
                                             sx={{ width: 60, height: 6, borderRadius: 3 }}

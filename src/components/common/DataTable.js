@@ -18,13 +18,13 @@ import {
   Typography,
   Tooltip,
   Checkbox,
-  LinearProgress,
   Button,
   useTheme,
   alpha,
   useMediaQuery,
 } from '@mui/material';
 import FastTextField from './FastTextField';
+import { TrainLoadingBar } from './Loading';
 import {
   Search,
   Edit,
@@ -506,7 +506,7 @@ const DataTable = ({
       )}
 
       {/* Optional inline loading bar for table-only loading states */}
-      {showInlineLoadingBar && loading && sourceData.length > 0 && <LinearProgress sx={{ width: '100%' }} />}
+      {showInlineLoadingBar && loading && sourceData.length > 0 && <TrainLoadingBar sx={{ width: '100%' }} />}
 
       {/* Table */}
       <TableContainer
@@ -611,7 +611,9 @@ const DataTable = ({
                   align="center" 
                   sx={{ py: 8 }}
                 >
-                  <CircularProgress />
+                  <Box sx={{ maxWidth: 280, mx: 'auto' }}>
+                    <TrainLoadingBar />
+                  </Box>
                   <Typography variant="body2" sx={{ mt: 2 }}>
                     Loading data...
                   </Typography>

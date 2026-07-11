@@ -39,10 +39,11 @@ import {
   Checkbox,
   FormControlLabel,
   FormGroup,
-  LinearProgress,
+  
   InputAdornment,
   CircularProgress
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Add,
   Edit,
@@ -554,7 +555,7 @@ const CourseManager = () => {
       />
 
       {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Error Alert */}
       {error && (

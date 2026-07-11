@@ -35,9 +35,10 @@ import {
   CardContent,
   InputAdornment,
   CircularProgress,
-  LinearProgress,
+  
   FormHelperText,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Add,
   Edit,
@@ -827,7 +828,7 @@ const QuestionManager = () => {
         </Stack>
       </Box>
 
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {error && (
         <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>

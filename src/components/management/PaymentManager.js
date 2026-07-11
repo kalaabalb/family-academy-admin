@@ -43,9 +43,10 @@ import {
   Grid,
   Card,
   CardContent,
-  LinearProgress,
+  
   Divider,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   OpenInNew,
   Refresh,
@@ -708,7 +709,7 @@ const PaymentManager = () => {
         </Alert>
       )}
 
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Filters Section */}
       {showFilters && (

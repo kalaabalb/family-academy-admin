@@ -36,11 +36,12 @@ import {
   Tab,
   CircularProgress,
   InputAdornment,
-  LinearProgress,
+  
   FormHelperText,
   useTheme,
   useMediaQuery,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   FilterList,
   Add,
@@ -663,7 +664,7 @@ const NoteManager = () => {
           </Stack>
         </Box>
 
-        {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+        {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
         {error && (
           <Alert severity="error" sx={{ mb: 3, borderRadius: 2 }} onClose={() => setError('')}>

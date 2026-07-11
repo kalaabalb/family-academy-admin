@@ -36,9 +36,10 @@ import {
   Radio,
   FormControlLabel,
   InputAdornment,
-  LinearProgress,
+  
 
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
@@ -1140,7 +1141,7 @@ const ExamManager = () => {
       </Box>
 
       {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Error Alert */}
       {error && (

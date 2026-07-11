@@ -37,10 +37,11 @@ import {
   Card,
   CardContent,
   Stack,
-  LinearProgress,
+  
   alpha,
   InputAdornment
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Refresh,
   Delete,
@@ -474,7 +475,7 @@ const DeviceManager = () => {
         </Alert>
       )}
 
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       <SummaryStrip
         items={[

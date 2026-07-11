@@ -43,9 +43,10 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
+  
   alpha,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Refresh,
   Delete,
@@ -673,7 +674,7 @@ const SystemLogsManager = () => {
       />
 
       {/* Loading Indicator */}
-      {(loading || actionLoading) && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {(loading || actionLoading) && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Error Alert */}
       {error && (

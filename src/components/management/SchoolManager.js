@@ -12,8 +12,9 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  LinearProgress,
+  
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Add,
   Edit,
@@ -295,7 +296,7 @@ const SchoolManager = () => {
       />
 
       {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       <ManagementSearchToolbar
         value={searchQuery}

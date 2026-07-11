@@ -47,8 +47,9 @@ import {
   CircularProgress,
   InputAdornment,
   Avatar,
-  LinearProgress,
+  
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   Add,
   Edit,
@@ -630,7 +631,7 @@ const TeacherManager = () => {
       />
 
       {/* Loading Indicator */}
-      {loading && <LinearProgress sx={{ mb: 3, borderRadius: 2 }} />}
+      {loading && <TrainLoadingBar sx={{ mb: 3, borderRadius: 2 }} />}
 
       {/* Error Alert */}
       {error && (

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import { Box, CircularProgress, Typography, Alert } from '@mui/material';
+import { Box, Typography, Alert } from '@mui/material';
+import { TrainLoadingBar } from '../components/common/Loading';
 
 const AdminRoute = ({ children }) => {
   const { isAuthenticated, loading, isAdmin } = useAuth();
@@ -18,7 +19,9 @@ const AdminRoute = ({ children }) => {
           bgcolor: 'background.default',
         }}
       >
-        <CircularProgress size={48} sx={{ mb: 2 }} />
+        <Box sx={{ width: 220, mb: 2 }}>
+          <TrainLoadingBar />
+        </Box>
         <Typography variant="body1" color="text.secondary">
           Verifying permissions...
         </Typography>

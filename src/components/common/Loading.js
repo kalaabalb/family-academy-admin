@@ -110,6 +110,86 @@ const CreativeLoader = ({ size = 56, label = 'Loading' }) => (
   </Box>
 );
 
+export const TrainLoadingBar = ({ sx }) => (
+  <Box
+    data-testid="train-loading-bar"
+    sx={{
+      position: 'relative',
+      width: '100%',
+      height: 8,
+      overflow: 'hidden',
+      borderRadius: 999,
+      bgcolor: 'rgba(25, 118, 210, 0.08)',
+      border: '1px solid rgba(25, 118, 210, 0.12)',
+      boxShadow: 'inset 0 1px 2px rgba(15, 23, 42, 0.06)',
+      ...sx,
+    }}
+  >
+    <Box
+      sx={{
+        position: 'absolute',
+        inset: 0,
+        background:
+          'linear-gradient(90deg, rgba(25, 118, 210, 0) 0%, rgba(25, 118, 210, 0.08) 20%, rgba(25, 118, 210, 0.18) 50%, rgba(25, 118, 210, 0.08) 80%, rgba(25, 118, 210, 0) 100%)',
+        animation: 'railGlow 1.8s ease-in-out infinite',
+        '@keyframes railGlow': {
+          '0%, 100%': { opacity: 0.45, transform: 'scaleX(0.96)' },
+          '50%': { opacity: 1, transform: 'scaleX(1)' },
+        },
+      }}
+    />
+    <Box
+      sx={{
+        position: 'absolute',
+        top: '50%',
+        left: -30,
+        width: 28,
+        height: 28,
+        transform: 'translateY(-50%)',
+        animation: 'trainRoll 1.55s cubic-bezier(0.65, 0, 0.35, 1) infinite',
+        '@keyframes trainRoll': {
+          '0%': { left: -30 },
+          '100%': { left: 'calc(100% + 2px)' },
+        },
+      }}
+    >
+      <Box
+        sx={{
+          position: 'absolute',
+          inset: 4,
+          borderRadius: 999,
+          bgcolor: 'primary.main',
+          boxShadow: '0 0 12px rgba(25, 118, 210, 0.45)',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 2,
+          left: 4,
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          bgcolor: 'secondary.main',
+          boxShadow: '0 0 8px rgba(244, 67, 54, 0.4)',
+        }}
+      />
+      <Box
+        sx={{
+          position: 'absolute',
+          bottom: 2,
+          right: 4,
+          width: 7,
+          height: 7,
+          borderRadius: '50%',
+          bgcolor: 'secondary.main',
+          boxShadow: '0 0 8px rgba(244, 67, 54, 0.4)',
+        }}
+      />
+    </Box>
+  </Box>
+);
+
 // Full screen loading
 const FullScreenLoading = ({
   title = 'Checking your access',
@@ -159,6 +239,7 @@ const FullScreenLoading = ({
             {message}
           </Typography>
         )}
+        <TrainLoadingBar sx={{ mt: 2.5 }} />
       </Box>
     </Box>
   </Fade>
@@ -202,6 +283,7 @@ const PageLoading = ({
             </Typography>
           </Box>
         </Box>
+        <TrainLoadingBar />
       </Box>
     </Box>
   </Fade>

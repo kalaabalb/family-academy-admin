@@ -11,7 +11,7 @@ import {
   CircularProgress,
   Divider,
   Grid,
-  LinearProgress,
+  
   List,
   ListItem,
   ListItemText,
@@ -19,6 +19,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import { TrainLoadingBar } from '../common/Loading';
 import {
   ArrowForward,
   AssignmentTurnedIn,
@@ -676,7 +677,7 @@ const TeacherDashboard = () => {
         </Alert>
       ) : null}
 
-      {loading ? <LinearProgress sx={{ mb: 3, borderRadius: 3 }} /> : null}
+      {loading ? <TrainLoadingBar sx={{ mb: 3, borderRadius: 3 }} /> : null}
 
       <Grid container spacing={3} sx={{ mb: 3 }}>
         <Grid item xs={12} lg={8}>
