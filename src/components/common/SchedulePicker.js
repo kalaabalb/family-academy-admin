@@ -38,7 +38,7 @@ const SchedulePicker = ({
             minDateTime={now}
             disablePast
             disabled={disabled}
-            ampm={false}
+            ampm
             views={['day', 'hours', 'minutes']}
             openTo="day"
             timeSteps={{ minutes: 1 }}

@@ -544,7 +544,7 @@ const CategoryManager = () => {
           { label: 'Total Categories', value: categories.length, color: 'primary' },
           { label: 'Active', value: categories.filter((category) => category.status === 'active').length, color: 'success' },
           { label: 'Subscriptions', value: subscriptions.length, color: 'info' },
-          { label: 'Top Category', value: topCategory ? `${topCategory.name} (${topCategory.subscription_count || 0})` : '-', color: 'secondary' },
+          { label: 'Most Subscribed', value: topCategory ? topCategory.name : '-', color: 'secondary' },
         ]}
       />
 
@@ -555,7 +555,7 @@ const CategoryManager = () => {
         data={filteredCategories}
         loading={loading}
         onRefresh={handleRefresh}
-        title={`Categories `}
+        title="Categories"
         rowKey="id"
         searchable={false}
         defaultOrder="desc"
