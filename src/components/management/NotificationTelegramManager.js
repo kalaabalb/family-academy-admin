@@ -166,6 +166,35 @@ const formatScheduleClock = (value) => {
   });
 };
 
+const parseClockParts = (value) => {
+  const normalized = String(value || '09:00').trim();
+  const match = normalized.match(/^(\d{1,2}):(\d{2})/);
+  const hour24 = Math.min(23, Math.max(0, Number(match?.[1] ?? 9)));
+  const minute = Math.min(59, Math.max(0, Number(match?.[2] ?? 0)));
+  const period = hour24 >= 12 ? 'PM' : 'AM';
+  const displayHour = hour24 % 12 || 12;
+
+  return {
+    hour: String(displayHour).padStart(2, '0'),
+    minute: String(minute).padStart(2, '0'),
+    period,
+  };
+};
+
+const buildClockValue = (hour, minute, period) => {
+  const safeHour = Math.min(12, Math.max(1, Number(hour) || 12));
+  const safeMinute = Math.min(59, Math.max(0, Number(minute) || 0));
+  let hour24 = safeHour % 12;
+  if (String(period).toUpperCase() === 'PM') {
+    hour24 += 12;
+  }
+
+  return `${String(hour24).padStart(2, '0')}:${String(safeMinute).padStart(2, '0')}`;
+};
+
+const TIME_HOURS = Array.from({ length: 12 }, (_, index) => String(index + 1).padStart(2, '0'));
+const TIME_MINUTES = Array.from({ length: 60 }, (_, index) => String(index).padStart(2, '0'));
+
 const formatScheduleSummary = (schedule) => {
   switch (schedule?.schedule_type) {
     case 'one_time':
@@ -1649,10 +1678,63 @@ const NotificationTelegramManager = () => {
             )}
             {scheduleForm.schedule_type !== 'one_time' && (
               <Grid item xs={12} md={6}>
-                <TextField fullWidth type="time" label="Time" 
-                  value={scheduleForm.scheduled_time}
-                  onChange={(e) => setScheduleForm({...scheduleForm, scheduled_time: e.target.value})}
-                  InputLabelProps={{ shrink: true }} />
+                <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr 110px' }, gap: 1.5 }}>
+                  <FormControl fullWidth>
+                    <InputLabel>Hour</InputLabel>
+                    <Select
+                      value={parseClockParts(scheduleForm.scheduled_time).hour}
+                      label="Hour"
+                      onChange={(e) => {
+                        const parts = parseClockParts(scheduleForm.scheduled_time);
+                        setScheduleForm({
+                          ...scheduleForm,
+                          scheduled_time: buildClockValue(e.target.value, parts.minute, parts.period),
+                        });
+                      }}
+                    >
+                      {TIME_HOURS.map((hour) => (
+                        <MenuItem key={hour} value={hour}>{hour}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth>
+                    <InputLabel>Minute</InputLabel>
+                    <Select
+                      value={parseClockParts(scheduleForm.scheduled_time).minute}
+                      label="Minute"
+                      onChange={(e) => {
+                        const parts = parseClockParts(scheduleForm.scheduled_time);
+                        setScheduleForm({
+                          ...scheduleForm,
+                          scheduled_time: buildClockValue(parts.hour, e.target.value, parts.period),
+                        });
+                      }}
+                    >
+                      {TIME_MINUTES.map((minute) => (
+                        <MenuItem key={minute} value={minute}>{minute}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+
+                  <FormControl fullWidth>
+                    <InputLabel>AM / PM</InputLabel>
+                    <Select
+                      value={parseClockParts(scheduleForm.scheduled_time).period}
+                      label="AM / PM"
+                      onChange={(e) => {
+                        const parts = parseClockParts(scheduleForm.scheduled_time);
+                        setScheduleForm({
+                          ...scheduleForm,
+                          scheduled_time: buildClockValue(parts.hour, parts.minute, e.target.value),
+                        });
+                      }}
+                    >
+                      <MenuItem value="AM">AM</MenuItem>
+                      <MenuItem value="PM">PM</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Box>
               </Grid>
             )}
             <Grid item xs={12} md={6}>

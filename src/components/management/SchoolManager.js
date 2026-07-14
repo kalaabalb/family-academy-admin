@@ -178,13 +178,37 @@ const SchoolManager = () => {
     fetchSchools(true);
   };
 
-  const getSchoolMatchKey = (item) => {
-    if (item?.school_id !== undefined && item?.school_id !== null && item?.school_id !== '') {
-      return `id:${Number(item.school_id)}`;
-    }
+  const getSchoolMatchKeys = (item) => {
+    const keys = new Set();
+    const addId = (value) => {
+      if (value !== undefined && value !== null && value !== '') {
+        const normalized = Number(value);
+        if (Number.isFinite(normalized)) {
+          keys.add(`id:${normalized}`);
+        }
+      }
+    };
+    const addName = (value) => {
+      const normalized = String(value || '').trim().toLowerCase();
+      if (normalized) {
+        keys.add(`name:${normalized}`);
+      }
+    };
 
-    const schoolName = String(item?.school_name || '').trim().toLowerCase();
-    return schoolName ? `name:${schoolName}` : null;
+    addId(item?.school_id);
+    addId(item?.schoolId);
+    addId(item?.selected_school_id);
+    addId(item?.selectedSchoolId);
+    addId(item?.school?.id);
+    addId(item?.school?.school_id);
+
+    addName(item?.school_name);
+    addName(item?.schoolName);
+    addName(item?.selected_school_name);
+    addName(item?.school?.name);
+    addName(item?.school?.school_name);
+
+    return Array.from(keys);
   };
 
   const columns = [
@@ -224,9 +248,11 @@ const SchoolManager = () => {
     const studentCounts = new Map();
 
     users.forEach((user) => {
-      const key = getSchoolMatchKey(user);
-      if (!key) return;
-      studentCounts.set(key, (studentCounts.get(key) || 0) + 1);
+      const keys = getSchoolMatchKeys(user);
+      if (keys.length === 0) return;
+      keys.forEach((key) => {
+        studentCounts.set(key, (studentCounts.get(key) || 0) + 1);
+      });
     });
 
     return schools
@@ -252,6 +278,9 @@ const SchoolManager = () => {
       school.name?.toLowerCase().includes(query)
     );
   }, [enrichedSchools, searchQuery]);
+
+  const topSchool = enrichedSchools[0];
+  const totalStudents = enrichedSchools.reduce((sum, school) => sum + (Number(school.student_count) || 0), 0);
 
   if (!isAdmin()) {
     return (
@@ -307,8 +336,8 @@ const SchoolManager = () => {
       <SummaryStrip
         items={[
           { label: 'Total Schools', value: schools.length, color: 'primary' },
-          { label: 'Total Students', value: users.filter((user) => getSchoolMatchKey(user)).length, color: 'success' },
-          { label: 'Top School', value: filteredSchools[0] ? `${filteredSchools[0].name} (${filteredSchools[0].student_count || 0})` : '-', color: 'secondary' },
+          { label: 'Total Students', value: totalStudents, color: 'success' },
+          { label: 'Top School', value: topSchool ? `${topSchool.name} (${topSchool.student_count || 0})` : '-', color: 'secondary' },
         ]}
       />
 

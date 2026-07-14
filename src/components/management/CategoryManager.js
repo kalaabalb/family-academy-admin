@@ -358,7 +358,7 @@ const CategoryManager = () => {
     );
   });
 
-  const topCategory = filteredCategories[0];
+  const topCategory = categories[0];
 
   const columns = [
     {
