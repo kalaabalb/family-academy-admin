@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useMemo } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
 import CssBaseline from '@mui/material/CssBaseline';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
@@ -65,6 +65,16 @@ const DashboardPage = () => {
   );
 };
 
+const RouteLayout = ({ children }) => {
+  const location = useLocation();
+
+  return (
+    <Layout key={`${location.pathname}${location.search}${location.hash}`}>
+      {children}
+    </Layout>
+  );
+};
+
 const AppContent = () => {
   const { mode } = useThemeMode();
   const theme = useMemo(() => getTheme(mode), [mode]);
@@ -108,185 +118,185 @@ const AppContent = () => {
                   {/* Admin Only Routes */}
                   <Route path="/schools" element={
                     <PrivateRoute>
-                      <Layout>
+                      <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <SchoolManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/categories" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <CategoryManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/courses" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <CourseManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/payments" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <PaymentManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/users" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <UserManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/teachers" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <TeacherManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
 
                 <Route path="/admins" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <AdminManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 {/* Admin + Teacher Routes */}
                 <Route path="/chapters" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <Suspense fallback={routeLoadingFallback}>
                         <ChapterManager />
                       </Suspense>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/videos" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <Suspense fallback={routeLoadingFallback}>
                         <VideoManager />
                       </Suspense>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/notes" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <Suspense fallback={routeLoadingFallback}>
                         <NoteManager />
                       </Suspense>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/questions" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <Suspense fallback={routeLoadingFallback}>
                         <QuestionManager />
                       </Suspense>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/exams" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <Suspense fallback={routeLoadingFallback}>
                         <ExamManager />
                       </Suspense>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 {/* Admin Only Routes - continued */}
                 <Route path="/notifications" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <NotificationTelegramManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
 
                 <Route path="/settings" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <SettingsManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
 
                 <Route path="/devices" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <DeviceManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
                 <Route path="/system-logs" element={
                   <PrivateRoute>
-                    <Layout>
+                    <RouteLayout>
                       <AdminRoute>
                         <Suspense fallback={routeLoadingFallback}>
                           <SystemLogsManager />
                         </Suspense>
                       </AdminRoute>
-                    </Layout>
+                    </RouteLayout>
                   </PrivateRoute>
                 } />
                 
