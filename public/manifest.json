@@ -5,7 +5,13 @@
     {
       "src": "family-academy-brand-logo.png",
       "type": "image/png",
-      "sizes": "any",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "logo192.png",
+      "type": "image/png",
+      "sizes": "192x192",
       "purpose": "any maskable"
     }
   ],
