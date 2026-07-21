@@ -77,7 +77,21 @@ Create an optimized production build:
 npm run build
 ```
 
+For HahuCloud Enterprise:
+
+```bash
+REACT_APP_API_URL=https://api.familyacademy.et/api/v1 \
+REACT_APP_DOWNLOAD_BASE_URL=https://downloads.familyacademy.et \
+npm run build
+```
+
 ## Deployment
+
+### HahuCloud Enterprise
+1. Build with the HahuCloud production variables above.
+2. Upload the `build/` contents to `admin.familyacademy.et`.
+3. Point backend calls to `https://api.familyacademy.et/api/v1`.
+4. Keep real environment values in cPanel/build environment, not in Git.
 
 ### Netlify
 1. Build the project: `npm run build`
@@ -106,8 +120,9 @@ CMD ["npm", "start"]
 Create a `.env` file with the following variables:
 
 ```env
-REACT_APP_API_BASE_URL=https://api.familyacademy.com
-REACT_APP_ENVIRONMENT=production
+REACT_APP_API_URL=https://api.familyacademy.et/api/v1
+REACT_APP_DOWNLOAD_BASE_URL=https://downloads.familyacademy.et
+GENERATE_SOURCEMAP=false
 ```
 
 ## Security Features
