@@ -312,16 +312,21 @@ const Layout = ({ children }) => {
             : theme.palette.primary.contrastText,
         }}
       >
-        <Avatar
-          sx={{
-            width: 48,
-            height: 48,
-            bgcolor: 'rgba(255, 255, 255, 0.96)',
-            p: 0.5,
-          }}
+        <Box
+          component="img"
           src="/family-academy-brand-logo.png"
           alt="Family Academy"
-          imgProps={{ style: { objectFit: 'contain' } }}
+          sx={{
+            width: 52,
+            height: 52,
+            flexShrink: 0,
+            p: 0.75,
+            borderRadius: 3,
+            bgcolor: 'rgba(255, 255, 255, 0.96)',
+            objectFit: 'contain',
+            boxSizing: 'border-box',
+            border: `1px solid ${alpha(theme.palette.common.white, 0.28)}`,
+          }}
         />
         <Box>
           <Typography variant="subtitle1" fontWeight="bold" sx={{ color: 'inherit' }}>

@@ -166,8 +166,8 @@ const SettingsManager = () => {
     },
     telegram: {
       title: 'Telegram connections',
-      description: 'Bot links, support Telegram details, and parent-facing Telegram references.',
-      tone: 'Keep these links accurate so parent and support flows stay trustworthy.',
+      description: 'Bot links, feedback group links, direct support Telegram details, and parent-facing Telegram references.',
+      tone: 'Keep these links accurate so parent feedback and support flows stay trustworthy.',
     },
     parent_link: {
       title: 'Parent link journey',
