@@ -1,13 +1,23 @@
 const trimSlash = (value) => value.replace(/\/+$/, '');
 
 const baseUrl = process.env.REACT_APP_DOWNLOAD_BASE_URL?.trim() || '';
+const clientReleaseBase =
+  process.env.REACT_APP_CLIENT_RELEASE_BASE_URL?.trim() ||
+  'https://github.com/kalaabalb/family-academy-client/releases/download/v1.0.0';
+const tvReleaseBase =
+  process.env.REACT_APP_TV_RELEASE_BASE_URL?.trim() ||
+  'https://github.com/kalaabalb/family-academy-client-tv/releases/download/v1.0.0';
 
-const resolveDownloadUrl = (explicitUrl, relativePath) => {
+const resolveDownloadUrl = (explicitUrl, relativePath, releaseBaseUrl) => {
   const explicit = explicitUrl?.trim();
   if (explicit) return explicit;
 
   if (baseUrl) {
     return `${trimSlash(baseUrl)}/${relativePath}`;
+  }
+
+  if (releaseBaseUrl) {
+    return `${trimSlash(releaseBaseUrl)}/${relativePath}`;
   }
 
   return `/${relativePath}`;
@@ -25,6 +35,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_WINDOWS_INSTALLER_URL,
           'downloads/client/FamilyAcademyInstaller.exe',
+          clientReleaseBase,
         ),
       },
       {
@@ -33,6 +44,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_WINDOWS_ZIP_URL,
           'downloads/client/family-academy-windows.zip',
+          clientReleaseBase,
         ),
       },
       {
@@ -41,6 +53,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_MACOS_URL,
           'downloads/client/family-academy-macos.zip',
+          clientReleaseBase,
         ),
       },
       {
@@ -49,6 +62,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_LINUX_URL,
           'downloads/client/family-academy-linux.tar.gz',
+          clientReleaseBase,
         ),
       },
       {
@@ -57,6 +71,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_ANDROID_ZIP_URL,
           'downloads/client/family-academy-android-apks.zip',
+          clientReleaseBase,
         ),
       },
       {
@@ -65,6 +80,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_CLIENT_ANDROID_AAB_URL,
           'downloads/client/family-academy-play-store.aab',
+          clientReleaseBase,
         ),
       },
     ],
@@ -80,6 +96,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_TV_ANDROID_URL,
           'downloads/tv/tvapp-android-universal.apk',
+          tvReleaseBase,
         ),
       },
       {
@@ -88,6 +105,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_TV_ANDROID_AAB_URL,
           'downloads/tv/tvapp-play-store.aab',
+          tvReleaseBase,
         ),
       },
       {
@@ -96,6 +114,7 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_TV_LINUX_URL,
           'downloads/tv/tvapp-linux.tar.gz',
+          tvReleaseBase,
         ),
       },
       {
@@ -104,9 +123,9 @@ export const downloadGroups = [
         url: resolveDownloadUrl(
           process.env.REACT_APP_TV_MACOS_URL,
           'downloads/tv/tvapp-macos.zip',
+          tvReleaseBase,
         ),
       },
     ],
   },
 ];
-
