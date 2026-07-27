@@ -3,10 +3,10 @@ const trimSlash = (value) => value.replace(/\/+$/, '');
 const baseUrl = process.env.REACT_APP_DOWNLOAD_BASE_URL?.trim() || '';
 const clientReleaseBase =
   process.env.REACT_APP_CLIENT_RELEASE_BASE_URL?.trim() ||
-  'https://github.com/kalaabalb/family-academy-client/releases/download/v1.0.0';
+  'https://github.com/kalaabalb/family-academy-client/releases/download/v1.0.1';
 const tvReleaseBase =
   process.env.REACT_APP_TV_RELEASE_BASE_URL?.trim() ||
-  'https://github.com/kalaabalb/family-academy-client-tv/releases/download/v1.0.0';
+  'https://github.com/kalaabalb/family-academy-client-tv/releases/download/v1.0.1';
 
 const resolveDownloadUrl = (explicitUrl, relativePath, releaseBaseUrl) => {
   const explicit = explicitUrl?.trim();
