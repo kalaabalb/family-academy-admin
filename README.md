@@ -2,6 +2,13 @@
 
 Admin and teacher dashboard for Family Academy Learning Management System.
 
+This dashboard is one part of the broader Family Academy system:
+
+- Student mobile app
+- TV app
+- Backend API
+- Public landing page
+
 ## Features
 
 - **Authentication** - Secure login with JWT tokens and remember me functionality
@@ -21,6 +28,23 @@ Admin and teacher dashboard for Family Academy Learning Management System.
 - **Settings Management** - Configure system settings
 - **System Logs** - Monitor system activity
 - **Communications** - Send notifications and Telegram messages
+
+## Screenshots
+
+Real screenshots from the running admin dashboard are stored in [docs/screenshots/](docs/screenshots/README.md).
+
+### Featured screens
+
+| Screen | Preview |
+| --- | --- |
+| Login | ![Login screen](docs/screenshots/login.png) |
+| Dashboard | ![Dashboard screen](docs/screenshots/dashboard.png) |
+| Course management | ![Course management screen](docs/screenshots/coursemanegment.png) |
+| User management | ![User management screen](docs/screenshots/usermanagement.png) |
+| Financial management | ![Financial management screen](docs/screenshots/financialmanegment.png) |
+| Teacher management | ![Teacher management screen](docs/screenshots/teachermanegment.png) |
+| System settings | ![System settings screen](docs/screenshots/systemsettingmanagemnt.png) |
+| Communications | ![Communications screen](docs/screenshots/comunication.png) |
 
 ## Tech Stack
 
@@ -77,13 +101,20 @@ Create an optimized production build:
 npm run build
 ```
 
-For HahuCloud Enterprise:
+### HahuCloud Enterprise build
 
 ```bash
 REACT_APP_API_URL=https://api.familyacademy.et/api/v1 \
 REACT_APP_DOWNLOAD_BASE_URL=https://downloads.familyacademy.et \
 npm run build
 ```
+
+## Related repositories
+
+- Student mobile app: https://github.com/kalaabalb/family-academy-client
+- TV app: https://github.com/kalaabalb/family-academy-client-tv
+- Backend API: https://github.com/kalaabalb/family-academy-backend
+- Landing page: https://github.com/kalaabalb/familyacademy.et
 
 ## Deployment
 
