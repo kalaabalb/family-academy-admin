@@ -68,6 +68,13 @@ export const getNotificationMessage = (input, severity = 'info') => {
     return DEFAULT_MESSAGES[severity] || DEFAULT_MESSAGES.info;
   }
 
+  if (typeof input === 'object' && input?.response?.status === 401) {
+    const backendMessage = input.response?.data?.message;
+    if (typeof backendMessage === 'string' && /invalid (credentials|password)|incorrect (username|password)/i.test(backendMessage)) {
+      return 'Incorrect username or password.';
+    }
+  }
+
   if (typeof input === 'object' && input?.response?.status && STATUS_MESSAGES[input.response.status]) {
     if (Array.isArray(input.response?.data?.errors) && input.response.data.errors.length > 0) {
       const combined = input.response.data.errors

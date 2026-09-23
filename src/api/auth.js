@@ -2,8 +2,10 @@ import axiosInstance from './axiosConfig';
 
 const authApi = {
   // Admin login
-  adminLogin: (username, password) => 
-    axiosInstance.post('/auth/admin-login', { username, password }),
+  // A Render instance may still be waking up when the dashboard is opened on
+  // a new device. Let this authentication request wait long enough to finish.
+  adminLogin: (username, password) =>
+    axiosInstance.post('/auth/admin-login', { username, password }, { timeout: 60000 }),
   
   // Logout
   logout: () => axiosInstance.post('/auth/logout'),
